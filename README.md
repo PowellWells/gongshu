@@ -2,14 +2,14 @@
 
 Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
 
-当前状态：阶段 0（MuJoCo / robosuite 生命线）与阶段 1 最小模块化工程骨架已通过，正式 robosuite RGB-D 仿真适配器也已完成。项目暂不包含 YOLO 权重、训练数据或统一前端。
+当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器和 YOLO11n-seg 预训练感知适配器均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录，尚未开发统一前端。
 
 继续开发前请先阅读 [CODEX_HANDOFF.md](CODEX_HANDOFF.md)。
 
 ## 模块边界
 
 - `simulation`：仿真环境、相机和机器人动作；当前提供 `RobosuiteRGBDSimulator`。
-- `perception`：实例分割推理，只输出检测结果。
+- `perception`：实例分割推理，只输出检测结果；当前提供 CPU 版 `UltralyticsYOLOSegmenter`。
 - `geometry`：深度反投影、坐标变换和局部点云。
 - `grasp`：几何抓取候选与评分。
 - `control`：Panda 确定性抓取状态机。
@@ -24,7 +24,14 @@ Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo �
 Python 3.12.5
 MuJoCo 3.9.0
 robosuite 1.5.2
+PyTorch 2.13.0+cpu
+torchvision 0.28.0+cpu
+Ultralytics 8.4.128
 ```
+
+## 第三方许可证边界
+
+Ultralytics 软件和官方 YOLO11 预训练权重默认采用 AGPL-3.0。当前只按本地个人 / 研究演示用途使用；如果未来需要闭源、内部商业或产品化部署，必须先确认能够履行 AGPL-3.0 的开源义务，或取得 Ultralytics 商业许可。本仓库目前没有擅自替整个项目选择许可证。
 
 ## 本地检查
 

@@ -18,8 +18,13 @@ provides_depth = true
 
 [perception]
 backend = "ultralytics"
-weights = "yolo11n-seg.pt"
+weights = "artifacts/models/yolo11n-seg.pt"
+weights_sha256 = "55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152"
 confidence_threshold = 0.50
+mask_threshold = 0.50
+image_size = 640
+device = "cpu"
+target_classes = ["bottle", "cup"]
 training_enabled = false
 
 [grasp]

@@ -37,6 +37,9 @@ robosuite 1.5.2
 NumPy 1.26.4
 OpenCV 4.11.0
 h5py 3.16.0
+PyTorch 2.13.0+cpu
+torchvision 0.28.0+cpu
+Ultralytics 8.4.128
 ```
 
 虚拟环境：`G:\Vision2Grasp\.venv`
@@ -60,8 +63,8 @@ controller: OSC_POSE
 RGB: 480 x 640 x 3
 Depth: 480 x 640
 depth_valid_ratio: 1.0
-eef_displacement_m: 0.02576095635002532
-gripper_displacement: 0.02858272079987
+eef_displacement_m: 0.025335838338183782
+gripper_displacement: 0.02858273845309047
 status: PASS
 ```
 
@@ -86,9 +89,35 @@ status: PASS
 - 动作形状和有限数值会被校验；`close()`可重复调用。
 - 适配器公共接口不提供原始仿真器或物体真值。
 - 新增6项替身单元测试和1项真实Lift集成测试；最近一次完整检查为14项测试全部通过，`compileall`和`pip check`通过。
-- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025690 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
+- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025336 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
 
-尚未安装PyTorch或Ultralytics，尚未下载 `yolo11n-seg.pt`，尚未创建统一首页或四视图工作台。
+### 阶段2：YOLO11n-seg预训练感知适配器 — PASS
+
+- `perception\ultralytics_adapter.py` 实现了 `InstanceSegmenter` 协议，只暴露 `model_name` 和 `predict()`，没有训练入口。
+- 输入 `RGBDFrame.rgb` 会从RGB显式转换为Ultralytics NumPy接口所需的BGR。
+- 推理固定使用CPU、640输入尺寸、`retina_masks=True`，输出原图尺度的 `Detection2D` 边界框和布尔Mask。
+- 默认只保留 `bottle` 和 `cup`，置信度阈值和Mask阈值均为 `0.50`。
+- 权重存在性和SHA-256会在首次推理前校验；缺失或被篡改时不会加载模型。
+- Ultralytics配置隔离在 `artifacts\ultralytics`，同步遥测为关闭状态，没有使用Ultralytics云服务。
+- 新增7项感知单元测试和1项官方权重真实冒烟测试；最近一次全量检查为22项测试全部通过。
+- CC0 Fiji瓶子照片上检出1个 `bottle`，置信度 `0.853851`，原图Mask为 `319160` 像素。
+
+感知资产保存在Git忽略目录：
+
+```text
+artifacts\models\yolo11n-seg.pt
+来源：https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-seg.pt
+SHA-256：55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152
+
+artifacts\perception\bottle_cc0.jpg
+来源：https://commons.wikimedia.org/wiki/File:Fiji_water_bottle.jpg
+许可：CC0 1.0
+SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
+```
+
+许可证边界：Ultralytics代码和官方预训练权重默认采用AGPL-3.0。当前仅按本地个人/研究演示使用；若未来闭源、内部商业或产品化，必须满足AGPL开源义务或先取得Ultralytics商业许可。项目根目录当前没有LICENSE文件，不得擅自声称整个项目已经完成许可证选择。
+
+尚未实现RGB-D三维定位、抓取规划、控制闭环、统一首页或四视图工作台。
 
 ## 5. 当前验证命令
 
@@ -105,17 +134,17 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段2感知）
+## 6. 下一任务（阶段3几何定位）
 
-下一步实现 `perception` 模块的最小预训练实例分割适配器：
+下一步只实现 `geometry` 模块的Mask + Depth三维定位器：
 
-1. 安装并冻结与Python 3.12兼容的CPU版PyTorch和Ultralytics；安装前核对官方兼容性与许可证，不引入训练依赖或GPU要求。
-2. 下载并校验官方 `yolo11n-seg.pt`，不训练或微调模型。
-3. 实现现有 `InstanceSegmenter` 协议，将原图尺度上的类别、置信度、边界框和布尔Mask转换为 `Detection2D`。
-4. 只保留目标类别选择和最低置信度等必要配置，不将几何定位或仿真真值混入感知模块。
-5. 增加替身单元测试和一次真实预训练权重冒烟测试；正式目标应使用COCO可识别的瓶子或杯子图像。
+1. 实现现有 `TargetLocalizer` 协议，输入 `RGBDFrame` 和 `Detection2D`，输出 `LocalizedTarget`。
+2. 校验Mask与Depth尺寸一致，只使用Mask内有限且为正的米制深度，并计算 `depth_valid_ratio`。
+3. 使用 `CameraIntrinsics` 做OpenCV相机坐标反投影，再使用 `world_from_camera` 转换为世界坐标；不得读取物体真值。
+4. 对局部点云做最小必要的离群深度过滤和确定性采样，输出世界坐标点云及稳健质心，不在本阶段加入PCA抓取规划。
+5. 增加合成几何单元测试、坐标变换测试和真实RGB-D帧集成测试；原22项测试与阶段0回归继续通过。
 
-本任务仍不开发前端，不进行RGB-D三维定位或抓取规划。
+本任务仍不开发前端、不实现抓取候选或机器人状态机。
 
 ## 7. 后续顺序
 
@@ -137,4 +166,4 @@ simulation正式适配器
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“perception模块最小预训练实例分割适配器”开始；开始修改前先核对现有接口、测试、依赖兼容性和许可证，不要训练模型或开发前端。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“geometry模块Mask + Depth三维定位器”开始；开始修改前先核对现有接口、契约和测试，不得读取仿真物体真值，也不要提前实现PCA抓取规划或前端。
