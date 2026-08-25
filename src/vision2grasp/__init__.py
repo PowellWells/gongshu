@@ -7,6 +7,7 @@ from .contracts import (
     ExecutionResult,
     GraspCandidate,
     LocalizedTarget,
+    PandaProprioception,
     RGBDFrame,
 )
 
@@ -17,6 +18,7 @@ __all__ = [
     "ExecutionResult",
     "GraspCandidate",
     "LocalizedTarget",
+    "PandaProprioception",
     "RGBDFrame",
 ]
 

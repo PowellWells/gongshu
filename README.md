@@ -2,17 +2,17 @@
 
 Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
 
-当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器、YOLO11n-seg 预训练感知、Mask + Depth 三维定位和 PCA 顶抓规划均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录，尚未开发统一前端。
+当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器、YOLO11n-seg 预训练感知、Mask + Depth 三维定位、PCA 顶抓规划和 Panda 确定性执行均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录，尚未开发统一前端。
 
 继续开发前请先阅读 [CODEX_HANDOFF.md](CODEX_HANDOFF.md)。
 
 ## 模块边界
 
-- `simulation`：仿真环境、相机和机器人动作；当前提供 `RobosuiteRGBDSimulator`。
+- `simulation`：仿真环境、相机、机器人动作和机器人本体状态；当前提供 `RobosuiteRGBDSimulator`。
 - `perception`：实例分割推理，只输出检测结果；当前提供 CPU 版 `UltralyticsYOLOSegmenter`。
 - `geometry`：深度反投影、坐标变换和局部点云；当前提供 `MaskDepthTargetLocalizer`。
 - `grasp`：几何抓取候选与评分；当前提供 `PCATopGraspPlanner`。
-- `control`：Panda 确定性抓取状态机。
+- `control`：Panda 确定性抓取状态机；当前提供 `PandaOSCGraspExecutor`。
 - `visualization`：RGB、Depth、Grasp、Simulation 四视图。
 - `evaluation`：误差和成功率；仿真真值仅允许出现在这里。
 

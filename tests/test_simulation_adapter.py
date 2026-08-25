@@ -31,6 +31,13 @@ class FakeEnvironment:
             "agentview_depth": np.full(
                 (self.height, self.width, 1), 0.25, dtype=np.float32
             ),
+            "robot0_eef_pos": np.array([0.1, -0.2, 0.9], dtype=np.float64),
+            "robot0_eef_quat_site": np.array(
+                [0.0, 0.0, 0.0, 1.0], dtype=np.float64
+            ),
+            "robot0_gripper_qpos": np.array(
+                [0.02, -0.02], dtype=np.float64
+            ),
         }
 
     def reset(self) -> dict[str, np.ndarray]:
@@ -133,6 +140,18 @@ class AdapterTests(unittest.TestCase):
                 np.array([0.0, 0.0, np.nan, 0.0, 0.0, 0.0, 0.0])
             )
 
+    def test_robot_state_uses_eef_site_quaternion(self) -> None:
+        simulator = RobosuiteRGBDSimulator(self.config)
+        simulator.reset()
+
+        state = simulator.robot_state()
+
+        self.assertEqual(simulator.action_dimension, 7)
+        self.assertEqual(state.timestamp_s, 0.0)
+        np.testing.assert_allclose(state.world_from_eef[:3, :3], np.eye(3))
+        np.testing.assert_allclose(state.world_from_eef[:3, 3], [0.1, -0.2, 0.9])
+        np.testing.assert_allclose(state.gripper_qpos, [0.02, -0.02])
+
     def test_explicit_seed_recreates_environment(self) -> None:
         simulator = RobosuiteRGBDSimulator(self.config)
         simulator.reset()
@@ -148,6 +167,8 @@ class AdapterTests(unittest.TestCase):
         simulator = RobosuiteRGBDSimulator(self.config)
         with self.assertRaisesRegex(RuntimeError, "reset"):
             simulator.capture()
+        with self.assertRaisesRegex(RuntimeError, "reset"):
+            simulator.robot_state()
         simulator.reset()
 
         simulator.close()
@@ -158,6 +179,8 @@ class AdapterTests(unittest.TestCase):
             simulator.reset()
         with self.assertRaisesRegex(RuntimeError, "closed"):
             simulator.capture()
+        with self.assertRaisesRegex(RuntimeError, "closed"):
+            _ = simulator.action_dimension
 
     def test_missing_rgbd_observation_is_rejected(self) -> None:
         simulator = RobosuiteRGBDSimulator(self.config)
@@ -183,4 +206,3 @@ class SimulationConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

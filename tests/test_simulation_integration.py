@@ -12,10 +12,12 @@ class RobosuiteIntegrationTests(unittest.TestCase):
         simulator = RobosuiteRGBDSimulator()
         try:
             initial = simulator.reset(seed=7)
+            initial_robot = simulator.robot_state()
             action = np.zeros(7, dtype=np.float64)
             action[2] = 0.10
             action[-1] = -1.0
             after_action = simulator.apply_action(action)
+            after_robot = simulator.robot_state()
 
             self.assertEqual(initial.rgb.shape, (480, 640, 3))
             self.assertEqual(initial.rgb.dtype, np.uint8)
@@ -35,6 +37,16 @@ class RobosuiteIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(after_action.frame_id, initial.frame_id + 1)
             self.assertGreater(after_action.timestamp_s, initial.timestamp_s)
+            self.assertEqual(simulator.action_dimension, 7)
+            self.assertEqual(initial_robot.world_from_eef.shape, (4, 4))
+            np.testing.assert_allclose(
+                initial_robot.world_from_eef[:3, :3].T
+                @ initial_robot.world_from_eef[:3, :3],
+                np.eye(3),
+                atol=1e-7,
+            )
+            self.assertEqual(initial_robot.gripper_qpos.shape, (2,))
+            self.assertGreater(after_robot.timestamp_s, initial_robot.timestamp_s)
         finally:
             simulator.close()
             simulator.close()
@@ -42,4 +54,3 @@ class RobosuiteIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

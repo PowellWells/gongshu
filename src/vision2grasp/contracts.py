@@ -113,6 +113,39 @@ class GraspCandidate:
             raise ValueError("score must be between 0 and 1")
 
 
+@dataclass(frozen=True, slots=True)
+class PandaProprioception:
+    """Robot-only state available to deterministic grasp control.
+
+    ``world_from_eef`` describes robosuite's end-effector *site*, not the
+    similarly named body orientation. Object pose, contact and task-success
+    truth deliberately do not belong to this contract.
+    """
+
+    timestamp_s: float
+    world_from_eef: NDArray[np.float64]
+    gripper_qpos: NDArray[np.float64]
+
+    def __post_init__(self) -> None:
+        _require_shape("world_from_eef", self.world_from_eef, (4, 4))
+        if self.gripper_qpos.ndim != 1 or self.gripper_qpos.size == 0:
+            raise ValueError("gripper_qpos must be a non-empty 1D array")
+        if not np.isfinite(self.timestamp_s):
+            raise ValueError("timestamp_s must be finite")
+        if not np.all(np.isfinite(self.world_from_eef)):
+            raise ValueError("world_from_eef must contain only finite values")
+        if not np.all(np.isfinite(self.gripper_qpos)):
+            raise ValueError("gripper_qpos must contain only finite values")
+
+        rotation = self.world_from_eef[:3, :3]
+        if not np.allclose(self.world_from_eef[3], [0.0, 0.0, 0.0, 1.0], atol=1e-8):
+            raise ValueError("world_from_eef must have a rigid homogeneous bottom row")
+        if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6):
+            raise ValueError("world_from_eef rotation must be orthonormal")
+        if not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-6):
+            raise ValueError("world_from_eef rotation must have determinant +1")
+
+
 class ExecutionPhase(str, Enum):
     HOME = "HOME"
     PREGRASP = "PREGRASP"

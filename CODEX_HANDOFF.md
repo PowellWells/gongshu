@@ -63,8 +63,8 @@ controller: OSC_POSE
 RGB: 480 x 640 x 3
 Depth: 480 x 640
 depth_valid_ratio: 1.0
-eef_displacement_m: 0.025514109915779952
-gripper_displacement: 0.028582722964882325
+eef_displacement_m: 0.025676572999408325
+gripper_displacement: 0.02858272080378907
 status: PASS
 ```
 
@@ -89,7 +89,7 @@ status: PASS
 - 动作形状和有限数值会被校验；`close()`可重复调用。
 - 适配器公共接口不提供原始仿真器或物体真值。
 - 新增6项替身单元测试和1项真实Lift集成测试；最近一次完整检查为14项测试全部通过，`compileall`和`pip check`通过。
-- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025514 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
+- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025677 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
 
 ### 阶段2：YOLO11n-seg预训练感知适配器 — PASS
 
@@ -132,7 +132,7 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 ### 阶段4：PCA顶抓候选与几何评分 — PASS
 
 - `grasp\pca_top_grasp.py` 实现了 `GraspPlanner` 协议，每个目标输出一个确定性 `GraspCandidate`。
-- 抓取坐标约定：`+X`为夹爪闭合轴，`+Y`为目标长轴/手指方向，`+Z`为向下接近方向；输出旋转为右手正交矩阵。
+- 抓取坐标约定：`+X`为夹爪闭合轴，`+Y`为目标长轴/夹爪平面正交轴，`+Z`沿手指向下接近；输出旋转为右手正交矩阵。
 - PCA仅使用世界坐标点云的XY平面；先做径向分位过滤，并包含完整浮点边界壳层以保持对称形状的主轴稳定。
 - PCA轴符号按主分量确定；圆形或近圆形目标固定回退到世界 `+X` 长轴，重复运行结果一致。
 - 宽度和长度使用2%至98%投影范围估计，夹爪宽度增加 `0.008 m` 余量，并限制在Panda的 `0.01–0.08 m` 范围。
@@ -141,7 +141,20 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 新增8项合成长方体/圆柱/离群点/超宽测试和1项真实RGB-D→几何→规划集成测试；最近一次全量检查为39项测试全部通过。
 - 真实RGB-D区域生成候选 `top-pca-39-0`：开口 `0.029154 m`、评分 `0.836585`、宽度可行，位置约为 `[-0.01002, -0.00345, 0.84007] m`。
 
-尚未实现Panda控制状态机、无真值端到端抓取闭环、统一首页或四视图工作台。
+### 阶段5：Panda + OSC_POSE确定性控制 — PASS
+
+- `control\panda_osc_executor.py` 实现了 `GraspExecutor` 协议，固定执行 `HOME → PREGRASP → DESCEND → CLOSE → LIFT → RETURN_HOME`，并记录完整终态。
+- 新增 `PandaProprioception` 和最小 `PandaControlBackend` 边界，只包含末端site姿态、夹爪关节位置、时间戳和7维动作，不提供目标物体位姿、接触或成功真值。
+- `RobosuiteRGBDSimulator.robot_state()` 明确使用 `robot0_eef_quat_site` 的xyzw四元数；没有使用robosuite 1.5中与末端位置site不一致的旧body四元数。
+- PCA抓取坐标与Panda `grip_site` 坐标显式对齐：`+X`为闭合轴、`+Y`为平面正交/目标长轴、`+Z`沿手指向下接近；默认固定坐标变换为单位变换。
+- 默认OSC_POSE归一化输入按robosuite配置换算：平移 `±1 → ±0.05 m`、旋转 `±1 → ±0.5 rad`；执行器进一步将单步范数限制为 `0.02 m` 和 `0.15 rad`。
+- 候选执行前会拒绝 `reachable=False`、非刚体姿态、Panda宽度范围外、非向下抓取以及固定MVP工作区外的抓取/预抓取/抬升目标。
+- 每个阶段有独立步数上限与位置/姿态收敛阈值；失败返回当前阶段和 `FAILED`，不会无限动作。
+- `ExecutionResult.success=True` 只表示动作序列完成，消息明确说明尚未评价物体抓取结果。
+- 新增5项执行器/配置替身测试、1项控制契约测试、1项仿真本体状态测试和1项真实Lift控制集成测试；最近一次全量检查为47项测试全部通过。
+- 真实Lift控制测试只依据机器人本体状态验证完整阶段、末端位移、夹爪位移和返回HOME，不读取物体真值。
+
+尚未实现无真值端到端抓取编排与隔离式成功评价，也未开发统一首页或四视图工作台。
 
 ## 5. 当前验证命令
 
@@ -158,17 +171,17 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段5 Panda确定性控制）
+## 6. 下一任务（阶段6 无真值端到端闭环）
 
-下一步只实现 `control` 模块的Panda + OSC_POSE确定性抓取状态机：
+下一步把已经通过的模块连接成一个可验收的单目标抓取闭环：
 
-1. 实现现有 `GraspExecutor` 协议，按 `HOME → PREGRASP → DESCEND → CLOSE → LIFT → RETURN_HOME` 执行，并返回完整 `ExecutionResult` 阶段记录。
-2. 为控制层提供最小机器人动作与本体状态接口；允许读取Panda末端和夹爪本体状态，但不得读取目标物体位姿、接触真值或成功标签。
-3. 明确把 `world_from_grasp` 的抓取坐标转换成robosuite Panda末端坐标，限制单步平移/旋转动作，并为每个阶段设置步数、误差和超时边界。
-4. 在执行前拒绝 `reachable=False`、非刚体姿态、越界宽度或明显超出固定MVP工作区的候选；这仍不是MoveIt式运动规划。
-5. 增加替身状态机单元测试和真实Lift环境动作集成测试；真实测试只验证末端/夹爪本体运动与阶段转换，抓取成功评价留到下一阶段。
+1. 优先复用robosuite自带的 `BottleObject` 和现有Lift/Panda基础设施，建立一个固定相机、单瓶目标的最小场景；先确认官方YOLO11n-seg能从该RGB观测稳定检出 `bottle`，不训练模型。
+2. 新增薄编排层，只通过现有公共契约依次调用 `capture/predict/localize/plan/execute`；确定性选择单一检测目标，并为无检测、定位失败、候选不可执行和控制失败返回清晰阶段结果。
+3. 主闭环不得读取物体位姿、接触或环境成功标签，也不得把评价真值反馈给感知、规划或控制。
+4. 只在 `evaluation` 模块增加隔离式验收：允许在执行结束后比较目标初末高度/位移并生成成功或失败报告，但真值读取必须与主闭环单向隔离。
+5. 增加替身端到端测试和一个固定种子的真实瓶子抓取集成测试，记录检测、三维定位、候选、控制阶段与最终评价；保留合理的失败诊断，不以伪造成功绕过YOLO或控制。
 
-本任务仍不读取物体真值、不实现成功率评价，也不开发前端。
+本任务仍不开发前端；该阶段通过后，后端核心闭环即达到前端接入条件。
 
 ## 7. 后续顺序
 
@@ -190,4 +203,4 @@ simulation正式适配器
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“control模块Panda + OSC_POSE确定性抓取状态机”开始；开始修改前先核对现有接口、抓取坐标与robosuite末端坐标约定，不得读取目标物体真值，也不要提前实现成功率评价或前端。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“阶段6无真值端到端闭环”开始；优先复用robosuite自带BottleObject，只通过公共契约连接现有模块。主闭环不得读取或反馈物体真值，评价真值只能在evaluation中执行后单向读取，也不要提前开发前端。

@@ -14,6 +14,7 @@ from vision2grasp import (
     ExecutionPhase,
     ExecutionResult,
     GraspCandidate,
+    PandaProprioception,
     RGBDFrame,
 )
 
@@ -83,6 +84,23 @@ class ContractTests(unittest.TestCase):
                 final_phase=ExecutionPhase.SUCCEEDED,
                 message="invalid",
                 visited_phases=(),
+            )
+
+    def test_panda_proprioception_requires_rigid_robot_only_state(self) -> None:
+        state = PandaProprioception(
+            timestamp_s=0.25,
+            world_from_eef=np.eye(4, dtype=np.float64),
+            gripper_qpos=np.array([0.02, -0.02], dtype=np.float64),
+        )
+        self.assertEqual(state.gripper_qpos.shape, (2,))
+
+        reflected = np.eye(4, dtype=np.float64)
+        reflected[0, 0] = -1.0
+        with self.assertRaisesRegex(ValueError, "determinant"):
+            PandaProprioception(
+                timestamp_s=0.0,
+                world_from_eef=reflected,
+                gripper_qpos=np.zeros(2, dtype=np.float64),
             )
 
 

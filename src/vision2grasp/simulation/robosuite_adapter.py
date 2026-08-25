@@ -10,7 +10,7 @@ from typing import Any, Protocol, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from vision2grasp.contracts import CameraIntrinsics, RGBDFrame
+from vision2grasp.contracts import CameraIntrinsics, PandaProprioception, RGBDFrame
 
 
 # robosuite reads this setting while importing MuJoCo's rendering bindings.
@@ -133,7 +133,7 @@ def _world_from_camera_matrix(
 
 
 class RobosuiteRGBDSimulator:
-    """Own a robosuite environment and expose only RGB-D simulation data."""
+    """Own robosuite and expose RGB-D plus robot-only OSC proprioception."""
 
     def __init__(self, config: RobosuiteSimulationConfig | None = None) -> None:
         self._config = config or RobosuiteSimulationConfig()
@@ -167,6 +167,59 @@ class RobosuiteRGBDSimulator:
         if self._environment is None or self._latest_observation is None:
             raise RuntimeError("reset() must be called before capture()")
         return self._frame_from_observation(self._latest_observation)
+
+    @property
+    def action_dimension(self) -> int:
+        """Return the configured action width after environment reset."""
+
+        self._require_open()
+        if self._environment is None:
+            raise RuntimeError("reset() must be called before reading action_dimension")
+        return int(self._environment.action_dim)
+
+    def robot_state(self) -> PandaProprioception:
+        """Return Panda end-effector-site and gripper proprioception only."""
+
+        self._require_open()
+        if self._environment is None or self._latest_observation is None:
+            raise RuntimeError("reset() must be called before robot_state()")
+
+        observation = self._latest_observation
+        required = (
+            "robot0_eef_pos",
+            "robot0_eef_quat_site",
+            "robot0_gripper_qpos",
+        )
+        missing = [key for key in required if key not in observation]
+        if missing:
+            raise KeyError(
+                f"missing robot proprioception {missing}; available keys: "
+                f"{sorted(observation)}"
+            )
+
+        position = np.asarray(observation["robot0_eef_pos"], dtype=np.float64)
+        quaternion = np.asarray(
+            observation["robot0_eef_quat_site"], dtype=np.float64
+        )
+        gripper_qpos = np.asarray(
+            observation["robot0_gripper_qpos"], dtype=np.float64
+        )
+        if position.shape != (3,):
+            raise ValueError(f"robot0_eef_pos must have shape (3,), got {position.shape}")
+        if quaternion.shape != (4,):
+            raise ValueError(
+                "robot0_eef_quat_site must have shape (4,), "
+                f"got {quaternion.shape}"
+            )
+
+        world_from_eef = np.eye(4, dtype=np.float64)
+        world_from_eef[:3, :3] = _xyzw_quaternion_to_matrix(quaternion)
+        world_from_eef[:3, 3] = position
+        return PandaProprioception(
+            timestamp_s=float(self._environment.sim.data.time),
+            world_from_eef=world_from_eef,
+            gripper_qpos=gripper_qpos.copy(),
+        )
 
     def apply_action(self, action: NDArray[np.float64]) -> RGBDFrame:
         """Advance the simulator by one control step and return the new frame."""
@@ -298,3 +351,21 @@ class RobosuiteRGBDSimulator:
         self._next_frame_id += 1
         return frame
 
+
+def _xyzw_quaternion_to_matrix(
+    quaternion: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Convert robosuite's site quaternion convention without importing it."""
+
+    norm = float(np.linalg.norm(quaternion))
+    if not np.isfinite(norm) or norm <= 1e-12:
+        raise ValueError("robot0_eef_quat_site must be a finite non-zero quaternion")
+    x, y, z, w = quaternion / norm
+    return np.array(
+        [
+            [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - z * w), 2.0 * (x * z + y * w)],
+            [2.0 * (x * y + z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * w)],
+            [2.0 * (x * z - y * w), 2.0 * (y * z + x * w), 1.0 - 2.0 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
