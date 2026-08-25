@@ -37,3 +37,13 @@ minimum_depth_band_m = 0.01
 [grasp]
 strategy = "top_grasp_pca"
 use_simulation_truth = false
+minimum_points = 30
+pca_inlier_quantile = 0.98
+extent_lower_quantile = 0.02
+extent_upper_quantile = 0.98
+circularity_ratio_threshold = 0.85
+minimum_planar_variance_m2 = 1e-8
+minimum_gripper_width_m = 0.01
+maximum_gripper_width_m = 0.08
+width_clearance_m = 0.008
+point_support_reference = 1000
