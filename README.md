@@ -2,7 +2,7 @@
 
 Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
 
-当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器、YOLO11n-seg 预训练感知、Mask + Depth 三维定位、PCA 顶抓规划和 Panda 确定性执行均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录，尚未开发统一前端。
+当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器、YOLO11n-seg 预训练感知、Mask + Depth 三维定位、PCA / 圆拟合顶抓规划、Panda 确定性执行和单瓶端到端闭环均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录；后端核心闭环已达到前端接入条件。
 
 继续开发前请先阅读 [CODEX_HANDOFF.md](CODEX_HANDOFF.md)。
 
@@ -13,8 +13,9 @@ Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo �
 - `geometry`：深度反投影、坐标变换和局部点云；当前提供 `MaskDepthTargetLocalizer`。
 - `grasp`：几何抓取候选与评分；当前提供 `PCATopGraspPlanner`。
 - `control`：Panda 确定性抓取状态机；当前提供 `PandaOSCGraspExecutor`。
+- `pipeline`：无真值反馈的单目标编排；当前提供 `Vision2GraspPipeline`。
 - `visualization`：RGB、Depth、Grasp、Simulation 四视图。
-- `evaluation`：误差和成功率；仿真真值仅允许出现在这里。
+- `evaluation`：执行后误差和成功率；仿真真值仅允许通过这里的隔离评价器读取。
 
 模块通过 `vision2grasp.contracts` 中的数据对象交换信息，不直接读取其他模块的内部状态。
 
@@ -45,3 +46,11 @@ G:\Vision2Grasp\.venv\Scripts\python.exe -m unittest discover -s G:\Vision2Grasp
 ```powershell
 G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\stage0_lift_smoke.py
 ```
+
+固定种子单瓶闭环：
+
+```powershell
+G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\run_bottle_pipeline.py
+```
+
+该命令输出检测、三维定位、抓取候选、控制阶段和隔离评价的 JSON 摘要；退出码 `0` 表示瓶子垂直抬升达到 `0.03 m` 验收阈值。

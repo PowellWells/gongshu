@@ -133,6 +133,30 @@ class PCATopGraspPlannerTests(unittest.TestCase):
         )
         self.assertTrue(candidate.reachable)
 
+    def test_upright_bottle_uses_circle_center_and_upper_grasp_height(self) -> None:
+        angles = np.linspace(-np.pi / 2.0, np.pi / 2.0, 30)
+        heights = np.linspace(0.82, 0.98, 20)
+        angle_grid, height_grid = np.meshgrid(angles, heights)
+        center_xy = np.array([0.015, -0.01])
+        radius_m = 0.025
+        points = np.column_stack(
+            (
+                center_xy[0] + radius_m * np.cos(angle_grid).reshape(-1),
+                center_xy[1] + radius_m * np.sin(angle_grid).reshape(-1),
+                height_grid.reshape(-1),
+            )
+        )
+
+        candidate = PCATopGraspPlanner().plan(make_target(points))[0]
+
+        np.testing.assert_allclose(candidate.world_from_grasp[:2, 3], center_xy)
+        self.assertAlmostEqual(
+            candidate.world_from_grasp[2, 3],
+            float(np.quantile(points[:, 2], 0.75)),
+        )
+        self.assertAlmostEqual(candidate.gripper_width_m, 0.058)
+        self.assertEqual(candidate.score_terms["axisymmetric_circle_fit"], 1.0)
+
     def test_spatial_outliers_do_not_rotate_axis_or_inflate_robust_width(self) -> None:
         clean_points = rectangle_points(
             length_m=0.10,
@@ -226,10 +250,15 @@ class PCATopGraspConfigTests(unittest.TestCase):
             "maximum_gripper_width_m",
             "width_clearance_m",
             "point_support_reference",
+            "upright_height_to_width_ratio",
+            "upright_grasp_height_quantile",
         ):
             self.assertEqual(grasp[key], getattr(config, key))
+        self.assertEqual(
+            grasp["upright_axisymmetric_class_names"],
+            list(config.upright_axisymmetric_class_names),
+        )
 
 
 if __name__ == "__main__":
     unittest.main()
-

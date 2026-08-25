@@ -63,8 +63,8 @@ controller: OSC_POSE
 RGB: 480 x 640 x 3
 Depth: 480 x 640
 depth_valid_ratio: 1.0
-eef_displacement_m: 0.025676572999408325
-gripper_displacement: 0.02858272080378907
+eef_displacement_m: 0.025678614688203403
+gripper_displacement: 0.028582724466231085
 status: PASS
 ```
 
@@ -89,7 +89,7 @@ status: PASS
 - 动作形状和有限数值会被校验；`close()`可重复调用。
 - 适配器公共接口不提供原始仿真器或物体真值。
 - 新增6项替身单元测试和1项真实Lift集成测试；最近一次完整检查为14项测试全部通过，`compileall`和`pip check`通过。
-- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025677 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
+- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025679 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
 
 ### 阶段2：YOLO11n-seg预训练感知适配器 — PASS
 
@@ -154,7 +154,21 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 新增5项执行器/配置替身测试、1项控制契约测试、1项仿真本体状态测试和1项真实Lift控制集成测试；最近一次全量检查为47项测试全部通过。
 - 真实Lift控制测试只依据机器人本体状态验证完整阶段、末端位移、夹爪位移和返回HOME，不读取物体真值。
 
-尚未实现无真值端到端抓取编排与隔离式成功评价，也未开发统一首页或四视图工作台。
+### 阶段6：无真值端到端闭环与隔离评价 — PASS
+
+- `simulation\bottle_lift.py` 基于当前冻结的MIT许可robosuite 1.5.2 `Lift` 模型加载模式，使用其自带 `BottleObject` 建立单瓶场景，没有引入新依赖或外部3D资产。
+- 瓶身保持robosuite原生网格和碰撞模型；蓝色瓶身、白色标签和红色瓶盖只作用于可视几何，用于让官方COCO预训练YOLO稳定识别，不提供真值Mask。
+- 正式场景使用固定 `frontview`、640×480 RGB-D和种子7，并关闭robosuite对象观测；主闭环只能取得RGB-D、机器人本体状态和动作接口。
+- 官方 `yolo11n-seg.pt` 在默认 `0.50` 阈值下检出 `bottle`，固定种子置信度 `0.560525`、Mask `1022` 像素。
+- `pipeline.py` 实现 `CAPTURE → DETECT → LOCALIZE → PLAN → EXECUTE` 薄编排，只调用现有公共协议，并返回包含各阶段公开输出的 `PipelineRunResult`。
+- 检测和候选选择具有确定性排序；无检测、深度定位失败、无可达候选和控制失败均在对应阶段终止并保留诊断。
+- 为解决侧视可见曲面质心偏离瓶子轴心的问题，`PCATopGraspPlanner` 仅对“高度明显大于平面宽度”的 `bottle/cup` 点云启用二维圆拟合，以感知点云恢复中心和直径，并在点云75%高度处夹持；非轴对称目标仍走原PCA路线。
+- `evaluation\lift.py` 在主闭环前后通过私有窄接口各读取一次瓶子位姿；评价结果不反馈给检测、定位、规划或控制。源码测试确认 `pipeline.py` 不依赖evaluation、真值类型或私有真值方法。
+- `run_bottle_pipeline.py` 提供可复现命令行入口并输出JSON，便于下一阶段前端直接消费阶段数据结构。
+- 最近一次固定种子闭环结果：深度有效率 `1.0`、定位点数 `923`、候选开口 `0.048243 m`、候选评分 `0.788457`、动作序列完成、瓶子垂直抬升 `0.055189 m`，超过 `0.03 m` 阈值，最终评价 `success=True`。
+- 新增圆拟合、编排、失败路径、评价隔离和真实单瓶抓取测试；最近一次全量检查为59项测试全部通过，`compileall`和`pip check`通过。
+
+后端核心闭环已经达到前端接入条件；尚未开发Jingwei Vision统一首页或RGB/Depth/Grasp/Simulation四视图工作台。
 
 ## 5. 当前验证命令
 
@@ -171,17 +185,17 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段6 无真值端到端闭环）
+## 6. 下一任务（阶段7 前端接入起步）
 
-下一步把已经通过的模块连接成一个可验收的单目标抓取闭环：
+下一步正式开始前端接入，不再扩展后端算法范围：
 
-1. 优先复用robosuite自带的 `BottleObject` 和现有Lift/Panda基础设施，建立一个固定相机、单瓶目标的最小场景；先确认官方YOLO11n-seg能从该RGB观测稳定检出 `bottle`，不训练模型。
-2. 新增薄编排层，只通过现有公共契约依次调用 `capture/predict/localize/plan/execute`；确定性选择单一检测目标，并为无检测、定位失败、候选不可执行和控制失败返回清晰阶段结果。
-3. 主闭环不得读取物体位姿、接触或环境成功标签，也不得把评价真值反馈给感知、规划或控制。
-4. 只在 `evaluation` 模块增加隔离式验收：允许在执行结束后比较目标初末高度/位移并生成成功或失败报告，但真值读取必须与主闭环单向隔离。
-5. 增加替身端到端测试和一个固定种子的真实瓶子抓取集成测试，记录检测、三维定位、候选、控制阶段与最终评价；保留合理的失败诊断，不以伪造成功绕过YOLO或控制。
+1. 先检查现有未跟踪 `assets\` 的实际用途并保持来源边界；`F:\hotarea-cv` 仍只能作为只读视觉参考。
+2. 建立Jingwei Vision统一入口骨架，同时呈现 `Jingwei Moment` 与 `Jingwei Grasp` 两个入口；第一版只做清晰、可运行的蓝白科研风格导航和抓取演示入口。
+3. 为 `Jingwei Grasp` 建立最小运行桥接，消费 `run_bottle_pipeline.py` / `PipelineRunResult` 的JSON字段，不让页面直接读取仿真内部状态或evaluation私有真值接口。
+4. 首批界面至少展示运行状态、阶段时间线、检测类别/置信度、候选位置/开口/评分和最终抬升评价；RGB、Depth、Grasp、Simulation四视图可在随后前端阶段逐步补齐。
+5. 保留本地离线/静态使用路径，明确启动命令和失败提示；不得为了界面引入ROS2、云服务或训练流程。
 
-本任务仍不开发前端；该阶段通过后，后端核心闭环即达到前端接入条件。
+现有后端算法和验收阈值视为前端接入基线，除非前端联调暴露明确缺陷，否则不再修改。
 
 ## 7. 后续顺序
 
@@ -203,4 +217,4 @@ simulation正式适配器
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“阶段6无真值端到端闭环”开始；优先复用robosuite自带BottleObject，只通过公共契约连接现有模块。主闭环不得读取或反馈物体真值，评价真值只能在evaluation中执行后单向读取，也不要提前开发前端。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。后端单瓶闭环已经通过，从“阶段7前端接入起步”开始；先核对未跟踪assets用途和现有入口约束，保持F:\hotarea-cv只读。前端只消费公开PipelineRunResult/JSON，不得读取仿真内部状态或evaluation私有真值接口，也不要扩展后端算法范围。

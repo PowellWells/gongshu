@@ -24,6 +24,9 @@ class PCATopGraspConfig:
     maximum_gripper_width_m: float = 0.08
     width_clearance_m: float = 0.008
     point_support_reference: int = 1000
+    upright_axisymmetric_class_names: tuple[str, ...] = ("bottle", "cup")
+    upright_height_to_width_ratio: float = 1.5
+    upright_grasp_height_quantile: float = 0.75
 
     def __post_init__(self) -> None:
         if self.minimum_points < 3:
@@ -54,6 +57,21 @@ class PCATopGraspConfig:
             raise ValueError(
                 "point_support_reference must be at least minimum_points"
             )
+        normalized_names = tuple(
+            name.strip().lower() for name in self.upright_axisymmetric_class_names
+        )
+        if not normalized_names or any(not name for name in normalized_names):
+            raise ValueError("upright_axisymmetric_class_names must not be empty")
+        if len(set(normalized_names)) != len(normalized_names):
+            raise ValueError("upright_axisymmetric_class_names must not contain duplicates")
+        object.__setattr__(self, "upright_axisymmetric_class_names", normalized_names)
+        if (
+            not np.isfinite(self.upright_height_to_width_ratio)
+            or self.upright_height_to_width_ratio <= 0.0
+        ):
+            raise ValueError("upright_height_to_width_ratio must be positive")
+        if not 0.5 <= self.upright_grasp_height_quantile < 1.0:
+            raise ValueError("upright_grasp_height_quantile must be in [0.5, 1)")
 
 
 class PCATopGraspPlanner:
@@ -94,8 +112,16 @@ class PCATopGraspPlanner:
             raise ValueError("centroid_world_m must be a finite 3-vector")
 
         planar_points = points[:, :2]
-        pca_points = self._radial_inliers(planar_points)
-        long_axis_xy, circularity = self._long_axis(pca_points)
+        axisymmetric_fit = self._is_upright_axisymmetric(target, points)
+        if axisymmetric_fit:
+            fitted_center_xy, fitted_radius_m = self._fit_planar_circle(planar_points)
+            long_axis_xy = np.array([0.0, 1.0], dtype=np.float64)
+            circularity = 1.0
+        else:
+            fitted_center_xy = centroid[:2]
+            fitted_radius_m = 0.0
+            pca_points = self._radial_inliers(planar_points)
+            long_axis_xy, circularity = self._long_axis(pca_points)
 
         approach_axis_world = np.array([0.0, 0.0, -1.0], dtype=np.float64)
         finger_axis_world = np.array(
@@ -113,8 +139,12 @@ class PCATopGraspPlanner:
 
         closing_projection = points @ closing_axis_world
         finger_projection = points @ finger_axis_world
-        object_width_m = self._robust_span(closing_projection)
-        object_length_m = self._robust_span(finger_projection)
+        if axisymmetric_fit:
+            object_width_m = 2.0 * fitted_radius_m
+            object_length_m = object_width_m
+        else:
+            object_width_m = self._robust_span(closing_projection)
+            object_length_m = self._robust_span(finger_projection)
         required_width_m = object_width_m + self._config.width_clearance_m
         width_feasible = required_width_m <= self._config.maximum_gripper_width_m
         commanded_width_m = float(
@@ -145,6 +175,13 @@ class PCATopGraspPlanner:
         world_from_grasp = np.eye(4, dtype=np.float64)
         world_from_grasp[:3, :3] = rotation
         world_from_grasp[:3, 3] = centroid
+        if axisymmetric_fit:
+            world_from_grasp[:2, 3] = fitted_center_xy
+            world_from_grasp[2, 3] = float(
+                np.quantile(points[:, 2], self._config.upright_grasp_height_quantile)
+            )
+        score_terms["axisymmetric_circle_fit"] = float(axisymmetric_fit)
+        score_terms["grasp_height_m"] = float(world_from_grasp[2, 3])
 
         candidate = GraspCandidate(
             candidate_id=f"top-pca-{target.detection.class_id}-0",
@@ -157,6 +194,46 @@ class PCATopGraspPlanner:
             score_terms=score_terms,
         )
         return (candidate,)
+
+    def _is_upright_axisymmetric(
+        self, target: LocalizedTarget, points: NDArray[np.float64]
+    ) -> bool:
+        if (
+            target.detection.class_name.lower()
+            not in self._config.upright_axisymmetric_class_names
+        ):
+            return False
+        planar_span_m = max(
+            float(np.ptp(points[:, 0])),
+            float(np.ptp(points[:, 1])),
+        )
+        height_m = float(np.ptp(points[:, 2]))
+        return (
+            planar_span_m > np.finfo(np.float64).eps
+            and height_m
+            >= self._config.upright_height_to_width_ratio * planar_span_m
+        )
+
+    @staticmethod
+    def _fit_planar_circle(
+        planar_points: NDArray[np.float64],
+    ) -> tuple[NDArray[np.float64], float]:
+        design = np.column_stack(
+            (2.0 * planar_points, np.ones(planar_points.shape[0]))
+        )
+        squared_radius_terms = np.sum(planar_points * planar_points, axis=1)
+        solution, _, rank, _ = np.linalg.lstsq(
+            design, squared_radius_terms, rcond=None
+        )
+        if rank < 3:
+            raise ValueError("upright object points are degenerate for circle fitting")
+        center = np.asarray(solution[:2], dtype=np.float64)
+        radius_squared = float(solution[2] + np.dot(center, center))
+        if not np.all(np.isfinite(center)) or not np.isfinite(radius_squared):
+            raise ValueError("circle fit produced non-finite geometry")
+        if radius_squared <= np.finfo(np.float64).eps:
+            raise ValueError("circle fit radius must be positive")
+        return center, float(np.sqrt(radius_squared))
 
     def _radial_inliers(
         self, planar_points: NDArray[np.float64]

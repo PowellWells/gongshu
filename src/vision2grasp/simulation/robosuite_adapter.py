@@ -50,10 +50,17 @@ class RobosuiteSimulationConfig:
 
 class _SimulationData(Protocol):
     time: float
+    body_xpos: Any
+    body_xmat: Any
+
+
+class _SimulationModel(Protocol):
+    def body_name2id(self, name: str) -> int: ...
 
 
 class _Simulation(Protocol):
     data: _SimulationData
+    model: _SimulationModel
 
 
 class _RobosuiteEnvironment(Protocol):
@@ -81,6 +88,10 @@ def _make_robosuite_environment(
     )
 
     macros.IMAGE_CONVENTION = "opencv"
+    if config.environment == "BottleLift":
+        # Importing registers the environment with robosuite's EnvMeta.
+        from .bottle_lift import BottleLift  # noqa: F401
+
     arm_config = suite.load_part_controller_config(default_controller=config.controller)
     controller_config = refactor_composite_controller_config(
         arm_config,
@@ -94,6 +105,7 @@ def _make_robosuite_environment(
         has_renderer=False,
         has_offscreen_renderer=True,
         use_camera_obs=True,
+        use_object_obs=False,
         camera_names=config.camera_name,
         camera_heights=config.camera_height,
         camera_widths=config.camera_width,
@@ -247,6 +259,29 @@ class RobosuiteRGBDSimulator:
             return
         self._dispose_environment()
         self._closed = True
+
+    def _evaluation_object_pose(
+        self, object_name: str
+    ) -> NDArray[np.float64]:
+        """Private truth hook consumed only by ``vision2grasp.evaluation``."""
+
+        self._require_open()
+        if self._environment is None:
+            raise RuntimeError("reset() must be called before evaluation truth access")
+        if self._config.environment != "BottleLift" or object_name != "bottle":
+            raise ValueError("evaluation truth is restricted to BottleLift/bottle")
+
+        body_id = self._environment.sim.model.body_name2id("bottle_main")
+        position = np.asarray(
+            self._environment.sim.data.body_xpos[body_id], dtype=np.float64
+        )
+        rotation = np.asarray(
+            self._environment.sim.data.body_xmat[body_id], dtype=np.float64
+        ).reshape(3, 3)
+        world_from_object = np.eye(4, dtype=np.float64)
+        world_from_object[:3, :3] = rotation
+        world_from_object[:3, 3] = position
+        return world_from_object
 
     def _dispose_environment(self) -> None:
         environment = self._environment

@@ -47,6 +47,9 @@ minimum_gripper_width_m = 0.01
 maximum_gripper_width_m = 0.08
 width_clearance_m = 0.008
 point_support_reference = 1000
+upright_axisymmetric_class_names = ["bottle", "cup"]
+upright_height_to_width_ratio = 1.5
+upright_grasp_height_quantile = 0.75
 
 [control]
 backend = "panda_osc_pose"
@@ -70,3 +73,10 @@ descend_max_steps = 80
 close_steps = 12
 lift_max_steps = 80
 return_home_max_steps = 100
+
+[pipeline]
+scene = "BottleLift"
+camera_name = "frontview"
+target_class_priority = ["bottle", "cup"]
+evaluation_object_name = "bottle"
+minimum_vertical_displacement_m = 0.03
