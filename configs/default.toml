@@ -27,6 +27,13 @@ device = "cpu"
 target_classes = ["bottle", "cup"]
 training_enabled = false
 
+[geometry]
+minimum_valid_depth_ratio = 0.50
+minimum_points = 30
+maximum_points = 4096
+outlier_mad_scale = 3.5
+minimum_depth_band_m = 0.01
+
 [grasp]
 strategy = "top_grasp_pca"
 use_simulation_truth = false

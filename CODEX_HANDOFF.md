@@ -63,8 +63,8 @@ controller: OSC_POSE
 RGB: 480 x 640 x 3
 Depth: 480 x 640
 depth_valid_ratio: 1.0
-eef_displacement_m: 0.025335838338183782
-gripper_displacement: 0.02858273845309047
+eef_displacement_m: 0.02565043984640188
+gripper_displacement: 0.02858272058977213
 status: PASS
 ```
 
@@ -89,7 +89,7 @@ status: PASS
 - 动作形状和有限数值会被校验；`close()`可重复调用。
 - 适配器公共接口不提供原始仿真器或物体真值。
 - 新增6项替身单元测试和1项真实Lift集成测试；最近一次完整检查为14项测试全部通过，`compileall`和`pip check`通过。
-- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025336 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
+- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025650 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
 
 ### 阶段2：YOLO11n-seg预训练感知适配器 — PASS
 
@@ -117,7 +117,19 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 
 许可证边界：Ultralytics代码和官方预训练权重默认采用AGPL-3.0。当前仅按本地个人/研究演示使用；若未来闭源、内部商业或产品化，必须满足AGPL开源义务或先取得Ultralytics商业许可。项目根目录当前没有LICENSE文件，不得擅自声称整个项目已经完成许可证选择。
 
-尚未实现RGB-D三维定位、抓取规划、控制闭环、统一首页或四视图工作台。
+### 阶段3：Mask + Depth三维定位 — PASS
+
+- `geometry\mask_depth_localizer.py` 实现了 `TargetLocalizer` 协议，输出 `LocalizedTarget`。
+- Mask必须与Depth原图尺寸一致；只使用Mask内有限且为正的米制深度。
+- `depth_valid_ratio` 在离群点过滤前按Mask总像素计算，默认最低要求为 `0.50`。
+- 使用中位数和MAD做确定性深度离群过滤，最小深度带宽为 `0.01 m`。
+- 使用OpenCV相机坐标约定和 `CameraIntrinsics` 反投影，再通过经过刚体校验的 `world_from_camera` 转换到世界坐标。
+- 点云最多输出4096个行优先确定性样本；质心使用全部过滤后的点计算，不受采样上限影响。
+- 新增7项合成几何测试和1项真实robosuite RGB-D集成测试；最近一次全量检查为30项测试全部通过。
+- 真实RGB-D中心区域测试的有效深度比例为 `1.0`，输出4096点，世界坐标质心约为 `[-0.04059, -0.00016, 0.81342] m`。
+- `geometry` 源码和测试均未导入或读取仿真物体真值，也没有包含PCA抓取规划。
+
+尚未实现抓取规划、控制闭环、统一首页或四视图工作台。
 
 ## 5. 当前验证命令
 
@@ -134,17 +146,17 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段3几何定位）
+## 6. 下一任务（阶段4几何抓取规划）
 
-下一步只实现 `geometry` 模块的Mask + Depth三维定位器：
+下一步只实现 `grasp` 模块的PCA顶抓候选与几何评分：
 
-1. 实现现有 `TargetLocalizer` 协议，输入 `RGBDFrame` 和 `Detection2D`，输出 `LocalizedTarget`。
-2. 校验Mask与Depth尺寸一致，只使用Mask内有限且为正的米制深度，并计算 `depth_valid_ratio`。
-3. 使用 `CameraIntrinsics` 做OpenCV相机坐标反投影，再使用 `world_from_camera` 转换为世界坐标；不得读取物体真值。
-4. 对局部点云做最小必要的离群深度过滤和确定性采样，输出世界坐标点云及稳健质心，不在本阶段加入PCA抓取规划。
-5. 增加合成几何单元测试、坐标变换测试和真实RGB-D帧集成测试；原22项测试与阶段0回归继续通过。
+1. 实现现有 `GraspPlanner` 协议，输入 `LocalizedTarget`，输出一个或少量确定性 `GraspCandidate`。
+2. 在世界坐标局部点云上估计桌面平行主轴，固定从上向下的接近方向，并构造正交 `world_from_grasp`。
+3. 使用稳健投影范围估计目标宽度和夹爪开口，显式处理轴符号与接近圆形目标时的退化方向，确保重复运行结果一致。
+4. 评分只使用感知置信度、深度有效率、点云规模、几何紧致度和夹爪宽度裕量，不读取物体真值，也不调用机器人控制器。
+5. 增加旋转长方体、圆柱近似、离群点和不可夹持宽度等合成测试；原30项测试和阶段0回归继续通过。
 
-本任务仍不开发前端、不实现抓取候选或机器人状态机。
+本任务仍不执行Panda动作、不开发前端，也不把可达性判断扩展成运动规划。
 
 ## 7. 后续顺序
 
@@ -166,4 +178,4 @@ simulation正式适配器
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“geometry模块Mask + Depth三维定位器”开始；开始修改前先核对现有接口、契约和测试，不得读取仿真物体真值，也不要提前实现PCA抓取规划或前端。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“grasp模块PCA顶抓候选与几何评分”开始；开始修改前先核对现有接口、契约和测试，不得读取仿真物体真值，也不要提前实现机器人控制状态机或前端。
