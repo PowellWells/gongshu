@@ -74,7 +74,19 @@ status: PASS
 - 每个模块目前只定义协议边界，没有伪造功能实现。
 - 仿真真值类型只位于 `evaluation\ground_truth.py`，未从根包导出。
 - `configs\default.toml` 冻结当前仿真版本与MVP默认值。
-- 最近一次检查：7项单元测试全部通过、模块导入通过、`pip check`通过。
+- 模块导入和既有7项契约测试继续通过。
+
+### 阶段2前置：正式simulation适配器 — PASS
+
+- `simulation\robosuite_adapter.py` 实现了 `RGBDSimulator` 协议。
+- `reset()`、`capture()` 和 `apply_action()` 均返回合法 `RGBDFrame`。
+- RGB来自同步robosuite观测，Depth通过 `get_real_depth_map()` 转换为米制 `float32`。
+- 相机内参来自 `get_camera_intrinsic_matrix()`，`world_from_camera` 来自 `get_camera_extrinsic_matrix()`，没有手填标定矩阵。
+- 显式传入 `reset(seed=...)` 时会重建环境，确保robosuite 1.5.2确实应用该种子。
+- 动作形状和有限数值会被校验；`close()`可重复调用。
+- 适配器公共接口不提供原始仿真器或物体真值。
+- 新增6项替身单元测试和1项真实Lift集成测试；最近一次完整检查为14项测试全部通过，`compileall`和`pip check`通过。
+- 原 `stage0_lift_smoke.py` 保持独立，回归结果继续为PASS；最近末端位移 `0.025690 m`，夹爪位移 `0.028583`，有效深度比例 `1.0`。
 
 尚未安装PyTorch或Ultralytics，尚未下载 `yolo11n-seg.pt`，尚未创建统一首页或四视图工作台。
 
@@ -93,24 +105,17 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段2前置）
+## 6. 下一任务（阶段2感知）
 
-下一步只实现 `simulation` 模块的最小robosuite适配器，不安装YOLO、不开发前端：
+下一步实现 `perception` 模块的最小预训练实例分割适配器：
 
-1. 把阶段0脚本中的环境创建、RGB-D采集、米制深度转换和安全关闭迁入 `simulation` 模块。
-2. 实现现有 `RGBDSimulator` 协议，输出 `RGBDFrame`。
-3. 真实读取MuJoCo相机内参和 `world_from_camera` 外参，不使用手填矩阵。
-4. 保留阶段0脚本作为独立环境回归，不把它改成主业务入口。
-5. 增加仿真适配器测试；单元测试可使用替身，集成测试实际启动Lift环境。
+1. 安装并冻结与Python 3.12兼容的CPU版PyTorch和Ultralytics；安装前核对官方兼容性与许可证，不引入训练依赖或GPU要求。
+2. 下载并校验官方 `yolo11n-seg.pt`，不训练或微调模型。
+3. 实现现有 `InstanceSegmenter` 协议，将原图尺度上的类别、置信度、边界框和布尔Mask转换为 `Detection2D`。
+4. 只保留目标类别选择和最低置信度等必要配置，不将几何定位或仿真真值混入感知模块。
+5. 增加替身单元测试和一次真实预训练权重冒烟测试；正式目标应使用COCO可识别的瓶子或杯子图像。
 
-验收标准：
-
-- `reset()` 和 `capture()` 返回合法的 `RGBDFrame`。
-- RGB、米制Depth、内参、外参尺寸及数值有效。
-- `apply_action()` 能驱动Panda末端运动。
-- `close()` 可重复调用且不报错。
-- 主仿真接口不暴露物体真值。
-- 原阶段0回归和现有7项测试继续通过。
+本任务仍不开发前端，不进行RGB-D三维定位或抓取规划。
 
 ## 7. 后续顺序
 
@@ -132,4 +137,4 @@ simulation正式适配器
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“simulation模块最小robosuite适配器”开始；开始修改前先核对现有接口和测试，不要安装YOLO或开发前端。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。严格遵守交接文档边界，从“perception模块最小预训练实例分割适配器”开始；开始修改前先核对现有接口、测试、依赖兼容性和许可证，不要训练模型或开发前端。

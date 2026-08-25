@@ -2,13 +2,13 @@
 
 Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
 
-当前状态：阶段 0（MuJoCo / robosuite 生命线）已通过，阶段 1 最小模块化工程骨架已建立。项目暂不包含 YOLO 权重、训练数据或统一前端。
+当前状态：阶段 0（MuJoCo / robosuite 生命线）与阶段 1 最小模块化工程骨架已通过，正式 robosuite RGB-D 仿真适配器也已完成。项目暂不包含 YOLO 权重、训练数据或统一前端。
 
 继续开发前请先阅读 [CODEX_HANDOFF.md](CODEX_HANDOFF.md)。
 
 ## 模块边界
 
-- `simulation`：仿真环境、相机和机器人动作。
+- `simulation`：仿真环境、相机和机器人动作；当前提供 `RobosuiteRGBDSimulator`。
 - `perception`：实例分割推理，只输出检测结果。
 - `geometry`：深度反投影、坐标变换和局部点云。
 - `grasp`：几何抓取候选与评分。
