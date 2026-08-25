@@ -1,0 +1,27 @@
+[project]
+brand = "Jingwei Grasp"
+seed = 7
+
+[simulation]
+environment = "Lift"
+robot = "Panda"
+controller = "OSC_POSE"
+mujoco_version = "3.9.0"
+robosuite_version = "1.5.2"
+
+[camera]
+name = "agentview"
+width = 640
+height = 480
+provides_rgb = true
+provides_depth = true
+
+[perception]
+backend = "ultralytics"
+weights = "yolo11n-seg.pt"
+confidence_threshold = 0.50
+training_enabled = false
+
+[grasp]
+strategy = "top_grasp_pca"
+use_simulation_truth = false
