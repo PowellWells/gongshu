@@ -2,11 +2,11 @@
 
 from typing import Protocol, Sequence
 
-from vision2grasp.contracts import Detection2D, RGBDFrame
+from vision2grasp.contracts import Detection2D, RGBDFrame, RGBFrame
 
 
 class InstanceSegmenter(Protocol):
     @property
     def model_name(self) -> str: ...
 
-    def predict(self, frame: RGBDFrame) -> Sequence[Detection2D]: ...
+    def predict(self, frame: RGBFrame | RGBDFrame) -> Sequence[Detection2D]: ...

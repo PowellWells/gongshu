@@ -644,6 +644,6 @@
   });
   window.addEventListener("beforeunload", () => revokeMediaUrls());
 
+  window.vision2graspSimulationWorkbench = { loadPublishedRun };
   render();
-  loadPublishedRun();
 })();

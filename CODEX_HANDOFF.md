@@ -7,7 +7,7 @@
 - 正式项目：**公输 Gongshu Robotics · Vision2Grasp**，工作目录为 `G:\Vision2Grasp`。
 - 统一门户最终展示 `Jingwei Moment`（UI 视觉识别）与 `公输 Gongshu Robotics`（RGB-D 机器人抓取）两个入口；`Grasp` 只作为技术能力名称。
 - `F:\hotarea-cv` 仅作为只读参考工程，任何任务都不得修改它。
-- 用户只有电脑和手机，无真实相机、机械臂或 RGB-D 设备；第一阶段全部使用 MuJoCo 仿真。
+- 用户有 Android 手机和电脑自带摄像头，但没有机械臂或 RGB-D 设备；当前真实场景只使用普通 RGB，并以固定相机、尺子和人工四点标定恢复桌面平面尺度。
 - 预算上限 200 元，当前目标实际支出 0 元。
 - 禁止范围膨胀：不使用 ROS2、MoveIt、真实机器人、强化学习、GraspNet、Contact-GraspNet、6D Pose/VLA、大模型、自训练检测模型、复杂 Web 前端或付费云服务。
 - 主定位和抓取路径不得读取仿真物体真值；真值仅可用于 `evaluation` 下的调试、误差和验收。
@@ -15,17 +15,20 @@
 ## 2. 冻结技术路线
 
 ```text
-MuJoCo RGB
-→ YOLO11n-seg 预训练实例分割（不训练）
-→ Mask + MuJoCo Depth
-→ 像素反投影与相机/世界坐标变换
-→ 局部点云与 PCA
-→ 顶抓候选及几何评分
+Real Scene（默认）：PC / Android RGB / 单张照片
+→ YOLO11n-seg bottle 实例分割（不训练）
+→ 尺子 + 人工四点桌面标定
+→ 平面 X/Y、方向、尺寸和三个顶抓候选
+→ 真实画面叠加与来源标注
+
+Simulation（保留）：MuJoCo RGB-D
+→ Mask + Depth 三维定位
+→ PCA / 圆拟合顶抓规划
 → Panda + OSC_POSE 确定性状态机
-→ 成功/失败评价
+→ 隔离成功/失败评价
 ```
 
-MVP固定为一个相机、一台 Panda、一个桌面目标、一个顶抓方向和一个动作流程。正式YOLO目标应使用COCO可识别物体（优先瓶子或杯子），不要把普通彩色方块当作YOLO正式目标。
+当前真实 MVP 固定只支持 `bottle`。稳定后才能依次增加 `cup`、`banana`。普通 RGB 输入不得伪装成 RGB-D：当前只输出标定平面上的米制 X/Y；方向、目标宽度和夹爪开口必须标为估计值，不输出虚假 Z。
 
 ## 3. 当前环境
 
@@ -185,13 +188,27 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 
 - 前端全部位于 `frontend\`，包含玄枢统一门户、Jingwei Moment 与公输 Gongshu Robotics 工作台；`F:\hotarea-cv` 不再是交付源。
 - 公输工作台只接受 `schema_version == "vision2grasp.run/v1"`，不长期兼容旧字段别名。
-- 根目录 `Start-Vision2Grasp.cmd` 已接通完整一键流程：自动运行固定种子仿真、发布公开结果、启动或复用本地服务，并直接打开已载入本次结果的公输工作台。
+- 根目录 `Start-Vision2Grasp.cmd` 已升级为统一应用启动器：启动或复用本地服务并直接打开公输工作台，默认进入 Real Scene Mode；仿真改为用户在 Simulation Mode 中按需运行。
 - 自动发布区为 Git 忽略的 `frontend\runtime\`；`vision2grasp.launcher/v1` 的 `latest.json` 只指向公开 `run.json v1`，不包含评价真值。
 - 通过目录选择器读取完整 run 文件夹，依据 `webkitRelativePath` 安全解析 `run.json` 的相对媒体路径，并用 Blob URL 展示四视图；清空或离开页面时释放 URL。
 - 真实固定种子目录联合测试已通过：四张 640×480 图片全部加载，目标类别/置信度、世界坐标、RPY、夹爪开口、候选评分、可达性、执行状态和13个事件均正确。
 - 浏览器控制台无 warning/error；修复了真实媒体显示后空态文案仍覆盖图片的问题。
 - 门户到公输工作台导航通过，全部前端 JavaScript 语法检查、Moment Node 测试和本地HTML资源路径检查通过；旧品牌 `百臂巨人` / `Jingwei Grasp` 无残留。
 - 前端里程碑提交：`aafc8c3 feat(frontend): add Gongshu integrated workbench`。
+
+### 阶段8：REAL SCENE GRASP PERCEPTION — PASS（软件与集成）
+
+- 新增独立 `RGBFrame` 契约和 `sources` 模块，支持电脑摄像头索引、Android HTTP/HTTPS/RTSP 地址和单张图片；没有给普通 RGB 帧伪造 depth 或相机内参。
+- `UltralyticsYOLOSegmenter` 同时接受 RGB 与 RGB-D 输入；Real Scene Mode 固定只保留 `bottle`，原 Simulation Mode 的感知路径保持兼容。
+- 新增人工四点桌面标定：用户输入尺量的长宽，并按 `原点 → +X → +X+Y → +Y` 顺序点选四角；标定按图像分辨率校验并持久化。
+- 新增平面目标定位与确定性三候选规划，输出标定平面 X/Y、平面 yaw、估计目标宽度、估计夹爪开口、宽度可行性和可解释评分。
+- 新增真实画面叠加：Live Vision、Spatial Perception、Grasp Planner 三视图分别显示检测、标定坐标和抓取候选；字段明确区分 `MEASURED / ESTIMATED / NOT_AVAILABLE`。
+- 新增本地统一应用服务 `run_vision2grasp_app.py`，后台以目标 2 FPS 读取真实输入，提供状态、三张 JPEG、来源切换、标定和按需仿真 API。
+- 一键启动器会识别并安全替换本项目旧版静态服务；遇到未知端口占用者会拒绝终止。重复双击会复用健康服务。
+- 浏览器联合测试已覆盖：PC 摄像头连续取流、CC0 瓶子照片检测（置信度约 0.854）、四点标定后三候选显示、Real/Simulation 模式切换，以及原固定种子单瓶仿真成功。
+- 自动化测试覆盖输入源、标定、平面定位、规划、真实管线和后台服务；本轮最终全量检查为 76 项 Python 测试全部通过，`compileall`、`pip check`、全部前端 JavaScript 语法检查和 Moment Node 测试通过。
+- 尚未完成的现场验收：用户 Android 实际视频地址连接；固定真实相机下 5–10 个尺量检查点的定位误差统计。这两项需要用户实体设备参与。
+- Real→MuJoCo 候选验证尚未实现，真实模式第四视图明确显示 `NOT_RUN / VALIDATOR PENDING`，不得宣称已经完成该闭环。
 
 ## 5. 当前验证命令
 
@@ -216,45 +233,40 @@ Windows 一键启动统一门户：
 双击 G:\Vision2Grasp\Start-Vision2Grasp.cmd
 ```
 
-启动器会使用项目虚拟环境自动执行一次固定种子单瓶抓取仿真，将公开 `run.json v1` 与四视图发布到 Git 忽略的 `frontend\runtime\`，启动或复用端口 `8765` 上的本地静态服务，并在默认浏览器中直接打开已经载入本次结果的公输工作台。用户不再需要手动选择运行目录；重复启动会生成并展示一次新结果。
+启动器会使用项目虚拟环境启动或复用端口 `8765` 上的统一本地应用，并在默认浏览器中直接打开公输工作台。默认进入 Real Scene Mode 和电脑摄像头；不再强制先运行仿真。
 
-如需先生成新的真实闭环运行目录，再执行以下命令：
+真实场景首次使用：固定摄像头，输入尺量桌面区域长宽，点击“四点标定”，再依次点击 `原点、+X、+X+Y、+Y`。只放置 `bottle`。Android 与电脑连接同一 Wi-Fi 后，把手机摄像头应用给出的 HTTP/HTTPS/RTSP 地址粘贴到页面；也可直接选择单张照片。
 
-先运行真实闭环生成运行目录：
+手动启动统一应用：
+
+```powershell
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_vision2grasp_app.py" --host 127.0.0.1 --port 8765
+```
+
+原有仿真可在页面切换到 Simulation Mode 后按需运行，也可直接执行：
 
 ```powershell
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_bottle_pipeline.py"
 ```
 
-再启动前端：
-
-```powershell
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m http.server 8765 --bind 127.0.0.1 --directory "G:\Vision2Grasp\frontend"
-```
-
-浏览器打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”。一键启动器发布的最新结果会自动载入；如需查看旧结果，可点击“导入历史结果”，选择命令输出的完整 `artifacts\runs\<run-id>` 文件夹。
-
-现有后端算法和验收阈值视为前端接入基线，除非前端联调暴露明确缺陷，否则不再修改。
+真实模式依赖本地 API，不得退回普通 `python -m http.server`。
 
 ## 7. 后续顺序
 
 ```text
-simulation正式适配器
-→ YOLO11n-seg预训练推理
-→ RGB-D三维定位
-→ PCA几何抓取规划
-→ Panda确定性执行
-→ 无真值端到端闭环
-→ 统一门户index（已完成）
-→ 四视图（已完成）
-→ 可选视频、报告和PPT
-→ 可选弱光扰动
+REAL SCENE GRASP PERCEPTION（软件与集成已完成）
+→ 用户现场 Android 串流验证
+→ 真实固定相机 5–10 点尺量误差验收
+→ Real 候选坐标映射到 MuJoCo
+→ 仿真验证结果回写 Real Scene Mode
+→ 稳定后增加 cup
+→ 再稳定后增加 banana
 ```
 
-前端只在核心闭环稳定后进入主开发。可借鉴 `F:\hotarea-cv` 的蓝白科研风格、Logo、卡片、SVG叠加、状态时间线和本地静态服务模式，但不得直接修改参考工程，也不要复制其大型标注工作台或任务特定识别逻辑。
+在上述现场验收前，不得调整标定阈值来迎合结果；在 Real→MuJoCo 完成前，第四视图必须保持明确的未运行状态。
 
 ## 8. 新聊天启动指令
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前Git状态。后端单瓶闭环已经通过，从“阶段7前端接入起步”开始；先核对未跟踪assets用途和现有入口约束，保持F:\hotarea-cv只读。前端只消费公开PipelineRunResult/JSON，不得读取仿真内部状态或evaluation私有真值接口，也不要扩展后端算法范围。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前 Git 状态。项目已完成 bottle-only 的 REAL SCENE GRASP PERCEPTION 软件里程碑，默认一键启动真实模式，原仿真模式保留。下一步先做用户现场 Android 串流与尺量误差验收，再实现 Real→MuJoCo 候选验证。普通 RGB 不得伪造深度或 Z；保持 F:\hotarea-cv 只读。

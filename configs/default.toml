@@ -80,3 +80,14 @@ camera_name = "frontview"
 target_class_priority = ["bottle", "cup"]
 evaluation_object_name = "bottle"
 minimum_vertical_displacement_m = 0.03
+
+[real_scene]
+architecture = "real_world_first_simulation_validated"
+target_class = "bottle"
+default_camera_source = 0
+frame_width = 640
+frame_height = 480
+processing_fps = 2.0
+calibration_method = "manual_four_point_ruler"
+candidate_count = 3
+metric_depth_available = false

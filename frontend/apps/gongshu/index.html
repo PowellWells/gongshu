@@ -41,16 +41,16 @@
       </div>
 
       <div class="header-actions">
-        <button id="contractButton" class="header-button is-secondary" type="button">
+        <button id="contractButton" class="header-button is-secondary simulation-only" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M14 3v5h5M10 12h6M10 16h6"/></svg>
           <span>数据格式</span>
         </button>
-        <label class="header-button is-primary" for="snapshotInput">
+        <label class="header-button is-primary simulation-only" for="snapshotInput">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 15v5h14v-5"/></svg>
           <span>导入历史结果</span>
         </label>
         <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
-        <button id="clearButton" class="icon-button" type="button" title="清空当前运行数据" aria-label="清空当前运行数据">
+        <button id="clearButton" class="icon-button simulation-only" type="button" title="清空当前运行数据" aria-label="清空当前运行数据">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v8M12 10v8M16 10v8M7 7l1 14h8l1-14"/></svg>
         </button>
         <a class="icon-button" href="../../index.html" title="返回玄枢门户" aria-label="返回玄枢门户">
@@ -59,7 +59,120 @@
       </div>
     </header>
 
-    <main class="grasp-shell">
+    <section class="mode-toolbar" aria-label="运行模式与输入设置">
+      <div class="mode-switch" role="group" aria-label="运行模式">
+        <button id="realModeButton" class="mode-button is-active" type="button" aria-pressed="true">
+          <span>REAL SCENE MODE</span><small>真实场景感知</small>
+        </button>
+        <button id="simulationModeButton" class="mode-button" type="button" aria-pressed="false">
+          <span>SIMULATION MODE</span><small>MuJoCo 固定闭环</small>
+        </button>
+      </div>
+
+      <div id="realSceneControls" class="mode-controls real-controls">
+        <button id="usePcCameraButton" class="compact-action" type="button">电脑摄像头</button>
+        <div class="inline-field stream-field">
+          <label for="androidStreamUrl">Android 视频流</label>
+          <input id="androidStreamUrl" type="url" placeholder="http://手机IP:端口/video" autocomplete="off" />
+        </div>
+        <button id="connectAndroidButton" class="compact-action" type="button">连接</button>
+        <label class="compact-action file-action" for="realImageInput">导入照片</label>
+        <input id="realImageInput" type="file" accept="image/*" hidden />
+        <span class="control-divider" aria-hidden="true"></span>
+        <div class="inline-field measure-field">
+          <label for="tableWidthMm">桌面区域宽</label>
+          <input id="tableWidthMm" type="number" min="50" max="5000" step="1" value="600" />
+          <b>mm</b>
+        </div>
+        <div class="inline-field measure-field">
+          <label for="tableHeightMm">桌面区域高</label>
+          <input id="tableHeightMm" type="number" min="50" max="5000" step="1" value="400" />
+          <b>mm</b>
+        </div>
+        <button id="startCalibrationButton" class="compact-action is-primary" type="button">四点标定</button>
+        <span id="calibrationGuide" class="calibration-guide">按原点、+X、+X+Y、+Y 顺序点击 LIVE VISION</span>
+      </div>
+
+      <div id="simulationControls" class="mode-controls simulation-controls" hidden>
+        <button id="runSimulationButton" class="compact-action is-primary" type="button">运行单瓶仿真</button>
+        <span>执行固定种子 RGB-D → YOLO → 抓取 → Lift 闭环，并自动载入四视图。</span>
+      </div>
+    </section>
+
+    <main id="realSceneShell" class="real-scene-shell">
+      <section class="real-view-grid" aria-label="真实场景四视图">
+        <article class="real-view-card">
+          <header><span>VIEW 01</span><h2>LIVE VISION</h2><b id="realLiveState">WAITING</b></header>
+          <div id="realLiveStage" class="real-media-stage is-clickable">
+            <div class="real-empty"><strong>等待真实摄像头</strong><span>电脑摄像头、Android 视频流或单张照片</span></div>
+            <img id="realLiveImage" alt="真实场景 YOLO 检测与 Mask" hidden />
+            <div id="calibrationMarkers" class="calibration-markers" aria-hidden="true"></div>
+          </div>
+          <footer><span>VISION · YOLO11N-SEG</span><strong id="realSourceLabel">NO SOURCE</strong></footer>
+        </article>
+
+        <article class="real-view-card">
+          <header><span>VIEW 02</span><h2>SPATIAL PERCEPTION</h2><b id="realSpatialState">UNCALIBRATED</b></header>
+          <div class="real-media-stage">
+            <div class="real-empty"><strong>等待桌面标定</strong><span>尺子测量 + 四点单应映射恢复桌面 XY</span></div>
+            <img id="realSpatialImage" alt="桌面坐标与目标位置" hidden />
+          </div>
+          <footer><span>MEASURED · TABLE XY</span><strong id="calibrationStatus">NOT READY</strong></footer>
+        </article>
+
+        <article class="real-view-card">
+          <header><span>VIEW 03</span><h2>GRASP PLANNER</h2><b id="realGraspState">WAITING</b></header>
+          <div class="real-media-stage">
+            <div class="real-empty"><strong>等待抓取候选</strong><span>Mask 几何、PCA 方向和双指夹爪 Overlay</span></div>
+            <img id="realGraspImage" alt="真实画面抓取姿态叠加" hidden />
+          </div>
+          <footer><span>ESTIMATED · TOP GRASP</span><strong id="realCandidateSummary">0 CANDIDATES</strong></footer>
+        </article>
+
+        <article class="real-view-card validation-card">
+          <header><span>VIEW 04</span><h2>SIM VALIDATION</h2><b id="realValidationState">NOT RUN</b></header>
+          <div class="validation-matrix">
+            <div><span>Reachability</span><strong id="validationReachability">NOT RUN</strong></div>
+            <div><span>Collision</span><strong id="validationCollision">NOT RUN</strong></div>
+            <div><span>Gripper Width</span><strong id="validationWidth">NOT RUN</strong></div>
+            <div><span>Lift Test</span><strong id="validationLift">NOT RUN</strong></div>
+            <section><small>FINAL RESULT</small><strong id="validationFinal">NOT RUN</strong></section>
+          </div>
+          <footer><span>SIMULATED · MUJOCO</span><strong>VALIDATOR PENDING</strong></footer>
+        </article>
+      </section>
+
+      <aside class="real-inspector" aria-label="真实场景感知状态">
+        <header><span>REAL SCENE INSPECTOR</span><h1>真实抓取感知</h1><b id="realPhaseBadge">ACQUIRE</b></header>
+        <section class="real-status-card">
+          <small>SYSTEM MESSAGE</small>
+          <strong id="realStatusMessage">等待真实输入源</strong>
+        </section>
+        <section class="real-data-section">
+          <h2><span>01</span>目标与视觉</h2>
+          <dl>
+            <div><dt>Target</dt><dd id="realTargetClass">—</dd></div>
+            <div><dt>Confidence · Vision</dt><dd id="realConfidence">—</dd></div>
+            <div><dt>Table X · Measured</dt><dd id="realTableX">—</dd></div>
+            <div><dt>Table Y · Measured</dt><dd id="realTableY">—</dd></div>
+            <div><dt>Yaw · Estimated</dt><dd id="realYaw">—</dd></div>
+            <div><dt>Width · Estimated</dt><dd id="realWidth">—</dd></div>
+          </dl>
+        </section>
+        <section class="real-data-section candidate-inspector">
+          <h2><span>02</span>抓取候选</h2>
+          <div id="realCandidateList" class="real-candidate-list"><p>等待标定和 bottle 检测</p></div>
+        </section>
+        <section class="truth-legend">
+          <h2>DATA PROVENANCE</h2>
+          <p><i class="is-measured"></i>Measured：尺子与桌面标定</p>
+          <p><i class="is-estimated"></i>Estimated：Mask 几何估计</p>
+          <p><i class="is-simulated"></i>Simulated：MuJoCo 验证</p>
+        </section>
+      </aside>
+    </main>
+
+    <main id="simulationShell" class="grasp-shell" hidden>
       <section id="visionWorkspace" class="vision-workspace" aria-label="Gongshu Robotics 四视图">
         <article class="view-panel" data-view="rgb">
           <header class="view-header">
@@ -292,5 +405,6 @@
     </dialog>
 
     <script src="./gongshu.js"></script>
+    <script src="./real-scene.js"></script>
   </body>
 </html>

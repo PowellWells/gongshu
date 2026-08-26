@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 
 import numpy as np
 
-from vision2grasp.contracts import Detection2D, RGBDFrame
+from vision2grasp.contracts import Detection2D, RGBDFrame, RGBFrame
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -121,7 +121,7 @@ class UltralyticsYOLOSegmenter:
     def model_name(self) -> str:
         return self._config.weights_path.stem
 
-    def predict(self, frame: RGBDFrame) -> Sequence[Detection2D]:
+    def predict(self, frame: RGBFrame | RGBDFrame) -> Sequence[Detection2D]:
         """Run CPU inference and return detections in the original RGB frame size."""
 
         model = self._ensure_model()
@@ -164,7 +164,7 @@ class UltralyticsYOLOSegmenter:
         return self._model
 
     def _convert_result(
-        self, result: Any, frame: RGBDFrame
+        self, result: Any, frame: RGBFrame | RGBDFrame
     ) -> tuple[Detection2D, ...]:
         boxes = getattr(result, "boxes", None)
         if boxes is None:
@@ -187,11 +187,8 @@ class UltralyticsYOLOSegmenter:
         if masks is None:
             raise RuntimeError("segmentation model returned boxes without instance masks")
         mask_data = _as_numpy(masks.data)
-        expected_mask_shape = (
-            detection_count,
-            frame.intrinsics.height,
-            frame.intrinsics.width,
-        )
+        height, width = frame.rgb.shape[:2]
+        expected_mask_shape = (detection_count, height, width)
         if mask_data.shape != expected_mask_shape:
             raise ValueError(
                 f"YOLO masks must have shape {expected_mask_shape}, got {mask_data.shape}"
@@ -202,8 +199,6 @@ class UltralyticsYOLOSegmenter:
             raise ValueError("YOLO result must provide a class-name mapping")
 
         detections: list[Detection2D] = []
-        width = frame.intrinsics.width
-        height = frame.intrinsics.height
         for index in range(detection_count):
             confidence = float(confidences[index])
             if not np.isfinite(confidence) or confidence < self._config.confidence_threshold:
@@ -245,4 +240,3 @@ class UltralyticsYOLOSegmenter:
                 )
             )
         return tuple(detections)
-

@@ -8,7 +8,11 @@ from .contracts import (
     GraspCandidate,
     LocalizedTarget,
     PandaProprioception,
+    PlanarGraspCandidate,
+    PlanarLocalizedTarget,
+    RGBFrame,
     RGBDFrame,
+    TableCalibration,
 )
 
 __all__ = [
@@ -19,7 +23,11 @@ __all__ = [
     "GraspCandidate",
     "LocalizedTarget",
     "PandaProprioception",
+    "PlanarGraspCandidate",
+    "PlanarLocalizedTarget",
+    "RGBFrame",
     "RGBDFrame",
+    "TableCalibration",
 ]
 
 __version__ = "0.1.0"

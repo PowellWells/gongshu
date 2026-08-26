@@ -34,6 +34,34 @@ class CameraIntrinsics:
 
 
 @dataclass(frozen=True, slots=True)
+class RGBFrame:
+    """One RGB observation from a real camera or image file.
+
+    This contract deliberately carries no depth or metric camera pose. Real RGB
+    input must not be disguised as an RGB-D observation.
+    """
+
+    frame_id: int
+    timestamp_s: float
+    camera_name: str
+    rgb: NDArray[np.uint8]
+
+    def __post_init__(self) -> None:
+        if self.frame_id < 0:
+            raise ValueError("frame_id must be non-negative")
+        if not np.isfinite(self.timestamp_s):
+            raise ValueError("timestamp_s must be finite")
+        if not self.camera_name.strip():
+            raise ValueError("camera_name must not be empty")
+        if self.rgb.ndim != 3 or self.rgb.shape[2] != 3:
+            raise ValueError("rgb must have shape (H, W, 3)")
+        if self.rgb.shape[0] <= 0 or self.rgb.shape[1] <= 0:
+            raise ValueError("rgb dimensions must be positive")
+        if self.rgb.dtype != np.uint8:
+            raise ValueError(f"rgb must use uint8, got {self.rgb.dtype}")
+
+
+@dataclass(frozen=True, slots=True)
 class RGBDFrame:
     """Synchronized RGB-D observation with camera calibration."""
 
@@ -92,6 +120,103 @@ class LocalizedTarget:
             raise ValueError("points_world_m must have shape (N, 3)")
         if not 0.0 <= self.depth_valid_ratio <= 1.0:
             raise ValueError("depth_valid_ratio must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class TableCalibration:
+    """Manual four-point mapping between image pixels and a measured table plane."""
+
+    image_width: int
+    image_height: int
+    table_width_m: float
+    table_height_m: float
+    image_points_px: NDArray[np.float64]
+    table_from_image: NDArray[np.float64]
+    image_from_table: NDArray[np.float64]
+    image_coverage_ratio: float
+
+    def __post_init__(self) -> None:
+        if self.image_width <= 0 or self.image_height <= 0:
+            raise ValueError("calibration image dimensions must be positive")
+        if self.table_width_m <= 0.0 or self.table_height_m <= 0.0:
+            raise ValueError("measured table dimensions must be positive")
+        _require_shape("image_points_px", self.image_points_px, (4, 2))
+        _require_shape("table_from_image", self.table_from_image, (3, 3))
+        _require_shape("image_from_table", self.image_from_table, (3, 3))
+        for name, value in (
+            ("image_points_px", self.image_points_px),
+            ("table_from_image", self.table_from_image),
+            ("image_from_table", self.image_from_table),
+        ):
+            if not np.all(np.isfinite(value)):
+                raise ValueError(f"{name} must contain only finite values")
+        if not 0.0 < self.image_coverage_ratio <= 1.0:
+            raise ValueError("image_coverage_ratio must be in (0, 1]")
+
+
+@dataclass(frozen=True, slots=True)
+class PlanarLocalizedTarget:
+    """Bottle geometry estimated on a manually calibrated tabletop plane."""
+
+    detection: Detection2D
+    center_image_px: NDArray[np.float64]
+    center_table_m: NDArray[np.float64]
+    points_table_m: NDArray[np.float64]
+    principal_yaw_rad: float
+    estimated_width_m: float
+    estimated_length_m: float
+    circularity: float
+
+    def __post_init__(self) -> None:
+        _require_shape("center_image_px", self.center_image_px, (2,))
+        _require_shape("center_table_m", self.center_table_m, (2,))
+        if self.points_table_m.ndim != 2 or self.points_table_m.shape[1] != 2:
+            raise ValueError("points_table_m must have shape (N, 2)")
+        if self.points_table_m.shape[0] < 3:
+            raise ValueError("points_table_m must contain at least three points")
+        if not np.all(np.isfinite(self.center_image_px)) or not np.all(
+            np.isfinite(self.center_table_m)
+        ) or not np.all(np.isfinite(self.points_table_m)):
+            raise ValueError("planar target geometry must contain only finite values")
+        if not np.isfinite(self.principal_yaw_rad):
+            raise ValueError("principal_yaw_rad must be finite")
+        if self.estimated_width_m <= 0.0 or self.estimated_length_m <= 0.0:
+            raise ValueError("estimated planar extents must be positive")
+        if not 0.0 <= self.circularity <= 1.0:
+            raise ValueError("circularity must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class PlanarGraspCandidate:
+    """Explainable top-grasp candidate estimated from a real RGB mask."""
+
+    candidate_id: str
+    center_table_m: NDArray[np.float64]
+    yaw_rad: float
+    estimated_gripper_width_m: float
+    vision_score: float
+    geometry_score: float
+    final_score: float
+    width_feasible: bool
+    score_terms: Mapping[str, float] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.candidate_id:
+            raise ValueError("candidate_id must not be empty")
+        _require_shape("center_table_m", self.center_table_m, (2,))
+        if not np.all(np.isfinite(self.center_table_m)) or not np.isfinite(
+            self.yaw_rad
+        ):
+            raise ValueError("candidate pose must contain only finite values")
+        if self.estimated_gripper_width_m <= 0.0:
+            raise ValueError("estimated_gripper_width_m must be positive")
+        for name, value in (
+            ("vision_score", self.vision_score),
+            ("geometry_score", self.geometry_score),
+            ("final_score", self.final_score),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
 
 
 @dataclass(frozen=True, slots=True)
