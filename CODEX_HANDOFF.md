@@ -1,11 +1,11 @@
 # Vision2Grasp Codex 交接文档
 
-最后更新：2026-08-25
+最后更新：2026-08-26
 
 ## 1. 项目定位与硬边界
 
-- 正式项目：**Jingwei Grasp · Vision2Grasp**，工作目录为 `G:\Vision2Grasp`。
-- 展示品牌：**Jingwei Vision**。最终由一个 `index.html` 同时展示 `Jingwei Moment`（UI 视觉识别）与 `Jingwei Grasp`（RGB-D 机器人抓取）两个入口。
+- 正式项目：**公输 Gongshu Robotics · Vision2Grasp**，工作目录为 `G:\Vision2Grasp`。
+- 统一门户最终展示 `Jingwei Moment`（UI 视觉识别）与 `公输 Gongshu Robotics`（RGB-D 机器人抓取）两个入口；`Grasp` 只作为技术能力名称。
 - `F:\hotarea-cv` 仅作为只读参考工程，任何任务都不得修改它。
 - 用户只有电脑和手机，无真实相机、机械臂或 RGB-D 设备；第一阶段全部使用 MuJoCo 仿真。
 - 预算上限 200 元，当前目标实际支出 0 元。
@@ -168,7 +168,18 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 最近一次固定种子闭环结果：深度有效率 `1.0`、定位点数 `923`、候选开口 `0.048243 m`、候选评分 `0.788457`、动作序列完成、瓶子垂直抬升 `0.055189 m`，超过 `0.03 m` 阈值，最终评价 `success=True`。
 - 新增圆拟合、编排、失败路径、评价隔离和真实单瓶抓取测试；最近一次全量检查为59项测试全部通过，`compileall`和`pip check`通过。
 
-后端核心闭环已经达到前端接入条件；尚未开发Jingwei Vision统一首页或RGB/Depth/Grasp/Simulation四视图工作台。
+后端核心闭环和公开前端数据契约已经达到接入条件；前端任务正在 `frontend\` 独立目录迁移统一门户与四视图工作台。
+
+### 阶段7后端桥接：公开 run.json v1 与四视图产物 — PASS
+
+- `visualization\run_artifacts.py` 从 `PipelineRunResult` 和公开 RGB-D 帧导出稳定的 `vision2grasp.run/v1` 文档。
+- 冻结 JSON Schema 位于 `contracts\run-v1.schema.json`；字段统一使用 snake_case，媒体路径相对 `run.json` 且统一使用 `/`。
+- 默认输出目录为 `artifacts\runs\<run-id>\`，其中包含 `run.json`、RGB 检测图、Depth 热图、Grasp Overlay 和 MuJoCo 最终帧。
+- 导出内容只包含公开管线输出，不包含 `evaluation.success`、物体真值位姿或仿真器内部对象。
+- 运行目录不可覆盖，run id 会做路径安全校验；失败运行也保持相同顶层字段和明确的 null/空数组。
+- CLI `run_bottle_pipeline.py` 仍以隔离评价决定进程退出码，但标准输出和文件中的 JSON 不泄露评价真值。
+- 新增4项导出、失败路径、路径安全和契约冻结测试；最近一次全量检查为63项测试全部通过，`compileall`和`pip check`通过。
+- 最新真实固定种子导出成功，四张 PNG 均已读取并人工检查。
 
 ## 5. 当前验证命令
 
@@ -185,14 +196,14 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段7 前端接入起步）
+## 6. 下一任务（阶段7 前端消费契约）
 
 下一步正式开始前端接入，不再扩展后端算法范围：
 
 1. 先检查现有未跟踪 `assets\` 的实际用途并保持来源边界；`F:\hotarea-cv` 仍只能作为只读视觉参考。
-2. 建立Jingwei Vision统一入口骨架，同时呈现 `Jingwei Moment` 与 `Jingwei Grasp` 两个入口；第一版只做清晰、可运行的蓝白科研风格导航和抓取演示入口。
-3. 为 `Jingwei Grasp` 建立最小运行桥接，消费 `run_bottle_pipeline.py` / `PipelineRunResult` 的JSON字段，不让页面直接读取仿真内部状态或evaluation私有真值接口。
-4. 首批界面至少展示运行状态、阶段时间线、检测类别/置信度、候选位置/开口/评分和最终抬升评价；RGB、Depth、Grasp、Simulation四视图可在随后前端阶段逐步补齐。
+2. 在 `frontend\` 建立统一入口骨架，同时呈现 `Jingwei Moment` 与 `公输 Gongshu Robotics` 两个入口。
+3. 为公输工作台建立最小运行桥接，只消费 `artifacts\runs\<run-id>\run.json` 的v1标准字段，不让页面直接读取仿真内部状态或evaluation私有真值接口。
+4. 首批界面至少展示运行状态、阶段时间线、检测类别/置信度、候选位置/开口/评分和最终动作执行状态；RGB、Depth、Grasp、Simulation四视图直接使用v1媒体字段。
 5. 保留本地离线/静态使用路径，明确启动命令和失败提示；不得为了界面引入ROS2、云服务或训练流程。
 
 现有后端算法和验收阈值视为前端接入基线，除非前端联调暴露明确缺陷，否则不再修改。
@@ -206,7 +217,7 @@ simulation正式适配器
 → PCA几何抓取规划
 → Panda确定性执行
 → 无真值端到端闭环
-→ Jingwei Vision统一index
+→ 统一门户index
 → 四视图、视频、报告和PPT
 → 可选弱光扰动
 ```

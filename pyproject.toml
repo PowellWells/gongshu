@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vision2grasp"
 version = "0.1.0"
-description = "Jingwei Grasp: an RGB-D perception-to-grasp simulation demo"
+description = "Gongshu Robotics: an RGB-D perception-to-grasp simulation demo"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

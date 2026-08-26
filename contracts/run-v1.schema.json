@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vision2grasp.local/contracts/run-v1.schema.json",
+  "title": "Vision2Grasp public run artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "timestamp",
+    "status",
+    "stage",
+    "media",
+    "target",
+    "candidates",
+    "selected_candidate_id",
+    "execution",
+    "events"
+  ],
+  "properties": {
+    "schema_version": { "const": "vision2grasp.run/v1" },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["running", "success", "failure"] },
+    "stage": {
+      "enum": ["HOME", "PREGRASP", "DESCEND", "CLOSE", "LIFT", "SUCCESS", "FAILURE"]
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rgb", "depth", "grasp_overlay", "mujoco"],
+      "properties": {
+        "rgb": { "$ref": "#/$defs/nullableMedia" },
+        "depth": { "$ref": "#/$defs/nullableMedia" },
+        "grasp_overlay": { "$ref": "#/$defs/nullableMedia" },
+        "mujoco": { "$ref": "#/$defs/nullableMedia" }
+      }
+    },
+    "target": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/target" }
+      ]
+    },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "selected_candidate_id": {
+      "type": ["string", "null"]
+    },
+    "execution": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/execution" }
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "nullableMedia": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/media" }
+      ]
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind", "label"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\][^\\\\]*$" },
+        "kind": { "enum": ["image", "video"] },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class_name", "confidence", "bbox_xyxy", "image_size_px", "centroid_world_m"],
+      "properties": {
+        "class_name": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "bbox_xyxy": { "$ref": "#/$defs/vector4" },
+        "image_size_px": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "centroid_world_m": { "$ref": "#/$defs/vector3" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "rank",
+        "position_world_m",
+        "orientation_world_rpy_deg",
+        "gripper_width_m",
+        "score",
+        "reachable"
+      ],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "rank": { "type": "integer", "minimum": 1 },
+        "position_world_m": { "$ref": "#/$defs/vector3" },
+        "orientation_world_rpy_deg": { "$ref": "#/$defs/vector3" },
+        "gripper_width_m": { "type": "number", "exclusiveMinimum": 0 },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reachable": { "type": "boolean" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["success", "final_phase", "message", "visited_phases"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "final_phase": { "enum": ["SUCCESS", "FAILURE"] },
+        "message": { "type": "string" },
+        "visited_phases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestamp", "stage", "status", "message"],
+      "properties": {
+        "timestamp": { "type": ["string", "null"] },
+        "stage": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pending", "active", "completed", "failed"] },
+        "message": { "type": "string" }
+      }
+    },
+    "vector3": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "vector4": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    }
+  }
+}

@@ -1,6 +1,6 @@
-# Jingwei Grasp · Vision2Grasp
+# 公输 Gongshu Robotics · Vision2Grasp
 
-Vision2Grasp 是 Jingwei Vision 的机器人视觉分支，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
+Vision2Grasp 是公输 Gongshu Robotics 的机器人视觉项目，目标是在 MuJoCo 中演示从 RGB-D 感知到 Franka Panda 抓取执行的完整闭环。
 
 当前状态：MuJoCo / robosuite 生命线、模块化工程骨架、正式 RGB-D 仿真适配器、YOLO11n-seg 预训练感知、Mask + Depth 三维定位、PCA / 圆拟合顶抓规划、Panda 确定性执行和单瓶端到端闭环均已通过。项目不训练模型，YOLO 权重保存在 Git 忽略的 `artifacts` 目录；后端核心闭环已达到前端接入条件。
 
@@ -53,4 +53,6 @@ G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\stage0_lift_smoke.py
 G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\run_bottle_pipeline.py
 ```
 
-该命令输出检测、三维定位、抓取候选、控制阶段和隔离评价的 JSON 摘要；退出码 `0` 表示瓶子垂直抬升达到 `0.03 m` 验收阈值。
+该命令会在 `artifacts/runs/<run-id>/` 写入前端可直接消费的 `run.json`，以及 RGB 检测、深度、抓取叠加和 MuJoCo 结果四张 PNG。标准输出也是同一份 `vision2grasp.run/v1` JSON；其中只包含公开模块输出，不含隔离评价真值。退出码 `0` 仍表示瓶子垂直抬升达到 `0.03 m` 的后端验收阈值。
+
+冻结的前端契约位于 [contracts/run-v1.schema.json](contracts/run-v1.schema.json)。媒体路径均相对于 `run.json`，统一使用 `/` 分隔符。
