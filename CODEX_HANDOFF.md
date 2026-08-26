@@ -168,7 +168,7 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 最近一次固定种子闭环结果：深度有效率 `1.0`、定位点数 `923`、候选开口 `0.048243 m`、候选评分 `0.788457`、动作序列完成、瓶子垂直抬升 `0.055189 m`，超过 `0.03 m` 阈值，最终评价 `success=True`。
 - 新增圆拟合、编排、失败路径、评价隔离和真实单瓶抓取测试；最近一次全量检查为59项测试全部通过，`compileall`和`pip check`通过。
 
-后端核心闭环和公开前端数据契约已经达到接入条件；前端任务正在 `frontend\` 独立目录迁移统一门户与四视图工作台。
+后端核心闭环、公开前端数据契约和 `frontend\` 统一门户均已完成联合接入。
 
 ### 阶段7后端桥接：公开 run.json v1 与四视图产物 — PASS
 
@@ -180,6 +180,16 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - CLI `run_bottle_pipeline.py` 仍以隔离评价决定进程退出码，但标准输出和文件中的 JSON 不泄露评价真值。
 - 新增4项导出、失败路径、路径安全和契约冻结测试；最近一次全量检查为63项测试全部通过，`compileall`和`pip check`通过。
 - 最新真实固定种子导出成功，四张 PNG 均已读取并人工检查。
+
+### 阶段7前端：统一门户与公输工作台 — PASS
+
+- 前端全部位于 `frontend\`，包含玄枢统一门户、Jingwei Moment 与公输 Gongshu Robotics 工作台；`F:\hotarea-cv` 不再是交付源。
+- 公输工作台只接受 `schema_version == "vision2grasp.run/v1"`，不长期兼容旧字段别名。
+- 通过目录选择器读取完整 run 文件夹，依据 `webkitRelativePath` 安全解析 `run.json` 的相对媒体路径，并用 Blob URL 展示四视图；清空或离开页面时释放 URL。
+- 真实固定种子目录联合测试已通过：四张 640×480 图片全部加载，目标类别/置信度、世界坐标、RPY、夹爪开口、候选评分、可达性、执行状态和13个事件均正确。
+- 浏览器控制台无 warning/error；修复了真实媒体显示后空态文案仍覆盖图片的问题。
+- 门户到公输工作台导航通过，全部前端 JavaScript 语法检查、Moment Node 测试和本地HTML资源路径检查通过；旧品牌 `百臂巨人` / `Jingwei Grasp` 无残留。
+- 前端里程碑提交：`aafc8c3 feat(frontend): add Gongshu integrated workbench`。
 
 ## 5. 当前验证命令
 
@@ -196,15 +206,21 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\stage0_lift_smoke.py"
 ```
 
-## 6. 下一任务（阶段7 前端消费契约）
+## 6. 当前使用方法
 
-下一步正式开始前端接入，不再扩展后端算法范围：
+先运行真实闭环生成运行目录：
 
-1. 先检查现有未跟踪 `assets\` 的实际用途并保持来源边界；`F:\hotarea-cv` 仍只能作为只读视觉参考。
-2. 在 `frontend\` 建立统一入口骨架，同时呈现 `Jingwei Moment` 与 `公输 Gongshu Robotics` 两个入口。
-3. 为公输工作台建立最小运行桥接，只消费 `artifacts\runs\<run-id>\run.json` 的v1标准字段，不让页面直接读取仿真内部状态或evaluation私有真值接口。
-4. 首批界面至少展示运行状态、阶段时间线、检测类别/置信度、候选位置/开口/评分和最终动作执行状态；RGB、Depth、Grasp、Simulation四视图直接使用v1媒体字段。
-5. 保留本地离线/静态使用路径，明确启动命令和失败提示；不得为了界面引入ROS2、云服务或训练流程。
+```powershell
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_bottle_pipeline.py"
+```
+
+再启动前端：
+
+```powershell
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m http.server 8765 --bind 127.0.0.1 --directory "G:\Vision2Grasp\frontend"
+```
+
+浏览器打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”，点击“导入运行目录”，选择命令输出的完整 `artifacts\runs\<run-id>` 文件夹。
 
 现有后端算法和验收阈值视为前端接入基线，除非前端联调暴露明确缺陷，否则不再修改。
 
@@ -217,8 +233,9 @@ simulation正式适配器
 → PCA几何抓取规划
 → Panda确定性执行
 → 无真值端到端闭环
-→ 统一门户index
-→ 四视图、视频、报告和PPT
+→ 统一门户index（已完成）
+→ 四视图（已完成）
+→ 可选视频、报告和PPT
 → 可选弱光扰动
 ```
 

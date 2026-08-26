@@ -56,3 +56,13 @@ G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\run_bottle_pipeline.py
 该命令会在 `artifacts/runs/<run-id>/` 写入前端可直接消费的 `run.json`，以及 RGB 检测、深度、抓取叠加和 MuJoCo 结果四张 PNG。标准输出也是同一份 `vision2grasp.run/v1` JSON；其中只包含公开模块输出，不含隔离评价真值。退出码 `0` 仍表示瓶子垂直抬升达到 `0.03 m` 的后端验收阈值。
 
 冻结的前端契约位于 [contracts/run-v1.schema.json](contracts/run-v1.schema.json)。媒体路径均相对于 `run.json`，统一使用 `/` 分隔符。
+
+## 启动统一门户
+
+先从项目根目录启动本地静态服务：
+
+```powershell
+G:\Vision2Grasp\.venv\Scripts\python.exe -m http.server 8765 --bind 127.0.0.1 --directory G:\Vision2Grasp\frontend
+```
+
+然后打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”工作台，点击“导入运行目录”，选择完整的 `artifacts\runs\<run-id>` 文件夹。页面会校验 `vision2grasp.run/v1`，并读取其中的 `run.json` 和四个相对媒体文件；无需上传到云端。
