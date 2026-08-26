@@ -59,10 +59,14 @@ G:\Vision2Grasp\.venv\Scripts\python.exe G:\Vision2Grasp\run_bottle_pipeline.py
 
 ## 启动统一门户
 
+Windows 下可直接双击项目根目录的 [Start-Vision2Grasp.cmd](Start-Vision2Grasp.cmd)。启动器会自动运行一次固定种子单瓶抓取仿真、发布公开运行结果、启动本地静态服务，并使用默认浏览器打开已经载入本次结果的公输工作台。用户无需选择运行目录；重复双击会生成一次新结果并复用已经运行的服务。
+
+也可以手动启动：
+
 先从项目根目录启动本地静态服务：
 
 ```powershell
 G:\Vision2Grasp\.venv\Scripts\python.exe -m http.server 8765 --bind 127.0.0.1 --directory G:\Vision2Grasp\frontend
 ```
 
-然后打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”工作台，点击“导入运行目录”，选择完整的 `artifacts\runs\<run-id>` 文件夹。页面会校验 `vision2grasp.run/v1`，并读取其中的 `run.json` 和四个相对媒体文件；无需上传到云端。
+然后打开 `http://127.0.0.1:8765/`。通过一键启动器生成的最新结果会在“公输 Gongshu”工作台中自动载入；“导入历史结果”按钮仍可手动选择完整的 `artifacts\runs\<run-id>` 文件夹。页面会校验 `vision2grasp.run/v1`，并读取其中的 `run.json` 和四个相对媒体文件；无需上传到云端。

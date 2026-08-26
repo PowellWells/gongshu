@@ -47,7 +47,7 @@
         </button>
         <label class="header-button is-primary" for="snapshotInput">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 15v5h14v-5"/></svg>
-          <span>导入运行目录</span>
+          <span>导入历史结果</span>
         </label>
         <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
         <button id="clearButton" class="icon-button" type="button" title="清空当前运行数据" aria-label="清空当前运行数据">
@@ -269,7 +269,7 @@
       </button>
       <span class="dialog-kicker">VISION2GRASP.RUN/V1</span>
       <h2 id="contractTitle">真实运行目录格式</h2>
-      <p>请选择包含 run.json 与 media/ 的完整运行目录。文件只在当前浏览器本地读取，不会上传；前端不读取评估器私有真值，也不补造结果。</p>
+      <p>一键启动器会自动载入本次抓取结果。这里也可以手动选择包含 run.json 与 media/ 的历史运行目录；文件只在当前浏览器本地读取，不会上传。前端不读取评估器私有真值，也不补造结果。</p>
       <pre><code>{
   "schema_version": "vision2grasp.run/v1",
   "run_id": "bottle-lift-seed7-...",

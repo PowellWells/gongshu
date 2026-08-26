@@ -7,6 +7,8 @@
   const ALL_STAGES = [...PROCESS_STAGES, ...OUTCOME_STAGES];
   const VIEW_KEYS = ["rgb", "depth", "pointCloud", "mujoco"];
   const CONNECTED_STATES = new Set(["connected", "online", "ready", "running"]);
+  const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
+  const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
 
   function emptySnapshot() {
     return {
@@ -553,6 +555,57 @@
     }
   }
 
+  async function loadPublishedRun() {
+    const manifestUrl = new URL(PUBLISHED_MANIFEST_URL, window.location.href);
+    manifestUrl.searchParams.set("t", String(Date.now()));
+
+    let response;
+    try {
+      response = await fetch(manifestUrl, { cache: "no-store" });
+    } catch (error) {
+      showNotice(`无法读取自动运行结果：${error.message}`, "error");
+      return;
+    }
+
+    if (response.status === 404) return;
+    if (!response.ok) {
+      showNotice(`无法读取自动运行结果：HTTP ${response.status}`, "error");
+      return;
+    }
+
+    try {
+      const manifest = await response.json();
+      if (!isRecord(manifest) || manifest.schema_version !== PUBLISHED_SCHEMA_VERSION) {
+        throw new Error("启动器结果清单版本不受支持。");
+      }
+
+      const runPath = normalizedRunPath(manifest.run_json);
+      if (!runPath.toLowerCase().endsWith("/run.json")) {
+        throw new Error("启动器结果清单未指向 run.json。");
+      }
+
+      const runtimeBaseUrl = new URL("../../runtime/", window.location.href);
+      const runUrl = new URL(runPath, runtimeBaseUrl);
+      runUrl.searchParams.set("t", String(Date.now()));
+      const runResponse = await fetch(runUrl, { cache: "no-store" });
+      if (!runResponse.ok) throw new Error(`run.json 返回 HTTP ${runResponse.status}`);
+
+      const raw = await runResponse.json();
+      const nextState = normalizedSnapshot(raw, (path) => {
+        const mediaPath = normalizedRunPath(path);
+        return new URL(mediaPath, runUrl).href;
+      });
+      const previousUrls = mediaObjectUrls;
+      state = nextState;
+      mediaObjectUrls = [];
+      render();
+      revokeMediaUrls(previousUrls);
+      showNotice(`已自动载入本次抓取结果：${raw.run_id}`, "success");
+    } catch (error) {
+      showNotice(`无法载入自动运行结果：${error.message}`, "error");
+    }
+  }
+
   function openContract() {
     if (typeof els.contractDialog.showModal === "function") {
       els.contractDialog.showModal();
@@ -592,4 +645,5 @@
   window.addEventListener("beforeunload", () => revokeMediaUrls());
 
   render();
+  loadPublishedRun();
 })();

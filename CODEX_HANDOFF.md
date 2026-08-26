@@ -185,6 +185,8 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 
 - 前端全部位于 `frontend\`，包含玄枢统一门户、Jingwei Moment 与公输 Gongshu Robotics 工作台；`F:\hotarea-cv` 不再是交付源。
 - 公输工作台只接受 `schema_version == "vision2grasp.run/v1"`，不长期兼容旧字段别名。
+- 根目录 `Start-Vision2Grasp.cmd` 已接通完整一键流程：自动运行固定种子仿真、发布公开结果、启动或复用本地服务，并直接打开已载入本次结果的公输工作台。
+- 自动发布区为 Git 忽略的 `frontend\runtime\`；`vision2grasp.launcher/v1` 的 `latest.json` 只指向公开 `run.json v1`，不包含评价真值。
 - 通过目录选择器读取完整 run 文件夹，依据 `webkitRelativePath` 安全解析 `run.json` 的相对媒体路径，并用 Blob URL 展示四视图；清空或离开页面时释放 URL。
 - 真实固定种子目录联合测试已通过：四张 640×480 图片全部加载，目标类别/置信度、世界坐标、RPY、夹爪开口、候选评分、可达性、执行状态和13个事件均正确。
 - 浏览器控制台无 warning/error；修复了真实媒体显示后空态文案仍覆盖图片的问题。
@@ -208,6 +210,16 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 
 ## 6. 当前使用方法
 
+Windows 一键启动统一门户：
+
+```text
+双击 G:\Vision2Grasp\Start-Vision2Grasp.cmd
+```
+
+启动器会使用项目虚拟环境自动执行一次固定种子单瓶抓取仿真，将公开 `run.json v1` 与四视图发布到 Git 忽略的 `frontend\runtime\`，启动或复用端口 `8765` 上的本地静态服务，并在默认浏览器中直接打开已经载入本次结果的公输工作台。用户不再需要手动选择运行目录；重复启动会生成并展示一次新结果。
+
+如需先生成新的真实闭环运行目录，再执行以下命令：
+
 先运行真实闭环生成运行目录：
 
 ```powershell
@@ -220,7 +232,7 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" -m http.server 8765 --bind 127.0.0.1 --directory "G:\Vision2Grasp\frontend"
 ```
 
-浏览器打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”，点击“导入运行目录”，选择命令输出的完整 `artifacts\runs\<run-id>` 文件夹。
+浏览器打开 `http://127.0.0.1:8765/`，进入“公输 Gongshu”。一键启动器发布的最新结果会自动载入；如需查看旧结果，可点击“导入历史结果”，选择命令输出的完整 `artifacts\runs\<run-id>` 文件夹。
 
 现有后端算法和验收阈值视为前端接入基线，除非前端联调暴露明确缺陷，否则不再修改。
 
