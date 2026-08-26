@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Jingwei Vision — System Intro</title>
+  <link rel="stylesheet" href="./intro.css">
+</head>
+<body>
+  <main id="intro" class="intro is-preloading" aria-label="Jingwei Vision 启动动画">
+    <div class="ambient-grid" aria-hidden="true"></div>
+    <div class="latitude latitude--top" aria-hidden="true">90°N</div>
+    <div class="latitude latitude--left" aria-hidden="true">180°W</div>
+    <div class="latitude latitude--right" aria-hidden="true">180°E</div>
+    <div class="latitude latitude--bottom" aria-hidden="true">90°S</div>
+
+    <header class="system-header" aria-label="玄枢 XUANSHU AI">
+      <span class="xuanshu-logo xuanshu-logo--header" aria-hidden="true">
+        <img src="./images/xuanshu_logo.png" alt="">
+      </span>
+    </header>
+
+    <section id="scene-stage" class="scene-stage" aria-live="off">
+      <figure class="scene is-active" data-scene="0" aria-label="Brand Awakening">
+        <img class="scene__ghost" src="./images/scene01_brand.png" alt="">
+        <img class="scene__slice scene__slice--full" src="./images/scene01_brand.png" alt="Jingwei 视觉智能场景背景">
+        <div class="brand-awakening">
+          <div class="brand-awakening__scan" aria-hidden="true"></div>
+          <span class="xuanshu-logo xuanshu-logo--hero"><img src="./images/xuanshu_logo.png" alt="玄枢 XUANSHU AI"></span>
+          <p>面向具身智能时代的 AI 创新品牌</p>
+          <div class="brand-awakening__narrative"><span>感知世界</span><i></i><span>理解世界</span><i></i><span>创造世界</span></div>
+        </div>
+        <img class="scene__svg" src="./scenes/scene01_brand.svg" alt="">
+      </figure>
+      <figure class="scene" data-scene="1" aria-label="Vision Perception">
+        <img class="scene__ghost" src="./images/scene02_vision.png" alt="">
+        <img class="scene__slice scene__slice--s2a" src="./images/scene02_vision.png" alt="相机输入">
+        <img class="scene__slice scene__slice--s2b" src="./images/scene02_vision.png" alt="RGB 图像">
+        <img class="scene__slice scene__slice--s2c" src="./images/scene02_vision.png" alt="深度信息">
+        <img class="scene__slice scene__slice--s2d" src="./images/scene02_vision.png" alt="语义理解">
+        <img class="scene__svg" src="./scenes/scene02_vision.svg" alt="">
+      </figure>
+      <figure class="scene" data-scene="2" aria-label="Spatial Intelligence">
+        <img class="scene__ghost" src="./images/scene03_spatial.png" alt="">
+        <img class="scene__slice scene__slice--s3a" src="./images/scene03_spatial.png" alt="二维网格">
+        <img class="scene__slice scene__slice--s3b" src="./images/scene03_spatial.png" alt="坐标空间">
+        <img class="scene__slice scene__slice--s3c" src="./images/scene03_spatial.png" alt="点云">
+        <img class="scene__slice scene__slice--s3d" src="./images/scene03_spatial.png" alt="六维位姿">
+        <img class="scene__svg" src="./scenes/scene03_spatial.svg" alt="">
+      </figure>
+      <figure class="scene" data-scene="3" aria-label="Vision Language Action">
+        <img class="scene__ghost" src="./images/scene04_vla.png" alt="">
+        <img class="scene__slice scene__slice--s4a" src="./images/scene04_vla.png" alt="视觉感知">
+        <img class="scene__slice scene__slice--s4b" src="./images/scene04_vla.png" alt="语言理解">
+        <img class="scene__slice scene__slice--s4c" src="./images/scene04_vla.png" alt="机器人行动">
+        <img class="scene__slice scene__slice--s4d" src="./images/scene04_vla.png" alt="Jingwei Moment 与 Gongshu Robotics 模块">
+        <div class="scene04-gongshu-brand">
+          <strong>Gongshu Robotics</strong>
+          <span>公输 · 具身智能操作平台</span>
+        </div>
+        <img class="scene__svg" src="./scenes/scene04_vla.svg" alt="">
+      </figure>
+    </section>
+
+    <div class="scene-index" aria-hidden="true">
+      <span>JW / BOOT</span>
+      <span id="scene-label">01 · BRAND AWAKENING</span>
+      <span id="timecode">00:00:000</span>
+    </div>
+
+    <div class="progress" aria-hidden="true"><span></span></div>
+
+    <section id="system-initialization" class="initialization-hud" data-state="preload" aria-label="Jingwei Vision 系统初始化状态">
+      <header class="initialization-hud__header">
+        <div>
+          <span>SYSTEM INITIALIZATION</span>
+          <strong id="initialization-message" aria-live="polite">Preparing visual assets · 0/9</strong>
+        </div>
+        <output id="initialization-state">ASSET CHECK</output>
+      </header>
+      <div class="initialization-modules">
+        <div class="initialization-module is-pending" data-module="vision">
+          <span>Vision Module</span>
+          <i class="module-track" role="progressbar" aria-label="Vision Module" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><b></b></i>
+          <output>0%</output>
+        </div>
+        <div class="initialization-module is-pending" data-module="spatial">
+          <span>Spatial Intelligence</span>
+          <i class="module-track" role="progressbar" aria-label="Spatial Intelligence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><b></b></i>
+          <output>0%</output>
+        </div>
+        <div class="initialization-module is-pending" data-module="language">
+          <span>Language Interface</span>
+          <i class="module-track" role="progressbar" aria-label="Language Interface" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><b></b></i>
+          <output>0%</output>
+        </div>
+        <div class="initialization-module is-pending" data-module="action">
+          <span>Action Layer</span>
+          <i class="module-track" role="progressbar" aria-label="Action Layer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><b></b></i>
+          <output>0%</output>
+        </div>
+      </div>
+    </section>
+
+    <section class="portal-handoff" aria-label="玄枢 XUANSHU AI Portal">
+      <div class="portal-handoff__brand">
+        <span class="xuanshu-logo xuanshu-logo--portal"><img src="./images/xuanshu_logo.png" alt="玄枢 XUANSHU AI"></span>
+        <div>
+          <span class="portal-handoff__eyebrow">XUANSHU AI ECOSYSTEM · SYSTEM READY</span>
+          <h1>感知世界 · 理解世界 · 创造世界</h1>
+          <p>面向具身智能时代的 AI 创新品牌</p>
+        </div>
+      </div>
+      <div class="portal-handoff__rail" aria-hidden="true"><span></span><i></i><span></span><i></i><span></span></div>
+      <div class="portal-handoff__modules">
+        <article><span>01 · VISION</span><strong>经纬 Jingwei</strong><small>AI 视觉智能平台</small><p>RGB-D · 目标检测 · 6D Pose · 视觉理解</p></article>
+        <article><span>02 · WORLD</span><strong>河图 Hetu</strong><small>世界模型 IP</small><p>World Model · 环境理解 · 空间预测 · 世界模拟</p></article>
+        <article><span>03 · ROBOTICS</span><strong>公输 Gongshu</strong><small>Embodied Intelligence Engine</small><p>Grasp · Manipulation · VLA · Embodied AI</p></article>
+      </div>
+    </section>
+
+    <button id="skip-intro" class="skip-intro" type="button">SKIP INTRO</button>
+    <button id="replay-intro" class="replay-intro" type="button">REPLAY INTRO</button>
+  </main>
+  <script src="./intro.js"></script>
+</body>
+</html>

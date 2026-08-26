@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f8ff" />
+    <title>Jingwei Moment · 看见每一个点击区域</title>
+    <link rel="stylesheet" href="./moment.css" />
+  </head>
+  <body>
+    <div class="spatial-field" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <header class="moment-header">
+      <a class="moment-brand" href="./index.html" aria-label="Jingwei Moment 首页">
+        <img src="./assets/jingwei-logo.png" alt="Jingwei 经纬" />
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-name"><strong>Moment</strong><small>视觉体验模式</small></span>
+      </a>
+      <div class="header-actions">
+        <span id="runtimeBadge" class="runtime-badge is-checking"><i></i><span>正在连接本地模型</span></span>
+      </div>
+    </header>
+
+    <main>
+      <section id="landingView" class="landing-view">
+        <div class="hero-copy">
+          <span class="eyebrow">JINGWEI MOMENT</span>
+          <h1>让截图里的每一个<br /><em>点击区域</em>被看见。</h1>
+          <p>拖入一张 UI 截图。Jingwei 会运行真实检测流程，告诉你哪些区域值得保留、哪些需要确认，以及为什么。</p>
+          <div class="trust-row" aria-label="处理说明">
+            <span><i class="trust-dot"></i>图片仅在本机处理</span>
+            <span>不使用 LLM</span>
+            <span>结果可人工复核</span>
+          </div>
+        </div>
+
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="拖入或选择一张 UI 截图">
+          <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <span class="lock-corner corner-nw" aria-hidden="true"></span>
+          <span class="lock-corner corner-ne" aria-hidden="true"></span>
+          <span class="lock-corner corner-sw" aria-hidden="true"></span>
+          <span class="lock-corner corner-se" aria-hidden="true"></span>
+          <div class="drop-grid" aria-hidden="true"><i class="drop-scan"></i></div>
+          <div class="drop-coordinates" aria-hidden="true"><span>LAT 31.2304</span><span>LON 121.4737</span></div>
+          <div class="drop-visual" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><rect x="10" y="8" width="44" height="48" rx="10"/><path d="m18 43 10-11 8 8 5-5 7 8"/><circle cx="42" cy="23" r="4"/><path class="scan-line" d="M15 29h34"/></svg>
+          </div>
+          <strong>拖入一张 UI 截图</strong>
+          <span>或点击选择 PNG、JPG、WebP</span>
+          <div class="drop-actions">
+            <button id="chooseButton" class="primary-button" type="button">选择截图</button>
+            <button id="sampleButton" class="secondary-button" type="button">试用示例图片</button>
+          </div>
+          <small>单张图片，最大 50MB</small>
+        </div>
+      </section>
+
+      <section id="analysisView" class="analysis-view" hidden>
+        <div class="analysis-topbar">
+          <div class="analysis-heading">
+            <span class="eyebrow">LIVE ANALYSIS</span>
+            <h1 id="analysisTitle">Jingwei 正在观察这张界面</h1>
+          </div>
+          <div class="analysis-actions">
+            <button id="replayButton" class="secondary-button replay-button" type="button" disabled><span aria-hidden="true">↻</span> Replay Analysis</button>
+            <button id="newImageButton" class="secondary-button" type="button">分析另一张</button>
+            <button id="reviewButtonTop" class="primary-button" type="button" disabled>进入专业审核</button>
+          </div>
+        </div>
+
+        <div class="analysis-grid">
+          <aside class="pipeline-panel" aria-label="真实检测阶段">
+            <div class="panel-heading">
+              <span>DETECTION PIPELINE<small>真实检测过程</small></span>
+              <b id="elapsedTime">—</b>
+            </div>
+            <ol id="pipelineList" class="pipeline-list">
+              <li data-stage="read"><i></i><div><small>01 · IMAGE LOCKED</small><strong>读取图像</strong><span>等待开始</span></div></li>
+              <li data-stage="analyze"><i></i><div><small>02 · STRUCTURE PARSED</small><strong>观察界面结构</strong><span>等待开始</span></div></li>
+              <li data-stage="candidates"><i></i><div><small>03 · SIGNALS FOUND</small><strong>发现初始区域</strong><span>等待真实结果</span></div></li>
+              <li data-stage="filter"><i></i><div><small>04 · REJECTED</small><strong>过滤无效区域</strong><span>等待真实结果</span></div></li>
+              <li data-stage="final"><i></i><div><small>05 · RETAINED</small><strong>形成最终建议</strong><span>等待真实结果</span></div></li>
+            </ol>
+            <div id="pipelineNote" class="pipeline-note">所有阶段均由真实图像事件或 detector 结果触发。</div>
+          </aside>
+
+          <section class="image-panel" aria-label="交互式检测结果">
+            <div class="image-toolbar">
+              <div><strong id="imageName">—</strong><span id="imageMeta">—</span></div>
+              <div id="analysisMatrix" class="analysis-matrix" hidden>
+                <span><small>INITIAL SIGNALS</small><b id="matrixInitial">0</b></span>
+                <span><small>REJECTED</small><b id="matrixRejected">0</b></span>
+                <span><small>RETAINED</small><b id="matrixRetained">0</b></span>
+                <span><small>FILTER RATE</small><b id="matrixRate">0.0%</b></span>
+              </div>
+            </div>
+            <div id="imageStage" class="image-stage is-empty">
+              <canvas id="fieldMagnet" class="field-magnet" aria-hidden="true"></canvas>
+              <div class="stage-coordinate coordinate-nw" aria-hidden="true">N 31°14′</div>
+              <div class="stage-coordinate coordinate-se" aria-hidden="true">E 121°28′</div>
+              <div id="signalCloud" class="signal-cloud" aria-hidden="true"></div>
+              <div id="ghostModeBadge" class="ghost-mode-badge" aria-live="polite" hidden><strong>GHOST MODE</strong><span>被过滤信号 · 松开 Alt 退出</span></div>
+              <div id="probe" class="coordinate-probe" aria-hidden="true"><i class="probe-horizontal"></i><i class="probe-vertical"></i><b></b><span class="probe-x">X 0000</span><span class="probe-y">Y 0000</span></div>
+              <div id="coordinateReadout" class="coordinate-readout" aria-hidden="true"><small>JINGWEI COORDINATE FIELD</small><strong id="coordinateFieldSize">—</strong><span id="coordinateX">X —</span><span id="coordinateY">Y —</span><span id="coordinateBox">W — · H —</span></div>
+              <div id="lockFlash" class="lock-flash" aria-hidden="true">LOCKED</div>
+              <div id="scanIndicator" class="scan-indicator"><i></i><span>准备读取图像</span><small id="scanMode">SCAN · STANDBY</small></div>
+              <div id="imageSurface" class="image-surface">
+                <img id="sourceImage" alt="待分析 UI 截图" />
+                <div id="scanLayer" class="scan-layer" aria-hidden="true"><i class="longitude-beam"></i><i class="latitude-beam"></i><span>VISION FIELD</span></div>
+                <svg id="momentOverlay" class="moment-overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Jingwei 检测框"></svg>
+              </div>
+            </div>
+            <div id="jingweiLens" class="jingwei-lens" role="status" hidden>
+              <div><small id="lensCoordinate">X000 · Y000</small><b id="lensType">候选区域</b></div>
+              <dl>
+                <div><dt>CANDIDATE</dt><dd id="lensBbox">—</dd></div>
+                <div><dt>HIT</dt><dd>等待人工确认</dd></div>
+                <div><dt>CONFIDENCE</dt><dd id="lensConfidence">—</dd></div>
+                <div><dt>WHY</dt><dd id="lensWhy">—</dd></div>
+              </dl>
+              <span>点击查看完整解释</span>
+            </div>
+          </section>
+
+          <aside id="explainPanel" class="explain-panel" aria-label="Jingwei Explain">
+            <div class="panel-heading"><span>JINGWEI EXPLAIN<small>智能解释</small></span><b id="decisionBadge">等待结果</b></div>
+            <div id="explainEmpty" class="explain-empty">
+              <div class="reason-core" aria-hidden="true">
+                <i></i><i></i><i></i><b>J</b>
+                <span>REASON CORE</span>
+                <div class="reason-steps">
+                  <em>GEOMETRY</em><em>EDGE</em><em>CONTEXT</em><em>ACTION</em>
+                </div>
+                <small id="reasonCoreResult">—</small>
+              </div>
+              <strong>每个框都有理由</strong>
+              <p>分析完成后，点击图片上的任意区域，查看它是什么、为什么这样判断，以及建议怎么处理。</p>
+            </div>
+            <div id="explainContent" class="explain-content" hidden>
+              <div class="explain-title"><span id="candidateId">—</span><h2 id="candidateType">可能的点击控件</h2></div>
+              <dl>
+                <div><dt>判断</dt><dd id="candidateDecision">—</dd></div>
+                <div><dt>置信程度</dt><dd><span id="candidateConfidence">—</span><meter id="confidenceMeter" min="0" max="1" value="0"></meter></dd></div>
+                <div><dt>为什么</dt><dd id="candidateWhy">—</dd></div>
+                <div><dt>建议</dt><dd id="candidateSuggestion">—</dd></div>
+              </dl>
+              <div id="reasonTags" class="reason-tags"></div>
+              <div id="bboxValue" class="bbox-value">—</div>
+            </div>
+          </aside>
+          <svg id="analysisSignal" class="analysis-signal" aria-hidden="true">
+            <path></path>
+            <circle r="3.5"></circle>
+          </svg>
+          <div id="evidenceConvergence" class="evidence-convergence" aria-hidden="true"></div>
+        </div>
+
+        <section id="evidenceDock" class="evidence-dock" aria-label="Jingwei 分析证据底座" hidden>
+          <div id="timeMachine" class="time-machine">
+            <div class="time-machine-heading">
+              <span>
+                <b>JINGWEI TIME MACHINE</b>
+                <small><i class="timeline-drag-cue" aria-hidden="true">↔</i> 拖动蓝色播放头，回看筛选过程</small>
+              </span>
+              <strong id="timelineState">03.84s · RETAIN</strong>
+            </div>
+            <div class="timeline-control">
+              <input id="timelineRange" type="range" min="0" max="1000" value="1000" step="1" aria-label="拖动蓝色播放头，回看 Jingwei 分析阶段" />
+              <div class="timeline-track" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="timeline-markers">
+              <button type="button" data-timeline="0"><b>00.00s</b><span>IMAGE</span><small>原始截图</small></button>
+              <button type="button" data-timeline="125"><b>00.48s</b><span>STRUCTURE</span><small>结构观察</small></button>
+              <button type="button" data-timeline="422"><b>01.62s</b><span>SIGNALS</span><small>初始信号</small></button>
+              <button type="button" data-timeline="654"><b>02.51s</b><span>FILTER</span><small>过滤过程</small></button>
+              <button type="button" data-timeline="1000"><b>03.84s</b><span>RETAIN</span><small>最终保留</small></button>
+            </div>
+          </div>
+          <div class="evidence-event" aria-live="polite">
+            <small>CURRENT EVIDENCE</small>
+            <strong id="timelineEventTitle">RETAIN</strong>
+            <span id="timelineEventCopy">44 actionable regions remain</span>
+          </div>
+          <div class="evidence-meta">
+            <div id="visionStatus" class="vision-status" hidden>
+              <span>VISION <b id="statusVision">—</b></span>
+              <span>SIGNALS <b id="statusCandidates">0</b></span>
+              <span>SCAN <b id="statusTime">—</b></span>
+              <span>MODEL <b>LOCAL</b></span>
+              <span>STATUS <b id="statusState">SCANNING</b></span>
+            </div>
+            <div class="legend" aria-label="结果图例">
+              <div id="resultFilters" class="result-filters" aria-label="筛选候选框" hidden>
+                <button type="button" data-filter="all" class="is-active">全部 <b id="allCount">0</b></button>
+                <button type="button" data-filter="keep">建议 <b id="keepCount">0</b></button>
+                <button type="button" data-filter="pending">待确认 <b id="pendingCount">0</b></button>
+                <button type="button" data-filter="ignored">已忽略 <b id="ignoredCount">0</b></button>
+              </div>
+              <span><i class="keep"></i>建议保留</span>
+              <span><i class="pending"></i>需要确认</span>
+              <span><i class="ignored"></i>规则忽略</span>
+              <small>点击任意框查看原因</small>
+            </div>
+          </div>
+          <div id="momentComplete" class="moment-complete" hidden>
+            <small>JINGWEI MOMENT</small>
+            <strong><b id="momentCompleteCount">44</b> REGIONS RETAINED</strong>
+          </div>
+        </section>
+
+        <section id="summaryPanel" class="summary-panel" hidden>
+          <div class="summary-mark" aria-hidden="true">✓</div>
+          <div class="summary-copy"><span class="eyebrow">MOMENT SUMMARY</span><h2>分析完成。</h2><p id="summaryText"></p><p id="pageStateText" class="page-state-text"></p></div>
+          <div class="summary-stats">
+            <div><strong id="summaryKeep">0</strong><span>建议保留</span></div>
+            <div><strong id="summaryPending">0</strong><span>需要确认</span></div>
+            <div><strong id="summaryIgnored">0</strong><span>规则忽略</span></div>
+          </div>
+          <button id="reviewButton" class="primary-button large" type="button">带着结果进入专业审核</button>
+        </section>
+      </section>
+    </main>
+
+    <footer><span>Jingwei maps where action happens.</span><span>OpenCV detector · candidates only · human review required</span></footer>
+    <script src="./moment-rules.js"></script>
+    <script src="./moment.js"></script>
+  </body>
+</html>

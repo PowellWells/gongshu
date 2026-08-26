@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f2f7fb" />
+    <meta
+      name="description"
+      content="公输 Gongshu Robotics 具身智能操作科研工作台，以真实运行数据统一呈现 RGB、深度、点云候选与 MuJoCo 执行状态。"
+    />
+    <title>公输 Gongshu Robotics · 具身智能操作科研工作台</title>
+    <link rel="stylesheet" href="./gongshu.css" />
+  </head>
+  <body>
+    <header class="grasp-header">
+      <div class="brand-cluster">
+        <a class="brand" href="../../index.html" aria-label="返回玄枢 XUANSHU AI 门户">
+          <img src="../portal/assets/xuanshu-orbit.png" alt="" />
+          <span><strong>玄枢</strong><small>XUANSHU AI</small></span>
+        </a>
+        <span class="brand-divider" aria-hidden="true"></span>
+        <div class="product-name">
+          <strong>公输 Gongshu</strong>
+          <span>ROBOTICS · 具身智能操作平台</span>
+        </div>
+      </div>
+
+      <div class="run-strip" aria-label="当前运行状态">
+        <div class="run-identity">
+          <span>RUN ID</span>
+          <strong id="runId">未载入</strong>
+        </div>
+        <div class="run-identity timestamp-identity">
+          <span>TIMESTAMP</span>
+          <strong id="runTimestamp">—</strong>
+        </div>
+        <div id="connectionBadge" class="connection-badge is-disconnected" aria-live="polite">
+          <i aria-hidden="true"></i>
+          <span>等待真实数据</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="contractButton" class="header-button is-secondary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M14 3v5h5M10 12h6M10 16h6"/></svg>
+          <span>数据格式</span>
+        </button>
+        <label class="header-button is-primary" for="snapshotInput">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 15v5h14v-5"/></svg>
+          <span>导入运行目录</span>
+        </label>
+        <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
+        <button id="clearButton" class="icon-button" type="button" title="清空当前运行数据" aria-label="清空当前运行数据">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v8M12 10v8M16 10v8M7 7l1 14h8l1-14"/></svg>
+        </button>
+        <a class="icon-button" href="../../index.html" title="返回玄枢门户" aria-label="返回玄枢门户">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <main class="grasp-shell">
+      <section id="visionWorkspace" class="vision-workspace" aria-label="Gongshu Robotics 四视图">
+        <article class="view-panel" data-view="rgb">
+          <header class="view-header">
+            <div>
+              <span class="view-index">VIEW 01</span>
+              <h2>RGB 检测</h2>
+            </div>
+            <div class="view-tools">
+              <span id="rgbState" class="view-state">NO DATA</span>
+              <button class="focus-button" type="button" data-focus-view="rgb" aria-label="放大 RGB 检测视图" title="聚焦视图">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </header>
+          <div class="view-stage rgb-stage">
+            <div class="stage-grid" aria-hidden="true"></div>
+            <div class="view-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="31" rx="5"/><circle cx="24" cy="23" r="6"/><path d="M14 8v7M34 8v7M14 32v7M34 32v7"/></svg>
+              <strong>等待 RGB 数据</strong>
+              <span>仅呈现真实检测画面与目标框</span>
+            </div>
+            <img class="view-image" alt="真实 RGB 检测画面" hidden />
+            <video class="view-video" muted playsinline controls hidden></video>
+            <div id="rgbTargetBox" class="rgb-target-box" hidden><span>TARGET</span></div>
+          </div>
+          <footer class="view-footer"><span>YOLO DETECTION</span><strong id="rgbSource">数据源未连接</strong></footer>
+        </article>
+
+        <article class="view-panel" data-view="depth">
+          <header class="view-header">
+            <div>
+              <span class="view-index">VIEW 02</span>
+              <h2>Depth 热力图</h2>
+            </div>
+            <div class="view-tools">
+              <span id="depthState" class="view-state">NO DATA</span>
+              <button class="focus-button" type="button" data-focus-view="depth" aria-label="放大 Depth 热力图" title="聚焦视图">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </header>
+          <div class="view-stage depth-stage">
+            <div class="depth-scale" aria-hidden="true"><span>NEAR</span><i></i><span>FAR</span></div>
+            <div class="view-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5c8 7 14 14 14 23a14 14 0 0 1-28 0C10 19 16 12 24 5Z"/><path d="M17 30a7 7 0 0 0 7 6"/></svg>
+              <strong>等待深度数据</strong>
+              <span>无真实深度帧时不生成热力图</span>
+            </div>
+            <img class="view-image" alt="真实 Depth 热力图" hidden />
+            <video class="view-video" muted playsinline controls hidden></video>
+          </div>
+          <footer class="view-footer"><span>DEPTH FIELD</span><strong id="depthSource">数据源未连接</strong></footer>
+        </article>
+
+        <article class="view-panel" data-view="pointCloud">
+          <header class="view-header">
+            <div>
+              <span class="view-index">VIEW 03</span>
+              <h2>点云 / 抓取候选</h2>
+            </div>
+            <div class="view-tools">
+              <span id="pointCloudState" class="view-state">NO DATA</span>
+              <button class="focus-button" type="button" data-focus-view="pointCloud" aria-label="放大点云抓取候选视图" title="聚焦视图">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </header>
+          <div class="view-stage point-stage">
+            <div class="point-field" aria-hidden="true"></div>
+            <div class="view-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="12" cy="14" r="2"/><circle cx="26" cy="9" r="2"/><circle cx="38" cy="17" r="2"/><circle cx="18" cy="25" r="2"/><circle cx="34" cy="30" r="2"/><circle cx="11" cy="37" r="2"/><circle cx="27" cy="40" r="2"/><path d="m19 20 5-3 5 3v8l-5 3-5-3z"/></svg>
+              <strong>等待点云与候选</strong>
+              <span>首期显示后端生成的真实渲染图</span>
+            </div>
+            <img class="view-image" alt="真实点云与抓取候选画面" hidden />
+            <video class="view-video" muted playsinline controls hidden></video>
+          </div>
+          <footer class="view-footer"><span>GRASP CANDIDATES</span><strong id="pointCloudSource">数据源未连接</strong></footer>
+        </article>
+
+        <article class="view-panel" data-view="mujoco">
+          <header class="view-header">
+            <div>
+              <span class="view-index">VIEW 04</span>
+              <h2>MuJoCo 执行画面</h2>
+            </div>
+            <div class="view-tools">
+              <span id="mujocoState" class="view-state">NO DATA</span>
+              <button class="focus-button" type="button" data-focus-view="mujoco" aria-label="放大 MuJoCo 执行视图" title="聚焦视图">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </header>
+          <div class="view-stage mujoco-stage">
+            <div class="world-plane" aria-hidden="true"></div>
+            <div class="view-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 6v12l6 6v8M32 6v12l-6 6v8M12 6h24"/><path d="m18 32 6-3 6 3v8l-6 3-6-3z"/></svg>
+              <strong>等待 MuJoCo 画面</strong>
+              <span>执行阶段只由真实仿真状态驱动</span>
+            </div>
+            <img class="view-image" alt="真实 MuJoCo 执行画面" hidden />
+            <video class="view-video" muted playsinline controls hidden></video>
+          </div>
+          <footer class="view-footer"><span>SIMULATION EXECUTION</span><strong id="mujocoSource">数据源未连接</strong></footer>
+        </article>
+      </section>
+
+      <aside class="inspector" aria-label="抓取运行数据">
+        <header class="inspector-header">
+          <div>
+            <span class="panel-kicker">RUN INSPECTOR</span>
+            <h1>实时抓取状态</h1>
+          </div>
+          <span id="stageBadge" class="stage-badge">WAITING</span>
+        </header>
+
+        <div class="inspector-scroll">
+          <section class="data-section target-section">
+            <div class="section-title">
+              <div><span>01</span><h2>当前目标</h2></div>
+              <span id="targetPresence" class="section-state">NO TARGET</span>
+            </div>
+            <div class="primary-target">
+              <div>
+                <small>目标类别</small>
+                <strong id="targetClass">—</strong>
+              </div>
+              <div class="confidence-block">
+                <small>YOLO 置信度</small>
+                <strong id="targetConfidence">—</strong>
+              </div>
+            </div>
+            <div class="metric-label">世界坐标 · mm</div>
+            <div class="metric-grid three-columns">
+              <div><span>X</span><strong id="worldX">—</strong></div>
+              <div><span>Y</span><strong id="worldY">—</strong></div>
+              <div><span>Z</span><strong id="worldZ">—</strong></div>
+            </div>
+            <div class="metric-label">抓取姿态 · degree</div>
+            <div class="metric-grid three-columns">
+              <div><span>ROLL</span><strong id="rollValue">—</strong></div>
+              <div><span>PITCH</span><strong id="pitchValue">—</strong></div>
+              <div><span>YAW</span><strong id="yawValue">—</strong></div>
+            </div>
+          </section>
+
+          <section class="data-section candidate-section">
+            <div class="section-title">
+              <div><span>02</span><h2>抓取候选</h2></div>
+              <span id="candidateCount" class="count-badge">0</span>
+            </div>
+            <div id="candidateList" class="candidate-list">
+              <div class="empty-list">尚未收到真实抓取候选</div>
+            </div>
+            <div class="selected-candidate">
+              <div><span>夹爪宽度</span><strong id="gripperWidth">—</strong><small>mm</small></div>
+              <div><span>候选评分</span><strong id="candidateScore">—</strong></div>
+              <div><span>可达性</span><strong id="reachability">—</strong></div>
+            </div>
+          </section>
+
+          <section class="data-section result-section">
+            <div class="section-title">
+              <div><span>03</span><h2>执行结果</h2></div>
+            </div>
+            <div id="resultCard" class="result-card is-waiting">
+              <span id="resultCode">WAITING</span>
+              <strong id="resultText">等待真实执行结果</strong>
+              <p id="resultReason">系统不会预设成功或失败。</p>
+            </div>
+          </section>
+
+          <details class="event-section">
+            <summary>
+              <span><i aria-hidden="true"></i>运行事件</span>
+              <b id="eventCount">0</b>
+            </summary>
+            <ol id="eventList" class="event-list">
+              <li class="empty-event">暂无真实运行事件</li>
+            </ol>
+          </details>
+        </div>
+      </aside>
+
+      <section class="execution-flow" aria-label="机器人抓取执行流程">
+        <div class="flow-heading">
+          <span>EXECUTION FLOW</span>
+          <strong id="flowStatus">等待真实状态</strong>
+        </div>
+        <ol class="flow-track">
+          <li data-stage="HOME"><i></i><span>HOME</span><small>初始位</small></li>
+          <li data-stage="PREGRASP"><i></i><span>PREGRASP</span><small>预抓取</small></li>
+          <li data-stage="DESCEND"><i></i><span>DESCEND</span><small>下降</small></li>
+          <li data-stage="CLOSE"><i></i><span>CLOSE</span><small>闭合</small></li>
+          <li data-stage="LIFT"><i></i><span>LIFT</span><small>抬升</small></li>
+          <li class="outcome-node success-node" data-stage="SUCCESS"><i></i><span>SUCCESS</span><small>成功</small></li>
+          <li class="outcome-node failure-node" data-stage="FAILURE"><i></i><span>FAILURE</span><small>失败</small></li>
+        </ol>
+      </section>
+    </main>
+
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="contractDialog" class="contract-dialog" aria-labelledby="contractTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭数据格式说明">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">VISION2GRASP.RUN/V1</span>
+      <h2 id="contractTitle">真实运行目录格式</h2>
+      <p>请选择包含 run.json 与 media/ 的完整运行目录。文件只在当前浏览器本地读取，不会上传；前端不读取评估器私有真值，也不补造结果。</p>
+      <pre><code>{
+  "schema_version": "vision2grasp.run/v1",
+  "run_id": "bottle-lift-seed7-...",
+  "timestamp": "2026-08-26T10:24:51+08:00",
+  "status": "success",
+  "stage": "SUCCESS",
+  "media": {
+    "rgb": { "path": "media/rgb.png", "kind": "image", "label": "RGB 检测" },
+    "depth": { "path": "media/depth.png", "kind": "image", "label": "深度图" },
+    "grasp_overlay": { "path": "media/grasp_overlay.png", "kind": "image", "label": "抓取候选" },
+    "mujoco": { "path": "media/mujoco.png", "kind": "image", "label": "MuJoCo 结果" }
+  },
+  "target": null,
+  "candidates": [],
+  "selected_candidate_id": null,
+  "execution": null,
+  "events": []
+}</code></pre>
+      <button class="dialog-confirm" type="button" data-close-dialog>我知道了</button>
+    </dialog>
+
+    <script src="./gongshu.js"></script>
+  </body>
+</html>

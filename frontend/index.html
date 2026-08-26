@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f8fd" />
+    <meta name="description" content="玄枢 XUANSHU AI 具身智能科研生态入口，连接视觉感知、世界模型与机器人操作。" />
+    <title>玄枢 XUANSHU AI · 感知、理解与创造世界</title>
+    <link rel="stylesheet" href="./apps/portal/portal.css" />
+  </head>
+  <body class="intro-active">
+    <div id="introOverlay" class="intro-overlay" role="dialog" aria-label="玄枢 XUANSHU AI 启动动画" aria-modal="true">
+      <iframe
+        id="introFrame"
+        class="intro-frame"
+        src="./assets/intro/intro.html"
+        title="Jingwei Vision / 玄枢 XUANSHU AI 启动动画"
+        loading="eager"
+      ></iframe>
+    </div>
+
+    <div class="ambient-grid" aria-hidden="true"></div>
+
+    <header class="portal-header">
+      <a class="brand" href="./index.html" aria-label="玄枢 XUANSHU AI 首页">
+        <span class="brand-emblem"><img src="./apps/portal/assets/xuanshu-orbit.png" alt="" /></span>
+        <span class="brand-copy"><strong>玄枢</strong><small>XUANSHU AI</small></span>
+      </a>
+
+      <nav class="header-actions" aria-label="门户功能">
+        <button id="statusButton" class="system-status" type="button">
+          <i aria-hidden="true"></i>
+          <span>System Status</span>
+        </button>
+        <button class="header-icon" type="button" data-open-dialog="settingsDialog" aria-label="显示设置" title="显示设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2.3-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2.3h3l.7-2.3 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z"/></svg>
+        </button>
+        <button class="header-icon" type="button" data-open-dialog="helpDialog" aria-label="工作空间帮助" title="帮助">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.5 2.1c-.8.4-1.3 1-1.3 2M12 17h.01"/></svg>
+        </button>
+        <button class="header-icon profile-button" type="button" data-open-dialog="profileDialog" aria-label="本地用户模式" title="本地模式">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c.7-4.2 3.2-6.3 7.5-6.3s6.8 2.1 7.5 6.3"/></svg>
+        </button>
+      </nav>
+    </header>
+
+    <main class="vision-home">
+      <section class="welcome" aria-labelledby="welcomeTitle">
+        <span class="platform-kicker"><i></i>EMBODIED INTELLIGENCE ECOSYSTEM<i></i></span>
+        <h1 id="welcomeTitle">Welcome to <span>XUANSHU AI</span></h1>
+        <h2><i></i>感 知 世 界 · 理 解 世 界 · 创 造 世 界<i></i></h2>
+        <p>Select Innovation Domain / 选择创新领域</p>
+      </section>
+
+      <section class="system-stage" aria-label="玄枢 AI 品牌生态选择">
+        <div class="spatial-plane" aria-hidden="true"></div>
+        <div class="orbit orbit-one" aria-hidden="true"><i></i><i></i></div>
+        <div class="orbit orbit-two" aria-hidden="true"><i></i></div>
+        <div class="orbit orbit-three" aria-hidden="true"><i></i><i></i></div>
+        <svg class="system-connectors" viewBox="0 0 1200 560" preserveAspectRatio="none" aria-hidden="true">
+          <path class="connector world-connector" d="M600 104 C600 176 600 190 600 230" />
+          <path class="connector moment-connector" d="M345 340 C420 340 432 300 490 300" />
+          <path class="connector grasp-connector" d="M710 404 C785 404 805 367 805 335" />
+          <circle class="anchor anchor-world" cx="600" cy="228" r="7" />
+          <circle class="anchor anchor-moment" cx="490" cy="300" r="7" />
+          <circle class="anchor anchor-grasp" cx="710" cy="404" r="7" />
+        </svg>
+
+        <button class="workspace-card world-card is-planned" type="button" data-open-dialog="worldDialog">
+          <span class="card-icon world-icon" aria-hidden="true">
+            <img src="./apps/portal/assets/hetu-card-icon.png" alt="" />
+          </span>
+          <span class="card-copy">
+            <small>WORLD MODEL · PLANNED</small>
+            <strong>Hetu 河图</strong>
+            <b>世界模型</b>
+            <em>规划中</em>
+          </span>
+          <span class="card-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </span>
+        </button>
+
+        <a class="workspace-card moment-card" href="./apps/moment/index.html">
+          <span class="card-icon moment-icon" aria-hidden="true">
+            <img src="./apps/portal/assets/jingwei-card-icon.png" alt="" />
+          </span>
+          <span class="card-copy">
+            <small>VISION INTELLIGENCE</small>
+            <strong>Jingwei 经纬</strong>
+            <b>AI 视觉智能</b>
+            <em>MOMENT · RGB-D</em>
+          </span>
+          <span class="card-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </span>
+        </a>
+
+        <a class="workspace-card grasp-card" href="./apps/gongshu/index.html">
+          <span class="card-icon grasp-icon" aria-hidden="true">
+            <img src="./apps/portal/assets/gongshu-card-icon.png" alt="" />
+          </span>
+          <span class="card-copy">
+            <small>GONGSHU ROBOTICS</small>
+            <strong>公输 Gongshu</strong>
+            <b>具身智能操作</b>
+            <em>GRASP · VLA</em>
+          </span>
+          <span class="card-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </span>
+        </a>
+
+        <div class="vision-core" aria-label="玄枢 XUANSHU AI Core">
+          <div class="core-rings" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="core-axis axis-x" aria-hidden="true"><b>-X</b><b>X</b></div>
+          <div class="core-axis axis-y" aria-hidden="true"><b>Y</b><b>-Y</b></div>
+          <span class="core-label">XUANSHU AI CORE</span>
+          <div class="bird-mark">
+            <img src="./apps/portal/assets/jingwei-bird.png" alt="Jingwei 折纸鸟标志" />
+            <strong>XUANSHU AI</strong>
+          </div>
+        </div>
+
+        <aside class="system-note overview-note">
+          <strong>XUANSHU ECOSYSTEM</strong>
+          <span>Perception</span>
+          <span>World Model</span>
+          <span>Embodied Action</span>
+        </aside>
+
+        <aside class="system-note coordinate-note">
+          <strong>COORDINATE SYSTEM</strong>
+          <span>X / Y / Z</span>
+          <span>SPATIAL REFERENCE</span>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="portal-footer">
+      <button id="footerStatus" class="footer-runtime" type="button">
+        <i aria-hidden="true"></i>
+        <span><strong>PORTAL READY</strong><small>部分运行源尚未连接</small></span>
+      </button>
+      <strong class="footer-brand">XUANSHU AI · INNOVATION ECOSYSTEM</strong>
+      <span class="privacy-copy">LOCAL · PRIVATE · TRACEABLE</span>
+    </footer>
+
+    <dialog id="worldDialog" class="portal-dialog" aria-labelledby="worldDialogTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭河图介绍">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">HETU WORLD · ROADMAP</span>
+      <h2 id="worldDialogTitle">河图 Hetu</h2>
+      <p>河图是玄枢 AI 旗下的世界模型 IP，面向环境理解、空间预测与世界模拟。目前处于规划阶段，门户保留品牌入口，但不会跳转到不存在的系统。</p>
+      <div class="dialog-status is-planned"><i></i><span><strong>PLANNED</strong><small>规划中 · 暂无运行入口</small></span></div>
+      <button class="dialog-primary" type="button" data-close-dialog>返回门户</button>
+    </dialog>
+
+    <dialog id="statusDialog" class="portal-dialog status-dialog" aria-labelledby="statusDialogTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭系统状态">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">RUNTIME STATUS</span>
+      <h2 id="statusDialogTitle">系统状态</h2>
+      <div class="status-list">
+        <div class="status-row is-ready"><i></i><span><strong>Portal</strong><small>静态门户已就绪</small></span><b>READY</b></div>
+        <div id="momentRuntimeRow" class="status-row is-offline"><i></i><span><strong>经纬 Jingwei Vision</strong><small>Moment 本地模型未连接</small></span><b>OFFLINE</b></div>
+        <div class="status-row is-waiting"><i></i><span><strong>公输 Gongshu Robotics</strong><small>前端已就绪 · 等待真实运行数据</small></span><b>WAITING</b></div>
+        <div class="status-row is-planned"><i></i><span><strong>河图 Hetu</strong><small>世界模型处于规划阶段</small></span><b>PLANNED</b></div>
+      </div>
+    </dialog>
+
+    <dialog id="settingsDialog" class="portal-dialog" aria-labelledby="settingsDialogTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭设置">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">DISPLAY SETTINGS</span>
+      <h2 id="settingsDialogTitle">显示设置</h2>
+      <label class="setting-row">
+        <span><strong>空间动态效果</strong><small>缓慢旋转轨道与视觉核心，不代表运行进度</small></span>
+        <input id="motionToggle" type="checkbox" checked />
+        <i aria-hidden="true"></i>
+      </label>
+    </dialog>
+
+    <dialog id="helpDialog" class="portal-dialog" aria-labelledby="helpDialogTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭帮助">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">WORKSPACE GUIDE</span>
+      <h2 id="helpDialogTitle">选择工作空间</h2>
+      <div class="help-list">
+        <p><b>经纬</b><span>玄枢旗下 AI 视觉智能平台；Moment 是其当前视觉理解功能。</span></p>
+        <p><b>河图</b><span>面向环境理解、空间预测与世界模拟，当前处于规划阶段。</span></p>
+        <p><b>公输</b><span>具身智能操作平台，从人类意图到机械执行，呈现 Grasp、Manipulation 与 VLA 状态。</span></p>
+      </div>
+    </dialog>
+
+    <dialog id="profileDialog" class="portal-dialog" aria-labelledby="profileDialogTitle">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭本地模式说明">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="dialog-kicker">LOCAL MODE</span>
+      <h2 id="profileDialogTitle">本地工作模式</h2>
+      <p>当前门户不包含账户、登录或云端同步。页面与导入数据均保留在本机运行环境中。</p>
+      <div class="dialog-status is-ready"><i></i><span><strong>LOCAL</strong><small>无需登录 · 不上传数据</small></span></div>
+    </dialog>
+
+    <script src="./apps/portal/portal.js"></script>
+  </body>
+</html>

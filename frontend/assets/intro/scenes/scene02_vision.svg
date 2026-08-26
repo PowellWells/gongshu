@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672 941" aria-hidden="true">
+  <defs>
+    <linearGradient id="sweep" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#34a1ff" stop-opacity="0"/><stop offset=".5" stop-color="#34a1ff" stop-opacity=".6"/><stop offset="1" stop-color="#34a1ff" stop-opacity="0"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <g fill="none" stroke="#0c6fe7" stroke-width="2" opacity="0">
+    <path d="M338 528h122M794 528h71M1190 528h68" stroke-dasharray="6 8">
+      <animate attributeName="stroke-dashoffset" from="56" to="0" dur=".42s" repeatCount="indefinite"/>
+    </path>
+    <animate attributeName="opacity" values="0;.85;.65" begin="1.28s" dur=".45s" fill="freeze"/>
+  </g>
+  <g fill="none" stroke="#1685f1" stroke-width="2" opacity="0">
+    <path d="M483 409h24v-24M802 409h-24v-24M483 644h24v24M802 644h-24v24"/>
+    <animate attributeName="opacity" values="0;1;1" begin="1.4s" dur=".3s" fill="freeze"/>
+  </g>
+  <rect x="884" y="407" width="301" height="8" fill="url(#sweep)" filter="url(#glow)" opacity="0">
+    <animate attributeName="y" values="407;641" begin="1.62s" dur=".62s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;.8;.8;0" keyTimes="0;.12;.84;1" begin="1.62s" dur=".62s" fill="freeze"/>
+  </rect>
+  <g fill="none" stroke="#0567e4" stroke-width="2" opacity="0">
+    <rect x="1271" y="410" width="283" height="236" rx="5" stroke-dasharray="10 7"/>
+    <path d="M1290 433h36M1290 433v36M1535 433h-36M1535 433v36" stroke-width="3"/>
+    <animate attributeName="opacity" values="0;1;.72" begin="1.82s" dur=".35s" fill="freeze"/>
+  </g>
+</svg>

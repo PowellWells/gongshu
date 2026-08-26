@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672 941" aria-hidden="true">
+  <defs>
+    <pattern id="points" width="13" height="13" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.4" fill="#126fe8" opacity=".7"/></pattern>
+    <clipPath id="cloud"><path d="M850 665c4-63 34-111 84-125 25-7 41 1 66-18 42-32 100-4 107 46 57-4 94 38 75 88-7 18-15 33-18 48H863z"/></clipPath>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <g fill="none" stroke="#0c70e8" stroke-width="2" opacity="0">
+    <path d="M421 519h62M773 519h63M1170 519h62" stroke-dasharray="5 8"><animate attributeName="stroke-dashoffset" from="52" to="0" dur=".42s" repeatCount="indefinite"/></path>
+    <animate attributeName="opacity" values="0;.9;.62" begin="2.55s" dur=".4s" fill="freeze"/>
+  </g>
+  <g clip-path="url(#cloud)" opacity="0">
+    <rect x="845" y="520" width="350" height="190" fill="url(#points)">
+      <animate attributeName="y" values="690;520;520" keyTimes="0;.75;1" begin="2.78s" dur=".58s" fill="freeze"/>
+    </rect>
+    <animate attributeName="opacity" values="0;1;1" begin="2.78s" dur=".35s" fill="freeze"/>
+  </g>
+  <g transform="translate(1390 580)" stroke-width="5" fill="none" opacity="0" filter="url(#glow)">
+    <path d="M0 0l74 31" stroke="#e54747"/><path d="M0 0l-67 38" stroke="#1aa47a"/><path d="M0 0v-103" stroke="#145cce"/>
+    <animate attributeName="opacity" values="0;1;.9" begin="3.08s" dur=".34s" fill="freeze"/>
+  </g>
+  <g fill="none" stroke="#0d6fe5" opacity="0"><ellipse cx="1390" cy="708" rx="157" ry="44"/><ellipse cx="1390" cy="708" rx="112" ry="30"/><animate attributeName="opacity" values="0;.65;.3" begin="3.12s" dur=".4s" fill="freeze"/></g>
+</svg>

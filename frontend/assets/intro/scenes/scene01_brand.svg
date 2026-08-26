@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672 941" aria-hidden="true">
+  <defs>
+    <linearGradient id="scan" x1="0" x2="1"><stop stop-color="#1680ff" stop-opacity="0"/><stop offset=".5" stop-color="#1680ff" stop-opacity=".8"/><stop offset="1" stop-color="#1680ff" stop-opacity="0"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <g fill="none" stroke="#136ade" opacity="0">
+    <ellipse cx="836" cy="470" rx="760" ry="355" stroke-opacity=".14"/>
+    <ellipse cx="836" cy="470" rx="632" ry="294" stroke-opacity=".1"/>
+    <path d="M836 70v800M75 470h1522" stroke-opacity=".08"/>
+    <animate attributeName="opacity" values="0;.7;.42" dur=".8s" fill="freeze"/>
+  </g>
+  <rect x="230" y="208" width="4" height="522" fill="url(#scan)" filter="url(#glow)" opacity="0">
+    <animate attributeName="x" values="230;1438" begin=".18s" dur=".72s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.12;.84;1" begin=".18s" dur=".72s" fill="freeze"/>
+  </rect>
+  <g fill="#1574e7" filter="url(#glow)">
+    <circle cx="239" cy="493" r="3"><animate attributeName="r" values="2;6;2" dur="1s" repeatCount="indefinite"/></circle>
+    <circle cx="1436" cy="481" r="3"><animate attributeName="r" values="2;6;2" begin=".35s" dur="1s" repeatCount="indefinite"/></circle>
+  </g>
+</svg>
