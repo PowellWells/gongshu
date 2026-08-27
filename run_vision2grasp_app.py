@@ -140,6 +140,17 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.app = app
         super().__init__(*args, directory=str(FRONTEND_ROOT), **kwargs)
 
+    def log_message(self, format: str, *args: Any) -> None:
+        """Keep desktop logs useful by suppressing successful polling noise."""
+        path = urlparse(self.path).path
+        quiet_paths = {
+            "/api/health",
+            "/api/real-scene/state",
+        }
+        if path in quiet_paths or path.startswith("/api/real-scene/frame/"):
+            return
+        super().log_message(format, *args)
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/health":

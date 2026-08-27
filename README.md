@@ -1,86 +1,86 @@
-# 公输 Gongshu Robotics · Vision2Grasp
+# XUANSHU LAB · 玄枢实验室
 
-Vision2Grasp 现在采用 **Real-world-first, Simulation-validated** 路线：默认直接读取电脑摄像头、Android 网络摄像头或单张照片，只识别 `bottle`，在真实画面上完成检测、桌面平面定位与顶抓候选规划；原有 MuJoCo / robosuite 单瓶抓取闭环完整保留在 Simulation Mode 中用于验证。
+XUANSHU LAB v0.1 是一个真正可运行的 Windows AI / 机器人科研桌面平台。当前版本优先完成成熟、稳定、可扩展的软件骨架，不宣称一次性完成全部机器人或世界模型算法。
 
-继续开发前请先阅读 [CODEX_HANDOFF.md](CODEX_HANDOFF.md)。
+桌面外壳使用 PySide6；现有 Web 工作台通过 `QWebEngineView` 嵌入。桌面层统一负责 Workspace 注册、导航、本地服务生命周期、状态、日志、单实例和窗口偏好，各研究域继续独立演进。
 
-## 一键使用
+## 一键启动
 
-Windows 下双击项目根目录的 [Start-Vision2Grasp.cmd](Start-Vision2Grasp.cmd)。启动器会启动统一的本地应用并打开公输工作台，默认进入 **REAL SCENE MODE**，不会先强制运行耗时的仿真。
+双击项目根目录的 [Start-XUANSHU-LAB.cmd](Start-XUANSHU-LAB.cmd)。
 
-首次使用电脑摄像头：
+启动器会：
 
-1. 把电脑摄像头固定在桌面上方或斜上方，之后不要移动相机。
-2. 在桌面划定一个长方形测量区域，用尺子量出实际宽度和高度，填入页面的毫米输入框。
-3. 点击“四点标定”，依次点击画面中的 **原点、+X、+X+Y、+Y** 四个角。
-4. 把一个 `bottle` 放进标定区域。页面会显示类别、置信度、桌面坐标、平面朝向、估计夹爪开口和三个候选。
+1. 使用项目虚拟环境启动 PySide6 桌面程序；
+2. 启动或复用 `127.0.0.1:8765` 上兼容的本地科研服务；
+3. 打开 XUANSHU LAB 总览，并在桌面窗口内运行 Workspace；
+4. 再次双击时唤醒已有窗口，不重复启动平台实例。
 
-输入来源：
+原 [Start-Vision2Grasp.cmd](Start-Vision2Grasp.cmd) 继续保留，供只启动公输 Web 工作台时使用。
 
-- **电脑摄像头**：启动后默认使用索引 0。
-- **Android**：手机与电脑连接同一 Wi-Fi；在手机网络摄像头应用中启动视频服务，把它提供的 `http://`、`https://` 或 `rtsp://` 视频地址粘贴到页面。
-- **单张照片**：点击“选择照片”。换用不同分辨率的照片后，需要针对该照片重新做四点标定。
+## 三个 Workspace
 
-点击顶部 **SIMULATION MODE** 可回到原有四视图仿真工作台，再点击“运行单瓶仿真”执行固定种子闭环。
+- **经纬 · Jingwei Moment**：可运行的本地图像理解工作台。
+- **公输 · Gongshu Vision2Grasp**：可运行的真实场景优先、MuJoCo 仿真验证机器人抓取工作台；当前真实目标固定为 `bottle`。
+- **河图 · Hetu Preview**：世界模型软件预告页，展示未来的空间表征、时序预测和仿真桥接模块；不运行未完成模型，不显示虚假结果。
 
-> 普通 RGB 摄像头没有真实深度。本项目当前只给出经过尺子标定的桌面平面 `X/Y`；目标尺寸、朝向和夹爪开口明确标为估计值，不会伪造 `Z` 或深度数据。
-
-## 手动启动
-
-```powershell
-$env:PYTHONPATH = "G:\Vision2Grasp\src"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_vision2grasp_app.py" --host 127.0.0.1 --port 8765
-```
-
-浏览器地址为 `http://127.0.0.1:8765/apps/gongshu/index.html`。真实场景功能依赖本地 API，因此不要改用普通 `python -m http.server`。
-
-## 当前模块
-
-- `sources`：电脑摄像头、Android HTTP/RTSP 视频流和单张 RGB 图像输入。
-- `perception`：CPU 版 YOLO11n-seg 实例分割，Real Scene Mode 当前固定只保留 `bottle`。
-- `geometry`：真实场景四点桌面标定与平面定位；仿真场景 Mask + Depth 三维反投影。
-- `grasp`：真实场景平面顶抓三候选；仿真场景 PCA / 圆拟合顶抓规划。
-- `control`：Panda 确定性抓取状态机，仅用于仿真闭环。
-- `simulation`：robosuite RGB-D、机器人动作和本体状态。
-- `visualization`：真实画面叠加，以及 RGB、Depth、Grasp、MuJoCo 四视图。
-- `evaluation`：仿真执行后的隔离评价；主路径不读取物体真值。
-
-跨模块数据通过 `vision2grasp.contracts` 交换。真实 RGB 帧和 RGB-D 帧是不同契约，避免把普通相机数据误称为深度数据。
-
-## 已验证环境
+## 软件架构
 
 ```text
-Windows 11
-Python 3.12.5
-MuJoCo 3.9.0
-robosuite 1.5.2
-OpenCV 4.11.0
-PyTorch 2.13.0+cpu
-torchvision 0.28.0+cpu
-Ultralytics 8.4.128
+Start-XUANSHU-LAB.cmd
+→ run_xuanshu_lab.py
+→ xuanshu_lab.app（启动、单实例、Splash）
+→ xuanshu_lab.shell（窗口、导航、日志、状态）
+→ WorkspaceRegistry
+   ├─ Jingwei Moment   → QWebEngineView → /apps/moment/
+   ├─ Gongshu Grasp    → QWebEngineView → /apps/gongshu/
+   └─ Hetu Preview     → 原生 PySide6 预告页
+→ LocalServiceController
+→ run_vision2grasp_app.py / 本地 API / 现有算法模块
 ```
 
-## 本地检查
+Workspace 的框架无关契约位于 `src/xuanshu_lab/contracts.py`，默认注册表位于 `src/xuanshu_lab/registry.py`。新增研究域应注册新的 `WorkspaceSpec` 并提供对应页面，不应把领域算法写进桌面 Shell。
+
+## 开发运行
 
 ```powershell
 $env:PYTHONPATH = "G:\Vision2Grasp\src"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m compileall -q "G:\Vision2Grasp\src" "G:\Vision2Grasp\tests" "G:\Vision2Grasp\run_vision2grasp_app.py"
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_xuanshu_lab.py"
+```
+
+安装或修复环境：
+
+```powershell
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m pip install -e "G:\Vision2Grasp"
+```
+
+## 验证
+
+```powershell
+$env:PYTHONPATH = "G:\Vision2Grasp\src"
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m compileall -q "G:\Vision2Grasp\src" "G:\Vision2Grasp\tests" "G:\Vision2Grasp\run_xuanshu_lab.py" "G:\Vision2Grasp\run_vision2grasp_app.py"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" -m unittest discover -s "G:\Vision2Grasp\tests" -v
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" -m pip check
 ```
 
-单独运行原有仿真闭环：
+## 当前冻结环境
 
-```powershell
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_bottle_pipeline.py"
+```text
+Windows 11
+Python 3.12.5
+PySide6 / Qt 6.8.3
+OpenCV 4.11.0
+MuJoCo 3.9.0
+robosuite 1.5.2
+PyTorch 2.13.0+cpu
+Ultralytics 8.4.128
 ```
 
-## 第三方许可证边界
+## 许可证边界
 
-Ultralytics 软件和官方 YOLO11 预训练权重默认采用 AGPL-3.0。当前只按本地个人 / 研究演示用途使用；如果未来需要闭源、内部商业或产品化部署，必须先确认能够履行 AGPL-3.0 的开源义务，或取得 Ultralytics 商业许可。本仓库目前没有擅自替整个项目选择许可证。
+- PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 的第三方许可证。未来分发 EXE 时必须同时完成动态链接、许可证文本和第三方声明审计。
+- Ultralytics 软件与官方 YOLO11 权重默认采用 AGPL-3.0。当前仅用于本地个人 / 研究演示；闭源、内部商业或产品化前必须履行相应义务或取得商业许可。
+- 本仓库当前没有擅自替整个项目选择统一许可证。
 
-## 尚待现场验收
+## v0.1 边界
 
-- 用用户实际 Android 串流地址验证连接稳定性。
-- 在真实固定相机下，用尺子选取 5–10 个独立检查点统计桌面平面定位误差。
-- 把真实候选坐标映射到 MuJoCo，并将仿真验证结果回写 Real Scene Mode；当前界面诚实显示 `NOT_RUN / VALIDATOR PENDING`。
+已经完成的是桌面平台、三 Workspace 骨架和现有功能接入。尚未包含：正式安装包 / EXE、自动更新、账户或云同步、Hetu 世界模型算法、真实机器人控制，以及真实抓取候选到 MuJoCo 的完整验证回写。

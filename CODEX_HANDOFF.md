@@ -1,11 +1,11 @@
 # Vision2Grasp Codex 交接文档
 
-最后更新：2026-08-26
+最后更新：2026-08-27
 
 ## 1. 项目定位与硬边界
 
-- 正式项目：**公输 Gongshu Robotics · Vision2Grasp**，工作目录为 `G:\Vision2Grasp`。
-- 统一门户最终展示 `Jingwei Moment`（UI 视觉识别）与 `公输 Gongshu Robotics`（RGB-D 机器人抓取）两个入口；`Grasp` 只作为技术能力名称。
+- 正式平台：**XUANSHU LAB · 玄枢实验室**，工作目录仍为 `G:\Vision2Grasp`；`Vision2Grasp` 现在是公输 Workspace 的领域项目名，不再代表整个桌面平台。
+- v0.1 固定三个 Workspace：`Jingwei Moment`、`Gongshu Vision2Grasp` 和 `Hetu Preview`。
 - `F:\hotarea-cv` 仅作为只读参考工程，任何任务都不得修改它。
 - 用户有 Android 手机和电脑自带摄像头，但没有机械臂或 RGB-D 设备；当前真实场景只使用普通 RGB，并以固定相机、尺子和人工四点标定恢复桌面平面尺度。
 - 预算上限 200 元，当前目标实际支出 0 元。
@@ -210,11 +210,26 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 尚未完成的现场验收：用户 Android 实际视频地址连接；固定真实相机下 5–10 个尺量检查点的定位误差统计。这两项需要用户实体设备参与。
 - Real→MuJoCo 候选验证尚未实现，真实模式第四视图明确显示 `NOT_RUN / VALIDATOR PENDING`，不得宣称已经完成该闭环。
 
+### 阶段9：XUANSHU LAB Windows 桌面平台 v0.1 — PASS
+
+- 新增 PySide6 6.8.3 / Qt 6.8.3 桌面层，主入口为 `run_xuanshu_lab.py`，一键入口为根目录 `Start-XUANSHU-LAB.cmd`。
+- 桌面采用混合架构：PySide6 管理原生窗口、导航、Workspace 生命周期、运行状态、日志、偏好和单实例；既有 Moment 与 Gongshu 页面通过 `QWebEngineView` 嵌入，不重复实现领域 UI 或算法。
+- `xuanshu_lab.contracts.WorkspaceSpec` 和 `WorkspaceRegistry` 冻结可扩展注册边界。默认按顺序注册 `moment`、`gongshu`、`hetu`，重复 ID、非法本地资源路径和缺失 Web route 会被拒绝。
+- 研究总览提供三张成熟 Workspace 卡片和平台状态；左侧导航与顶部状态条在四个页面间保持一致。
+- Jingwei Moment 与 Gongshu Vision2Grasp 均已在真实 Windows PySide6 窗口内成功加载；Gongshu 真实场景持续取得本地摄像头状态。
+- Hetu 是原生 PySide6 预告页，展示 Spatial State、Temporal Forecast、Simulation Bridge 和未来路线；明确写明 `PREVIEW ONLY / NO MODEL EXECUTION`。
+- `LocalServiceController` 只复用符合 `vision2grasp.app-health/v1` 的服务；未知程序占用端口时拒绝覆盖。桌面自行启动的服务会在窗口关闭时回收，复用的外部服务不会被终止。
+- 平台包含可折叠运行日志、持久化窗口尺寸和上次 Workspace、启动 Splash、统一 About 页和单实例唤醒。
+- 后台服务对 health、真实状态和 JPEG 帧轮询日志做降噪，避免桌面长期运行时日志文件因正常轮询持续膨胀。
+- computer-use 真实窗口验收覆盖总览、三 Workspace、嵌入式 WebEngine、运行日志和第二次启动唤醒；窗口在 1460×900 和最小 1120×720 约束下可用。
+- 最终全量检查为 81 项 Python 测试全部通过，`compileall`、`pip check`、全部前端 JavaScript 语法检查和 Moment Node 测试通过。
+- PySide6 / Qt 开源分发涉及 LGPLv3，WebEngine 同时涉及 Chromium 第三方许可证；未来打包 EXE 前必须完成分发合规审计。当前 v0.1 交付为项目虚拟环境加双击启动器，不冒充已完成安装包。
+
 ## 5. 当前验证命令
 
 ```powershell
 $env:PYTHONPATH = "G:\Vision2Grasp\src"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m compileall -q "G:\Vision2Grasp\src" "G:\Vision2Grasp\tests"
+& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m compileall -q "G:\Vision2Grasp\src" "G:\Vision2Grasp\tests" "G:\Vision2Grasp\run_xuanshu_lab.py" "G:\Vision2Grasp\run_vision2grasp_app.py"
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" -m unittest discover -s "G:\Vision2Grasp\tests" -v
 & "G:\Vision2Grasp\.venv\Scripts\python.exe" -m pip check
 ```
@@ -227,13 +242,15 @@ $env:PYTHONPATH = "G:\Vision2Grasp\src"
 
 ## 6. 当前使用方法
 
-Windows 一键启动统一门户：
+Windows 一键启动 XUANSHU LAB 桌面平台：
 
 ```text
-双击 G:\Vision2Grasp\Start-Vision2Grasp.cmd
+双击 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-启动器会使用项目虚拟环境启动或复用端口 `8765` 上的统一本地应用，并在默认浏览器中直接打开公输工作台。默认进入 Real Scene Mode 和电脑摄像头；不再强制先运行仿真。
+启动器使用项目虚拟环境打开 PySide6 桌面窗口，启动或复用端口 `8765` 上的统一本地服务。再次双击会唤醒已有窗口。桌面内可以进入 Jingwei、Gongshu 和 Hetu；Hetu 只作为预告页。
+
+只需打开旧版公输 Web 工作台时，仍可双击 `Start-Vision2Grasp.cmd`。
 
 真实场景首次使用：固定摄像头，输入尺量桌面区域长宽，点击“四点标定”，再依次点击 `原点、+X、+X+Y、+Y`。只放置 `bottle`。Android 与电脑连接同一 Wi-Fi 后，把手机摄像头应用给出的 HTTP/HTTPS/RTSP 地址粘贴到页面；也可直接选择单张照片。
 
@@ -254,6 +271,13 @@ Windows 一键启动统一门户：
 ## 7. 后续顺序
 
 ```text
+XUANSHU LAB v0.1 桌面骨架（已完成）
+→ 打包前许可证与第三方声明审计
+→ Windows 安装包 / EXE 与卸载流程
+→ Workspace 事件总线和可追踪任务模型
+→ Hetu 数据契约与回放骨架
+
+Gongshu 领域路线：
 REAL SCENE GRASP PERCEPTION（软件与集成已完成）
 → 用户现场 Android 串流验证
 → 真实固定相机 5–10 点尺量误差验收
@@ -269,4 +293,4 @@ REAL SCENE GRASP PERCEPTION（软件与集成已完成）
 
 在新聊天中指定工作目录 `G:\Vision2Grasp`，并先发送：
 
-> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前 Git 状态。项目已完成 bottle-only 的 REAL SCENE GRASP PERCEPTION 软件里程碑，默认一键启动真实模式，原仿真模式保留。下一步先做用户现场 Android 串流与尺量误差验收，再实现 Real→MuJoCo 候选验证。普通 RGB 不得伪造深度或 Z；保持 F:\hotarea-cv 只读。
+> 请先阅读根目录 README.md、CODEX_HANDOFF.md 和当前 Git 状态。XUANSHU LAB v0.1 PySide6 桌面平台已完成，固定三个 Workspace：Jingwei Moment、Gongshu Vision2Grasp、Hetu Preview。保持桌面 Shell 与领域算法解耦，Hetu 不得伪造模型结果。Gongshu 下一步仍是 Android 串流、尺量误差和 Real→MuJoCo 验证；保持 F:\hotarea-cv 只读。
