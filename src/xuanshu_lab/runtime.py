@@ -47,6 +47,7 @@ class LocalServiceController:
         ready = (
             payload.get("schema_version") == "vision2grasp.app-health/v1"
             and payload.get("status") == "ok"
+            and "camera.phone-lan/v1" in payload.get("capabilities", [])
         )
         return ServiceHealth(ready, "本地服务已连接" if ready else "服务响应不兼容")
 

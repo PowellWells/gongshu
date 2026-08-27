@@ -21,7 +21,8 @@ function Get-AppHealth {
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 1
         if (
             $response.schema_version -eq "vision2grasp.app-health/v1" -and
-            $response.status -eq "ok"
+            $response.status -eq "ok" -and
+            $response.capabilities -contains "camera.phone-lan/v1"
         ) {
             return $response
         }
@@ -48,11 +49,15 @@ function Stop-LegacyVision2GraspServer {
         $commandLine -like "*http.server*$Port*" -and
         $commandLine -like "*Vision2Grasp*frontend*"
     )
-    if (-not $isLegacyServer) {
+    $escapedProjectRoot = [WildcardPattern]::Escape($projectRoot)
+    $isPreviousProjectServer = (
+        $commandLine -like "*$escapedProjectRoot*run_vision2grasp_app.py*"
+    )
+    if (-not $isLegacyServer -and -not $isPreviousProjectServer) {
         throw "Port $Port is already used by another application: $commandLine"
     }
 
-    Write-Host "Replacing the previous Vision2Grasp static server..."
+    Write-Host "Replacing the previous Vision2Grasp local server..."
     Stop-Process -Id $listener.OwningProcess -Force
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         Start-Sleep -Milliseconds 150
@@ -98,7 +103,7 @@ if ($null -eq $health) {
         if (-not $appProcess.HasExited) {
             Stop-Process -Id $appProcess.Id -Force
         }
-        throw "The Vision2Grasp app did not become ready within 15 seconds."
+        throw "The Vision2Grasp app did not become ready within 15 seconds. Check ports 8765-8767 and artifacts/launcher logs."
     }
     Write-Host "Vision2Grasp real-world-first app started at $workbenchUrl"
 }

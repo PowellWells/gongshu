@@ -59,7 +59,11 @@ class _HealthHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         payload = json.dumps(
-            {"schema_version": "vision2grasp.app-health/v1", "status": "ok"}
+            {
+                "schema_version": "vision2grasp.app-health/v1",
+                "status": "ok",
+                "capabilities": ["camera.phone-lan/v1"],
+            }
         ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

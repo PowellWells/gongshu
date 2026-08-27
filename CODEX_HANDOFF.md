@@ -225,6 +225,18 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 - 最终全量检查为 82 项 Python 测试全部通过，`compileall`、`pip check`、全部前端 JavaScript 语法检查和 Moment Node 测试通过。
 - PySide6 / Qt 开源分发涉及 LGPLv3，WebEngine 同时涉及 Chromium 第三方许可证；未来打包 EXE 前必须完成分发合规审计。当前 v0.1 交付为项目虚拟环境加双击启动器，不冒充已完成安装包。
 
+### 阶段10：Jingwei Camera v1 — Local RGB Acquisition — SOFTWARE PASS
+
+- 本阶段严格冻结在 Camera Input；未接入 YOLO、Monocular Depth、点云、Grasp Planning 或 MuJoCo，真实场景页不再因打开 Camera Workspace 而额外加载感知模型。
+- 新增独立 `camera` 包与 `CameraProvider` 协议。`PhoneLANProvider` 同时实现持续 `LAN Live` 和原图 `LAN Capture`，未来视觉模块只依赖统一 RGB Frame 边界，不依赖手机网页或 WebRTC。
+- LAN Live 使用无 STUN / TURN 的私有局域网 WebRTC。服务端持续消费 `MediaStreamTrack.recv()`，每个真实到达帧转换为 RGB、更新时间戳和递增版本；PC 通过本地 MJPEG 桥实时显示最新 RGB，并展示接收 FPS、分辨率、数据通道估算延迟和连接状态，不是单帧或仅配对占位。
+- LAN Capture 优先调用浏览器 `ImageCapture.takePhoto()`；不支持时回退 Android 原生拍照控件。JPEG / PNG / WebP 原始字节通过 LAN 上传，默认只保存在内存，PC 明确点击后才写入 `artifacts/camera/captures/`。
+- 每次启动生成五分钟随机一次性 Pairing Token；配对成功立即失效并绑定随机 Session。刷新配对会关闭旧 PeerConnection，程序退出会回收 HTTPS / bootstrap 服务和会话。
+- Camera HTTPS 使用项目运行时本地 CA，服务证书包含当前私网 IP SAN 且会重新签发；CA 私钥、服务私钥、Token 和 Capture 均位于 Git 忽略范围。首次证书下载只通过同一 LAN 的最小 HTTP bootstrap 页面提供，API 不暴露目录或调试文件系统。
+- 手机统一页面可在 LIVE / CAPTURE 间切换，无需重启 PC 或安装 App；当前优先验收设备为 Honor Magic4 + Chrome。PC 工作台保留原玄枢 / Jingwei 视觉语言和返回主页入口。
+- 新增真实 aiortc 双端集成测试：一次 PeerConnection 连续传输超过 10 个视频帧，验证接收帧版本递增、实时 FPS、分辨率和 RGB 内容；同一 Session 上传超过 1 MB 的 2400×1800 高质量 JPEG，验证原始字节不变且仅在显式保存后落盘。
+- 当前自动化结果为 84 项 Python 测试及 4 个子测试全部通过；Camera v1 单测 2 项通过，全部前端 JavaScript 语法检查通过。物理 Honor Magic4、实际 Wi-Fi、防火墙和摄像头权限仍需用户现场完成最终硬件验收，不能用本机模拟冒充。
+
 ## 5. 当前验证命令
 
 ```powershell
@@ -252,7 +264,7 @@ Windows 一键启动 XUANSHU LAB 桌面平台：
 
 只需打开旧版公输 Web 工作台时，仍可双击 `Start-Vision2Grasp.cmd`。
 
-真实场景首次使用：固定摄像头，输入尺量桌面区域长宽，点击“四点标定”，再依次点击 `原点、+X、+X+Y、+Y`。只放置 `bottle`。Android 与电脑连接同一 Wi-Fi 后，把手机摄像头应用给出的 HTTP/HTTPS/RTSP 地址粘贴到页面；也可直接选择单张照片。
+Camera v1 首次使用：手机与电脑连接同一 Wi-Fi，进入公输 `REAL SCENE MODE`；先扫描 `LOCAL CA SETUP` 并在 Android 安装本地 CA，重启 Chrome 后扫描 `PAIRING`，允许后置摄像头，再分别使用 `START LIVE` 或 `CAPTURE`。详细 Honor Magic4 操作和排查见根目录 README。
 
 手动启动统一应用：
 
@@ -278,8 +290,9 @@ XUANSHU LAB v0.1 桌面骨架（已完成）
 → Hetu 数据契约与回放骨架
 
 Gongshu 领域路线：
-REAL SCENE GRASP PERCEPTION（软件与集成已完成）
-→ 用户现场 Android 串流验证
+Jingwei Camera v1（软件与自动化集成已完成）
+→ 用户现场 Honor Magic4 LAN Live + LAN Capture 验收
+→ CameraProvider RGB 接入下一阶段 Perception
 → 真实固定相机 5–10 点尺量误差验收
 → Real 候选坐标映射到 MuJoCo
 → 仿真验证结果回写 Real Scene Mode

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f2f7fb" />
     <meta
       name="description"
-      content="公输 Gongshu Robotics 具身智能操作科研工作台，以真实运行数据统一呈现 RGB、深度、点云候选与 MuJoCo 执行状态。"
+      content="Jingwei Camera v1 本地 RGB 采集工作台，通过私有局域网完成手机 WebRTC 实时视频与高清拍照。"
     />
     <title>公输 Gongshu Robotics · 具身智能操作科研工作台</title>
     <link rel="stylesheet" href="./gongshu.css" />
@@ -62,7 +62,7 @@
     <section class="mode-toolbar" aria-label="运行模式与输入设置">
       <div class="mode-switch" role="group" aria-label="运行模式">
         <button id="realModeButton" class="mode-button is-active" type="button" aria-pressed="true">
-          <span>REAL SCENE MODE</span><small>真实场景感知</small>
+          <span>REAL SCENE MODE</span><small>本地 RGB 输入</small>
         </button>
         <button id="simulationModeButton" class="mode-button" type="button" aria-pressed="false">
           <span>SIMULATION MODE</span><small>MuJoCo 固定闭环</small>
@@ -70,27 +70,12 @@
       </div>
 
       <div id="realSceneControls" class="mode-controls real-controls">
-        <button id="usePcCameraButton" class="compact-action" type="button">电脑摄像头</button>
-        <div class="inline-field stream-field">
-          <label for="androidStreamUrl">Android 视频流</label>
-          <input id="androidStreamUrl" type="url" placeholder="http://手机IP:端口/video" autocomplete="off" />
-        </div>
-        <button id="connectAndroidButton" class="compact-action" type="button">连接</button>
-        <label class="compact-action file-action" for="realImageInput">导入照片</label>
-        <input id="realImageInput" type="file" accept="image/*" hidden />
-        <span class="control-divider" aria-hidden="true"></span>
-        <div class="inline-field measure-field">
-          <label for="tableWidthMm">桌面区域宽</label>
-          <input id="tableWidthMm" type="number" min="50" max="5000" step="1" value="600" />
-          <b>mm</b>
-        </div>
-        <div class="inline-field measure-field">
-          <label for="tableHeightMm">桌面区域高</label>
-          <input id="tableHeightMm" type="number" min="50" max="5000" step="1" value="400" />
-          <b>mm</b>
-        </div>
-        <button id="startCalibrationButton" class="compact-action is-primary" type="button">四点标定</button>
-        <span id="calibrationGuide" class="calibration-guide">按原点、+X、+X+Y、+Y 顺序点击 LIVE VISION</span>
+        <span class="source-label">视觉输入 Source</span>
+        <button class="source-option is-active" type="button"><i></i><span>手机扫码 Phone</span></button>
+        <button class="source-option" type="button" disabled><i></i><span>USB Camera</span><small>FUTURE</small></button>
+        <button class="source-option" type="button" disabled><i></i><span>Network Stream</span><small>FUTURE</small></button>
+        <button class="source-option" type="button" disabled><i></i><span>RGB-D Camera</span><small>FUTURE</small></button>
+        <button id="connectPhoneButton" class="compact-action is-primary" type="button">连接手机 Connect Phone</button>
       </div>
 
       <div id="simulationControls" class="mode-controls simulation-controls" hidden>
@@ -99,7 +84,83 @@
       </div>
     </section>
 
-    <main id="realSceneShell" class="real-scene-shell">
+    <main id="cameraInputShell" class="camera-input-shell">
+      <section class="camera-workspace">
+        <header class="camera-workspace-header">
+          <div><span>JINGWEI CAMERA v1</span><h1>CAMERA INPUT</h1><p>Local RGB Acquisition · 本版本不运行视觉算法</p></div>
+          <b id="cameraLiveBadge">WAITING</b>
+        </header>
+
+        <article class="camera-live-panel">
+          <header><span>INPUT 01</span><h2>实时视觉 RGB</h2><b id="cameraFrameState">NO FRAME</b></header>
+          <div class="camera-live-stage">
+            <div id="cameraLiveEmpty" class="camera-live-empty">
+              <strong>等待手机摄像头</strong>
+              <span>扫描右侧二维码，在手机端启动 LAN LIVE</span>
+            </div>
+            <img id="cameraLiveImage" alt="手机局域网实时 RGB 画面" hidden />
+            <div class="camera-frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <footer>
+            <span>RAW RGB · NO PERCEPTION</span>
+            <div><b id="cameraResolution">—</b><b id="cameraFps">— FPS</b><b id="cameraLatency">— ms</b></div>
+          </footer>
+        </article>
+
+        <article class="capture-result-panel">
+          <div class="capture-result-copy">
+            <span>LAN CAPTURE</span><h2>高清拍摄结果</h2>
+            <p id="captureStatus">手机拍摄后，原始高清图片将在这里显示；默认不写入磁盘。</p>
+            <div class="capture-actions">
+              <button id="saveCaptureButton" class="compact-action is-primary" type="button" disabled>保存原图 Save</button>
+              <strong id="captureResolution">NO CAPTURE</strong>
+            </div>
+          </div>
+          <div class="capture-preview"><span id="captureEmpty">等待 CAPTURE</span><img id="captureImage" alt="手机高清拍摄结果" hidden /></div>
+        </article>
+      </section>
+
+      <aside id="pairingPanel" class="camera-side-panel">
+        <section class="vision-input-card">
+          <div class="side-heading"><span>VISION INPUT</span><b id="cameraConnectionState">WAITING</b></div>
+          <h2>Phone WebRTC</h2>
+          <dl>
+            <div><dt>DEVICE</dt><dd id="cameraDevice">Phone Camera</dd></div>
+            <div><dt>CONNECTION</dt><dd id="cameraConnection">● Waiting</dd></div>
+            <div><dt>MODE</dt><dd id="cameraMode">IDLE</dd></div>
+            <div><dt>RESOLUTION</dt><dd id="cameraSideResolution">—</dd></div>
+            <div><dt>FPS</dt><dd id="cameraSideFps">—</dd></div>
+            <div><dt>LATENCY</dt><dd id="cameraSideLatency">—</dd></div>
+          </dl>
+        </section>
+
+        <section class="pairing-card">
+          <div class="side-heading"><span>PAIRING</span><b id="pairingState">WAITING</b></div>
+          <div class="qr-frame"><img id="pairingQr" src="/api/camera/pairing-qr.png" alt="手机摄像头配对二维码" /></div>
+          <dl>
+            <div><dt>LAN ADDRESS</dt><dd id="cameraLanAddress">—</dd></div>
+            <div><dt>PAIRING TOKEN</dt><dd>••••••••</dd></div>
+            <div><dt>DEVICE</dt><dd id="pairedDevice">Not paired</dd></div>
+          </dl>
+          <button id="refreshPairingButton" class="pairing-action" type="button">刷新一次性二维码</button>
+          <details class="certificate-setup">
+            <summary>首次手机设置 · Local CA</summary>
+            <p>首次使用需安装一次玄枢本地 CA。核对证书指纹后，再扫描上方配对二维码。</p>
+            <div class="setup-qr"><img id="setupQr" src="/api/camera/setup-qr.png" alt="本地证书设置二维码" /></div>
+            <code id="certificateFingerprint">—</code>
+          </details>
+        </section>
+
+        <section class="privacy-status-card">
+          <span>PRIVACY</span>
+          <div><b>Cloud Relay</b><strong>OFF</strong></div>
+          <div><b>Cloud Storage</b><strong>OFF</strong></div>
+          <div><b>Internet Upload</b><strong>OFF</strong></div>
+        </section>
+      </aside>
+    </main>
+
+    <main id="realSceneShell" class="real-scene-shell" hidden>
       <section class="real-view-grid" aria-label="真实场景四视图">
         <article class="real-view-card">
           <header><span>VIEW 01</span><h2>LIVE VISION</h2><b id="realLiveState">WAITING</b></header>

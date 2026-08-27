@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#061a35" />
+    <title>JINGWEI CAMERA · Local RGB Acquisition</title>
+    <link rel="stylesheet" href="/assets/phone-camera.css" />
+  </head>
+  <body>
+    <div class="ambient-grid" aria-hidden="true"></div>
+    <header>
+      <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+      <div><strong>JINGWEI CAMERA</strong><small>LOCAL RGB ACQUISITION</small></div>
+      <span id="secureBadge" class="secure-badge">LOCAL HTTPS</span>
+    </header>
+
+    <main>
+      <section class="intro-copy">
+        <span>PHONE SENSOR · LAN ONLY</span>
+        <h1>真实场景采集</h1>
+        <p>手机画面只发送到同一局域网中的玄枢工作站。</p>
+      </section>
+
+      <section class="camera-card">
+        <div class="camera-stage">
+          <video id="cameraPreview" autoplay muted playsinline></video>
+          <div id="cameraEmpty" class="camera-empty">
+            <span class="lens-icon"></span>
+            <strong>后置摄像头 Back Camera</strong>
+            <small>点击启动后，浏览器会请求摄像头权限</small>
+          </div>
+          <div class="recording-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <span id="liveIndicator" class="live-indicator">STANDBY</span>
+        </div>
+
+        <div class="mode-row" role="group" aria-label="采集模式">
+          <button id="liveModeButton" class="mode-button is-active" type="button"><b>LIVE</b><span>实时 RGB</span></button>
+          <button id="captureModeButton" class="mode-button" type="button"><b>CAPTURE</b><span>高清拍摄</span></button>
+        </div>
+
+        <div class="actions">
+          <button id="startCameraButton" class="primary-action" type="button">START CAMERA</button>
+          <button id="startLiveButton" class="secondary-action" type="button" disabled>START LIVE</button>
+          <button id="captureButton" class="secondary-action" type="button" hidden disabled>TAKE PHOTO</button>
+          <button id="stopCameraButton" class="text-action" type="button" disabled>停止摄像头</button>
+          <input id="nativeCaptureInput" type="file" accept="image/*" capture="environment" hidden />
+        </div>
+      </section>
+
+      <section class="status-card" aria-live="polite">
+        <div class="status-heading"><span id="statusDot"></span><strong id="statusText">正在建立本地配对…</strong></div>
+        <dl>
+          <div><dt>DEVICE</dt><dd id="deviceValue">Phone Camera</dd></div>
+          <div><dt>TRANSPORT</dt><dd>Local Network</dd></div>
+          <div><dt>RESOLUTION</dt><dd id="resolutionValue">—</dd></div>
+          <div><dt>FPS</dt><dd id="fpsValue">—</dd></div>
+          <div><dt>LATENCY</dt><dd id="latencyValue">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="privacy-card">
+        <span>PRIVACY STATUS</span>
+        <div><b>Cloud Relay</b><strong>OFF</strong></div>
+        <div><b>Cloud Storage</b><strong>OFF</strong></div>
+        <div><b>Internet Upload</b><strong>OFF</strong></div>
+      </section>
+    </main>
+
+    <div id="notice" class="notice" role="status" hidden></div>
+    <script src="/assets/phone-camera.js"></script>
+  </body>
+</html>

@@ -22,6 +22,7 @@ import webbrowser
 import cv2
 import numpy as np
 
+from vision2grasp.camera import PhoneLANConfig, PhoneLANProvider
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
@@ -39,16 +40,34 @@ MAX_JSON_BODY_BYTES = 20 * 1024 * 1024
 
 
 class Vision2GraspApp:
-    def __init__(self) -> None:
-        segmenter = UltralyticsYOLOSegmenter(
-            UltralyticsSegmenterConfig(target_class_names=("bottle",))
+    def __init__(self, *, phone_camera_config: PhoneLANConfig | None = None) -> None:
+        self.camera = PhoneLANProvider(
+            phone_camera_config or PhoneLANConfig(project_root=PROJECT_ROOT)
         )
-        self.real_scene = RealSceneProcessor(
-            RealScenePerceptionPipeline(segmenter),
-            calibration_path=CALIBRATION_PATH,
-            target_fps=2.0,
-        )
+        self._real_scene: RealSceneProcessor | None = None
+        self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
+
+    @property
+    def real_scene(self) -> RealSceneProcessor:
+        """Lazily retain the legacy perception path without using it for Camera v1."""
+        with self._real_scene_lock:
+            if self._real_scene is None:
+                segmenter = UltralyticsYOLOSegmenter(
+                    UltralyticsSegmenterConfig(target_class_names=("bottle",))
+                )
+                self._real_scene = RealSceneProcessor(
+                    RealScenePerceptionPipeline(segmenter),
+                    calibration_path=CALIBRATION_PATH,
+                    target_fps=2.0,
+                )
+                self._real_scene.start()
+            return self._real_scene
+
+    def stop(self) -> None:
+        self.camera.stop()
+        if self._real_scene is not None:
+            self._real_scene.stop()
 
     def start_camera(self, value: int | str) -> None:
         name = f"camera-{value}" if isinstance(value, int) else "android-network-camera"
@@ -145,9 +164,14 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         quiet_paths = {
             "/api/health",
+            "/api/camera/state",
             "/api/real-scene/state",
         }
-        if path in quiet_paths or path.startswith("/api/real-scene/frame/"):
+        if (
+            path in quiet_paths
+            or path.startswith("/api/camera/live")
+            or path.startswith("/api/real-scene/frame/")
+        ):
             return
         super().log_message(format, *args)
 
@@ -158,8 +182,34 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 {
                     "schema_version": "vision2grasp.app-health/v1",
                     "status": "ok",
+                    "capabilities": [
+                        "camera.phone-lan/v1",
+                        "camera.lan-live/webrtc",
+                        "camera.lan-capture/original",
+                    ],
+                    "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }
             )
+            return
+        if path == "/api/camera/state":
+            self._send_json(self.app.camera.snapshot())
+            return
+        if path == "/api/camera/pairing-qr.png":
+            self._send_binary(self.app.camera.pairing_qr_png(), "image/png")
+            return
+        if path == "/api/camera/setup-qr.png":
+            self._send_binary(self.app.camera.setup_qr_png(), "image/png")
+            return
+        if path == "/api/camera/capture":
+            capture = self.app.camera.latest_capture_bytes()
+            if capture is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "capture not ready")
+                return
+            content_type, binary = capture
+            self._send_binary(binary, content_type)
+            return
+        if path == "/api/camera/live.mjpeg":
+            self._send_camera_mjpeg()
             return
         if path == "/api/real-scene/state":
             self._send_json(self.app.real_scene.snapshot())
@@ -187,6 +237,14 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             body = self._read_json_body()
+            if path == "/api/camera/pairing/refresh":
+                self.app.camera.refresh_pairing()
+                self._send_json({"status": "ok"})
+                return
+            if path == "/api/camera/capture/save":
+                saved = self.app.camera.save_latest_capture()
+                self._send_json({"status": "ok", "path": str(saved)})
+                return
             if path == "/api/real-scene/source":
                 self._set_source(body)
                 return
@@ -264,6 +322,37 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_binary(self, payload: bytes, content_type: str) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_camera_mjpeg(self) -> None:
+        boundary = b"xuanshu-camera-frame"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", f"multipart/x-mixed-replace; boundary={boundary.decode()}")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        revision = -1
+        try:
+            while True:
+                frame = self.app.camera.wait_for_live_jpeg(revision, timeout=2.0)
+                if frame is None:
+                    continue
+                revision, jpeg = frame
+                self.wfile.write(b"--" + boundary + b"\r\n")
+                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                self.wfile.write(f"Content-Length: {len(jpeg)}\r\n\r\n".encode("ascii"))
+                self.wfile.write(jpeg)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
+
 
 class LocalAppServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -274,8 +363,10 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the local Vision2Grasp app.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--camera", default="0", help="Local camera index or stream URL.")
+    parser.add_argument("--camera", default=None, help="Optional legacy camera index or stream URL.")
     parser.add_argument("--no-camera", action="store_true")
+    parser.add_argument("--phone-https-port", type=int, default=8766)
+    parser.add_argument("--phone-bootstrap-port", type=int, default=8767)
     parser.add_argument("--no-browser", action="store_true")
     return parser.parse_args()
 
@@ -287,17 +378,41 @@ def _camera_value(value: str) -> int | str:
 
 def main() -> int:
     args = _parse_args()
-    if not 1 <= args.port <= 65535:
-        raise ValueError("port must be between 1 and 65535")
-    app = Vision2GraspApp()
-    app.real_scene.start()
-    if not args.no_camera:
+    for name, port in {
+        "desktop": args.port,
+        "phone HTTPS": args.phone_https_port,
+        "phone bootstrap": args.phone_bootstrap_port,
+    }.items():
+        if not 1 <= port <= 65535:
+            raise ValueError(f"{name} port must be between 1 and 65535")
+    if len({args.port, args.phone_https_port, args.phone_bootstrap_port}) != 3:
+        raise ValueError("desktop, phone HTTPS, and bootstrap ports must be different")
+    app = Vision2GraspApp(
+        phone_camera_config=PhoneLANConfig(
+            project_root=PROJECT_ROOT,
+            https_port=args.phone_https_port,
+            bootstrap_port=args.phone_bootstrap_port,
+        )
+    )
+    app.camera.start()
+    camera_state = app.camera.snapshot()
+    camera_service = camera_state["service"]
+    print(
+        "Jingwei Camera v1: "
+        f"https://{camera_service['lan_address']}:{camera_service['https_port']} "
+        "(private LAN, no cloud relay)"
+    )
+    if not args.no_camera and args.camera is not None:
         try:
             app.start_camera(_camera_value(args.camera))
         except (RuntimeError, ValueError) as error:
             print(f"camera startup warning: {error}")
     handler = partial(AppRequestHandler, app=app)
-    server = LocalAppServer((args.host, args.port), handler)
+    try:
+        server = LocalAppServer((args.host, args.port), handler)
+    except BaseException:
+        app.stop()
+        raise
     stop_once = threading.Event()
 
     def stop_server(*_: Any) -> None:
@@ -317,7 +432,7 @@ def main() -> int:
         server.serve_forever(poll_interval=0.25)
     finally:
         server.server_close()
-        app.real_scene.stop()
+        app.stop()
     return 0
 
 

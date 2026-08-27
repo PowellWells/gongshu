@@ -9,3 +9,7 @@ build/
 dist/
 artifacts/
 frontend/runtime/
+
+# Runtime-only LAN camera identity and session data.
+*.camera-session
+*.camera-token
