@@ -2,7 +2,7 @@
 
 XUANSHU LAB v0.1 是一个真正可运行的 Windows AI / 机器人科研桌面平台。当前版本优先完成成熟、稳定、可扩展的软件骨架，不宣称一次性完成全部机器人或世界模型算法。
 
-桌面外壳使用 PySide6；现有 Web 工作台通过 `QWebEngineView` 嵌入。桌面层统一负责 Workspace 注册、导航、本地服务生命周期、状态、日志、单实例和窗口偏好，各研究域继续独立演进。
+桌面容器使用 PySide6，但所有用户可见的产品界面仍由原版 HTML / CSS / JavaScript 提供。`QWebEngineView` 铺满 Windows 窗口，直接载入原开机动画、玄枢门户和各 Workspace；PySide6 只负责窗口、本地服务生命周期、日志、单实例和后续打包。
 
 ## 一键启动
 
@@ -12,7 +12,7 @@ XUANSHU LAB v0.1 是一个真正可运行的 Windows AI / 机器人科研桌面�
 
 1. 使用项目虚拟环境启动 PySide6 桌面程序；
 2. 启动或复用 `127.0.0.1:8765` 上兼容的本地科研服务；
-3. 打开 XUANSHU LAB 总览，并在桌面窗口内运行 Workspace；
+3. 播放原版 HTML 开机动画，进入原版玄枢门户，并在同一窗口内运行 Workspace；
 4. 再次双击时唤醒已有窗口，不重复启动平台实例。
 
 原 [Start-Vision2Grasp.cmd](Start-Vision2Grasp.cmd) 继续保留，供只启动公输 Web 工作台时使用。
@@ -21,24 +21,28 @@ XUANSHU LAB v0.1 是一个真正可运行的 Windows AI / 机器人科研桌面�
 
 - **经纬 · Jingwei Moment**：可运行的本地图像理解工作台。
 - **公输 · Gongshu Vision2Grasp**：可运行的真实场景优先、MuJoCo 仿真验证机器人抓取工作台；当前真实目标固定为 `bottle`。
-- **河图 · Hetu Preview**：世界模型软件预告页，展示未来的空间表征、时序预测和仿真桥接模块；不运行未完成模型，不显示虚假结果。
+- **河图 · Hetu Preview**：沿用原门户中的世界模型预告入口；不运行未完成模型，不显示虚假结果。
+
+经纬和公输页面都提供“返回玄枢主页”入口；桌面层另保留 `Alt+Home` 作为备用返回快捷键。`F5` 或 `Ctrl+R` 刷新当前页面，`Ctrl+Shift+L` 临时显示或隐藏本地运行日志。
 
 ## 软件架构
 
 ```text
 Start-XUANSHU-LAB.cmd
 → run_xuanshu_lab.py
-→ xuanshu_lab.app（启动、单实例、Splash）
-→ xuanshu_lab.shell（窗口、导航、日志、状态）
-→ WorkspaceRegistry
-   ├─ Jingwei Moment   → QWebEngineView → /apps/moment/
-   ├─ Gongshu Grasp    → QWebEngineView → /apps/gongshu/
-   └─ Hetu Preview     → 原生 PySide6 预告页
+→ xuanshu_lab.app（启动、单实例）
+→ xuanshu_lab.shell（Windows 窗口、隐藏日志、快捷键）
+→ 全窗口 QWebEngineView → /index.html
+   ├─ 原版 HTML 开机动画
+   ├─ 原版玄枢门户
+   ├─ Jingwei Moment → /apps/moment/
+   ├─ Gongshu Grasp  → /apps/gongshu/
+   └─ Hetu Preview   → 原门户预告入口
 → LocalServiceController
 → run_vision2grasp_app.py / 本地 API / 现有算法模块
 ```
 
-Workspace 的框架无关契约位于 `src/xuanshu_lab/contracts.py`，默认注册表位于 `src/xuanshu_lab/registry.py`。新增研究域应注册新的 `WorkspaceSpec` 并提供对应页面，不应把领域算法写进桌面 Shell。
+Workspace 的框架无关契约位于 `src/xuanshu_lab/contracts.py`，默认注册表位于 `src/xuanshu_lab/registry.py`。新增研究域应注册新的 `WorkspaceSpec` 并在门户提供对应前端入口，不应把领域 UI 或算法写进桌面 Shell。
 
 ## 开发运行
 

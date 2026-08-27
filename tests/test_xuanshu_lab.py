@@ -13,7 +13,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --no-sandbox")
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QUrl
 from PySide6.QtWidgets import QApplication
 
 from xuanshu_lab.contracts import WorkspaceKind, WorkspaceSpec, WorkspaceStatus
@@ -117,7 +117,7 @@ class DesktopShellTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_shell_exposes_overview_and_three_registered_pages(self) -> None:
+    def test_shell_hosts_the_original_portal_as_its_only_visible_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             settings = QSettings(
                 str(Path(directory) / "desktop-test.ini"),
@@ -130,15 +130,34 @@ class DesktopShellTests(unittest.TestCase):
                 settings=settings,
             )
             try:
-                self.assertEqual(window.content_stack.count(), 4)
-                self.assertEqual(set(window._pages), {"overview", "moment", "gongshu", "hetu"})
-                window.show_page("hetu")
-                self.assertIn("Hetu", window.page_title.text())
-                self.assertFalse(window.reload_button.isEnabled())
-                window.show_page("moment")
-                self.assertTrue(window.reload_button.isEnabled())
+                self.assertIs(window.centralWidget(), window.web_view)
+                self.assertEqual(window.web_view.objectName(), "xuanshuPortal")
+                self.assertEqual(window.portal_url, "http://127.0.0.1:8765/index.html")
+                self.assertEqual(window.web_view.url().toString(), window.portal_url)
+                self.assertFalse(window.log_dock.isVisible())
+                self.assertEqual(window.home_action.shortcut().toString(), "Alt+Home")
+                self.assertEqual(window.logs_action.shortcut().toString(), "Ctrl+Shift+L")
+                self.assertTrue(window.service_ready)
+
+                window.web_view.setUrl(QUrl("http://127.0.0.1:8765/apps/moment/index.html"))
+                window.go_home()
+                self.assertEqual(window.web_view.url().toString(), window.portal_url)
             finally:
                 window.close()
+
+
+class FrontendPortalTests(unittest.TestCase):
+    def test_original_intro_and_workspace_routes_remain_the_visible_entry(self) -> None:
+        portal = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        moment = (PROJECT_ROOT / "frontend" / "apps" / "moment" / "index.html").read_text(encoding="utf-8")
+        gongshu = (PROJECT_ROOT / "frontend" / "apps" / "gongshu" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="introFrame"', portal)
+        self.assertIn('src="./assets/intro/intro.html"', portal)
+        self.assertIn('href="./apps/moment/index.html"', portal)
+        self.assertIn('href="./apps/gongshu/index.html"', portal)
+        self.assertIn('href="../../index.html" aria-label="返回玄枢主页"', moment)
+        self.assertIn('href="../../index.html" title="返回玄枢门户"', gongshu)
 
 
 if __name__ == "__main__":

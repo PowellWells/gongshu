@@ -213,16 +213,16 @@ SHA-256：7e43c9fc4ac3b658bd7daf2e916d078ae6051bc21b472cd229184f48fe624585
 ### 阶段9：XUANSHU LAB Windows 桌面平台 v0.1 — PASS
 
 - 新增 PySide6 6.8.3 / Qt 6.8.3 桌面层，主入口为 `run_xuanshu_lab.py`，一键入口为根目录 `Start-XUANSHU-LAB.cmd`。
-- 桌面采用混合架构：PySide6 管理原生窗口、导航、Workspace 生命周期、运行状态、日志、偏好和单实例；既有 Moment 与 Gongshu 页面通过 `QWebEngineView` 嵌入，不重复实现领域 UI 或算法。
+- 桌面采用 HTML-first 混合架构：PySide6 只管理 Windows 窗口、本地服务、日志、窗口偏好和单实例；单个 `QWebEngineView` 铺满窗口，原样载入既有 HTML 开机动画、玄枢门户、Moment 与 Gongshu，不重复实现或替换领域 UI。
 - `xuanshu_lab.contracts.WorkspaceSpec` 和 `WorkspaceRegistry` 冻结可扩展注册边界。默认按顺序注册 `moment`、`gongshu`、`hetu`，重复 ID、非法本地资源路径和缺失 Web route 会被拒绝。
-- 研究总览提供三张成熟 Workspace 卡片和平台状态；左侧导航与顶部状态条在四个页面间保持一致。
+- 原版玄枢门户是唯一桌面主页；此前新增的 PySide 研究总览、左侧导航、顶部状态条和原生 Hetu 页面均不再参与运行界面。
 - Jingwei Moment 与 Gongshu Vision2Grasp 均已在真实 Windows PySide6 窗口内成功加载；Gongshu 真实场景持续取得本地摄像头状态。
-- Hetu 是原生 PySide6 预告页，展示 Spatial State、Temporal Forecast、Simulation Bridge 和未来路线；明确写明 `PREVIEW ONLY / NO MODEL EXECUTION`。
+- Hetu 沿用原门户的规划中预告入口，不跳转到不存在的系统，也不展示虚假模型结果。
 - `LocalServiceController` 只复用符合 `vision2grasp.app-health/v1` 的服务；未知程序占用端口时拒绝覆盖。桌面自行启动的服务会在窗口关闭时回收，复用的外部服务不会被终止。
-- 平台包含可折叠运行日志、持久化窗口尺寸和上次 Workspace、启动 Splash、统一 About 页和单实例唤醒。
+- 平台包含快捷键控制的运行日志、持久化窗口尺寸和单实例唤醒；`Alt+Home` 返回原门户，`F5` / `Ctrl+R` 刷新，`Ctrl+Shift+L` 显示日志。原版 HTML 动画取代 PySide Splash，启动与返回视觉均由前端负责。
 - 后台服务对 health、真实状态和 JPEG 帧轮询日志做降噪，避免桌面长期运行时日志文件因正常轮询持续膨胀。
-- computer-use 真实窗口验收覆盖总览、三 Workspace、嵌入式 WebEngine、运行日志和第二次启动唤醒；窗口在 1460×900 和最小 1120×720 约束下可用。
-- 最终全量检查为 81 项 Python 测试全部通过，`compileall`、`pip check`、全部前端 JavaScript 语法检查和 Moment Node 测试通过。
+- HTML-first 修正版已在真实 Windows PySide6 窗口中确认：普通系统标题栏下只有原版玄枢门户，没有原生侧栏、顶部栏或状态栏。更细的视觉验收由用户自行完成。
+- 最终全量检查为 82 项 Python 测试全部通过，`compileall`、`pip check`、全部前端 JavaScript 语法检查和 Moment Node 测试通过。
 - PySide6 / Qt 开源分发涉及 LGPLv3，WebEngine 同时涉及 Chromium 第三方许可证；未来打包 EXE 前必须完成分发合规审计。当前 v0.1 交付为项目虚拟环境加双击启动器，不冒充已完成安装包。
 
 ## 5. 当前验证命令
@@ -248,7 +248,7 @@ Windows 一键启动 XUANSHU LAB 桌面平台：
 双击 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-启动器使用项目虚拟环境打开 PySide6 桌面窗口，启动或复用端口 `8765` 上的统一本地服务。再次双击会唤醒已有窗口。桌面内可以进入 Jingwei、Gongshu 和 Hetu；Hetu 只作为预告页。
+启动器使用项目虚拟环境打开 PySide6 桌面窗口，启动或复用端口 `8765` 上的统一本地服务。再次双击会唤醒已有窗口。窗口会播放原版 HTML 开机动画并进入原版玄枢门户；经纬、公输通过前端入口进入并可返回主页，Hetu 保持门户预告状态。
 
 只需打开旧版公输 Web 工作台时，仍可双击 `Start-Vision2Grasp.cmd`。
 
