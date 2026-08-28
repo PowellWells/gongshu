@@ -1,0 +1,93 @@
+[project]
+brand = "Gongshu Robotics"
+seed = 7
+
+[simulation]
+environment = "Lift"
+robot = "Panda"
+controller = "OSC_POSE"
+mujoco_version = "3.9.0"
+robosuite_version = "1.5.2"
+
+[camera]
+name = "agentview"
+width = 640
+height = 480
+provides_rgb = true
+provides_depth = true
+
+[perception]
+backend = "ultralytics"
+weights = "artifacts/models/yolo11n-seg.pt"
+weights_sha256 = "55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152"
+confidence_threshold = 0.50
+mask_threshold = 0.50
+image_size = 640
+device = "cpu"
+target_classes = ["bottle", "cup"]
+training_enabled = false
+
+[geometry]
+minimum_valid_depth_ratio = 0.50
+minimum_points = 30
+maximum_points = 4096
+outlier_mad_scale = 3.5
+minimum_depth_band_m = 0.01
+
+[grasp]
+strategy = "top_grasp_pca"
+use_simulation_truth = false
+minimum_points = 30
+pca_inlier_quantile = 0.98
+extent_lower_quantile = 0.02
+extent_upper_quantile = 0.98
+circularity_ratio_threshold = 0.85
+minimum_planar_variance_m2 = 1e-8
+minimum_gripper_width_m = 0.01
+maximum_gripper_width_m = 0.08
+width_clearance_m = 0.008
+point_support_reference = 1000
+upright_axisymmetric_class_names = ["bottle", "cup"]
+upright_height_to_width_ratio = 1.5
+upright_grasp_height_quantile = 0.75
+
+[control]
+backend = "panda_osc_pose"
+use_simulation_truth = false
+minimum_gripper_width_m = 0.01
+maximum_gripper_width_m = 0.08
+workspace_min_m = [-0.45, -0.45, 0.82]
+workspace_max_m = [0.45, 0.45, 1.20]
+minimum_downward_alignment = 0.90
+pregrasp_offset_m = 0.10
+lift_offset_m = 0.12
+position_tolerance_m = 0.008
+orientation_tolerance_rad = 0.08
+maximum_translation_step_m = 0.02
+maximum_rotation_step_rad = 0.15
+osc_translation_scale_m = 0.05
+osc_rotation_scale_rad = 0.50
+home_open_steps = 6
+pregrasp_max_steps = 80
+descend_max_steps = 80
+close_steps = 12
+lift_max_steps = 80
+return_home_max_steps = 100
+
+[pipeline]
+scene = "BottleLift"
+camera_name = "frontview"
+target_class_priority = ["bottle", "cup"]
+evaluation_object_name = "bottle"
+minimum_vertical_displacement_m = 0.03
+
+[real_scene]
+architecture = "real_world_first_simulation_validated"
+target_class = "bottle"
+default_camera_source = 0
+frame_width = 640
+frame_height = 480
+processing_fps = 2.0
+calibration_method = "manual_four_point_ruler"
+candidate_count = 3
+metric_depth_available = false
