@@ -7,8 +7,8 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 ## 当前实现范围
 
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
-- **Gongshu Vision2Grasp**：已有分割、几何定位、抓取候选、Panda 控制接口、MuJoCo / robosuite 仿真与结果导出代码。
-- **Jingwei Camera v1**：在 Gongshu 的真实场景页提供手机 LAN 实时 RGB 输入与高清拍照上传。
+- **Gongshu Workspace v0.3**：统一四视图机器人抓取主工作台，常驻 Live RGB、Spatial Perception、Grasp Planning 与 MuJoCo Validation，并由集中式 Pipeline State 驱动主视图。
+- **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
 
@@ -40,11 +40,11 @@ YOLO → Depth → Grasp → MuJoCo
 ### 手机首次连接
 
 1. 让手机与电脑连接同一个普通 Wi-Fi，避免开启客户端隔离的访客网络，并临时关闭手机 VPN。
-2. 启动 XUANSHU LAB，进入 Gongshu 并保持 `REAL SCENE MODE`。
+2. 启动 XUANSHU LAB，从门户进入 Gongshu；页面默认直接显示四视图 Workspace。
 3. Windows 首次询问防火墙权限时，只允许“专用网络”。
 4. 用手机扫描 `LOCAL CA SETUP` 二维码，安装本地 CA，并核对手机页面与 PC 显示的 SHA-256 指纹。
 5. 完全关闭并重新打开 Chrome，再扫描 `PAIRING` 二维码。
-6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`。
+6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`；真实画面会进入 `01 实时视觉 Live RGB`。
 7. 如需高清照片，切换到 `CAPTURE`；PC 端收到预览后，再由用户决定是否保存原图。
 
 配对页默认使用 TCP `8766`（HTTPS）和 `8767`（首次证书设置）；WebRTC 会在同一私网内协商临时 UDP 端口。LAN IP 改变后，服务会在下次启动时为当前私网地址重新签发服务端证书。
@@ -90,6 +90,8 @@ YOLO 权重不随 Git 仓库发布。需要运行相关离线算法时，请从�
 ```
 
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
+
+进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。当前“开始抓取”只从已连接的 Phone Live RGB 获取真实场景快照，并停留在 `SPATIAL_ANALYSIS / WAITING`，不会伪造尚未接入的 Depth、XYZ、抓取或仿真数据。扫码、证书、连接状态与高清 Capture 位于 `连接设置 Camera Setup`；原离线仿真和公开运行目录读取位于 `历史运行 History` 次级入口。
 
 ## 项目结构
 

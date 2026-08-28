@@ -3,17 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f2f7fb" />
-    <meta
-      name="description"
-      content="Jingwei Camera v1 本地 RGB 采集工作台，通过私有局域网完成手机 WebRTC 实时视频与高清拍照。"
-    />
-    <title>公输 Gongshu Robotics · 具身智能操作科研工作台</title>
+    <meta name="theme-color" content="#edf3f8" />
+    <meta name="description" content="公输 Gongshu 机器人抓取主工作台：实时视觉、空间感知、抓取规划与 MuJoCo 仿真验证。" />
+    <title>公输 Gongshu · 机器人抓取主工作台</title>
     <link rel="stylesheet" href="./gongshu.css" />
+    <link rel="stylesheet" href="./workspace.css" />
   </head>
-  <body>
-    <header class="grasp-header">
-      <div class="brand-cluster">
+  <body class="workspace-app">
+    <header class="workspace-header">
+      <div class="workspace-brand">
         <a class="brand" href="../../index.html" aria-label="返回玄枢 XUANSHU AI 门户">
           <img src="../portal/assets/xuanshu-orbit.png" alt="" />
           <span><strong>玄枢</strong><small>XUANSHU AI</small></span>
@@ -21,451 +19,246 @@
         <span class="brand-divider" aria-hidden="true"></span>
         <div class="product-name">
           <strong>公输 Gongshu</strong>
-          <span>ROBOTICS · 具身智能操作平台</span>
+          <span>机器人抓取主工作台 · ROBOT GRASP WORKSPACE</span>
         </div>
       </div>
 
-      <div class="run-strip" aria-label="当前运行状态">
-        <div class="run-identity">
-          <span>RUN ID</span>
-          <strong id="runId">未载入</strong>
-        </div>
-        <div class="run-identity timestamp-identity">
-          <span>TIMESTAMP</span>
-          <strong id="runTimestamp">—</strong>
-        </div>
-        <div id="connectionBadge" class="connection-badge is-disconnected" aria-live="polite">
-          <i aria-hidden="true"></i>
-          <span>等待真实数据</span>
-        </div>
+      <div class="pipeline-summary" aria-live="polite">
+        <span>流程状态 Pipeline State</span>
+        <strong id="pipelineBadge">LIVE</strong>
+        <small id="pipelineMessage">实时视觉已就绪，等待真实输入</small>
       </div>
 
-      <div class="header-actions">
-        <button id="contractButton" class="header-button is-secondary simulation-only" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M14 3v5h5M10 12h6M10 16h6"/></svg>
-          <span>数据格式</span>
-        </button>
-        <label class="header-button is-primary simulation-only" for="snapshotInput">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 15v5h14v-5"/></svg>
-          <span>导入历史结果</span>
-        </label>
-        <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
-        <button id="clearButton" class="icon-button simulation-only" type="button" title="清空当前运行数据" aria-label="清空当前运行数据">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v8M12 10v8M16 10v8M7 7l1 14h8l1-14"/></svg>
-        </button>
+      <div class="workspace-header-actions">
+        <button id="legacyButton" class="quiet-button" type="button">历史运行 History</button>
+        <button id="cameraSetupButton" class="quiet-button" type="button">连接设置 Camera Setup</button>
         <a class="icon-button" href="../../index.html" title="返回玄枢门户" aria-label="返回玄枢门户">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
         </a>
       </div>
     </header>
 
-    <section class="mode-toolbar" aria-label="运行模式与输入设置">
-      <div class="mode-switch" role="group" aria-label="运行模式">
-        <button id="realModeButton" class="mode-button is-active" type="button" aria-pressed="true">
-          <span>REAL SCENE MODE</span><small>本地 RGB 输入</small>
-        </button>
-        <button id="simulationModeButton" class="mode-button" type="button" aria-pressed="false">
-          <span>SIMULATION MODE</span><small>MuJoCo 固定闭环</small>
-        </button>
-      </div>
-
-      <div id="realSceneControls" class="mode-controls real-controls">
-        <span class="source-label">视觉输入 Source</span>
-        <button class="source-option is-active" type="button"><i></i><span>手机扫码 Phone</span></button>
-        <button class="source-option" type="button" disabled><i></i><span>USB Camera</span><small>FUTURE</small></button>
-        <button class="source-option" type="button" disabled><i></i><span>Network Stream</span><small>FUTURE</small></button>
-        <button class="source-option" type="button" disabled><i></i><span>RGB-D Camera</span><small>FUTURE</small></button>
-        <button id="connectPhoneButton" class="compact-action is-primary" type="button">连接手机 Connect Phone</button>
-      </div>
-
-      <div id="simulationControls" class="mode-controls simulation-controls" hidden>
-        <button id="runSimulationButton" class="compact-action is-primary" type="button">运行单瓶仿真</button>
-        <span>执行固定种子 RGB-D → YOLO → 抓取 → Lift 闭环，并自动载入四视图。</span>
-      </div>
+    <section class="workspace-toolbar" aria-label="抓取任务控制栏">
+      <label class="control-field">
+        <span>视觉输入 Source</span>
+        <select id="sourceSelect">
+          <option value="phone">手机 Phone</option>
+          <option value="usb">USB 相机 USB Camera</option>
+          <option value="network">网络流 Network Stream</option>
+          <option value="rgbd">RGB-D 相机 RGB-D Camera</option>
+        </select>
+      </label>
+      <label class="control-field">
+        <span>测试条件 Condition</span>
+        <select id="conditionSelect">
+          <option value="normal">正常 Normal</option>
+          <option value="low-light">低光 Low-Light</option>
+          <option value="blur">模糊 Blur</option>
+          <option value="occlusion">遮挡 Occlusion</option>
+        </select>
+      </label>
+      <label class="control-field">
+        <span>机器人 Robot</span>
+        <select id="robotSelect">
+          <option value="panda">Franka Panda</option>
+          <option value="ur5e">UR5e</option>
+        </select>
+      </label>
+      <label class="control-field view-mode-field">
+        <span>视图模式 View Mode</span>
+        <select id="viewModeSelect">
+          <option value="auto">自动跟随 Auto Follow</option>
+          <option value="manual">手动固定 Manual Pin</option>
+        </select>
+      </label>
+      <button id="startGraspButton" class="start-grasp-button" type="button" disabled>
+        <span>开始抓取</span><small>Start Grasp</small>
+      </button>
     </section>
 
-    <main id="cameraInputShell" class="camera-input-shell">
-      <section class="camera-workspace">
-        <header class="camera-workspace-header">
-          <div><span>JINGWEI CAMERA v1</span><h1>CAMERA INPUT</h1><p>Local RGB Acquisition · 本版本不运行视觉算法</p></div>
-          <b id="cameraLiveBadge">WAITING</b>
-        </header>
-
-        <article class="camera-live-panel">
-          <header><span>INPUT 01</span><h2>实时视觉 RGB</h2><b id="cameraFrameState">NO FRAME</b></header>
-          <div class="camera-live-stage">
-            <div id="cameraLiveEmpty" class="camera-live-empty">
-              <strong>等待手机摄像头</strong>
-              <span>扫描右侧二维码，在手机端启动 LAN LIVE</span>
+    <main class="workspace-shell">
+      <section id="viewGrid" class="workspace-view-grid" aria-label="Vision-to-Grasp 四视图 Workspace">
+        <article id="livePanel" class="workspace-view is-primary" data-view="live" data-slot="primary">
+          <header class="workspace-view-header">
+            <div><span>01</span><h2>实时视觉 <b>Live RGB</b></h2></div>
+            <div class="view-header-actions">
+              <strong id="liveState" class="module-state">DISCONNECTED</strong>
+              <button class="pin-view-button" type="button" data-pin-view="live" aria-label="固定实时视觉为主视图">Pin</button>
             </div>
-            <img id="cameraLiveImage" alt="手机局域网实时 RGB 画面" hidden />
-            <div class="camera-frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          </header>
+          <div class="workspace-view-stage live-rgb-stage">
+            <div id="liveEmpty" class="workspace-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="9" width="36" height="30" rx="5"/><circle cx="24" cy="24" r="7"/><path d="M15 9v6M33 9v6"/></svg>
+              <strong>等待视觉输入 Waiting for Source</strong>
+              <span>连接手机后，局域网 WebRTC 真实画面将在此显示</span>
+              <button type="button" data-open-camera-setup>打开连接设置 Camera Setup</button>
+            </div>
+            <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
+            <div class="frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           </div>
-          <footer>
-            <span>RAW RGB · NO PERCEPTION</span>
-            <div><b id="cameraResolution">—</b><b id="cameraFps">— FPS</b><b id="cameraLatency">— ms</b></div>
+          <footer class="workspace-view-footer">
+            <span id="liveSourceLabel">手机 Phone · 等待连接</span>
+            <div><b id="liveResolution">—</b><b id="liveConnection">Disconnected</b></div>
           </footer>
         </article>
 
-        <article class="capture-result-panel">
-          <div class="capture-result-copy">
-            <span>LAN CAPTURE</span><h2>高清拍摄结果</h2>
-            <p id="captureStatus">手机拍摄后，原始高清图片将在这里显示；默认不写入磁盘。</p>
-            <div class="capture-actions">
-              <button id="saveCaptureButton" class="compact-action is-primary" type="button" disabled>保存原图 Save</button>
-              <strong id="captureResolution">NO CAPTURE</strong>
-            </div>
-          </div>
-          <div class="capture-preview"><span id="captureEmpty">等待 CAPTURE</span><img id="captureImage" alt="手机高清拍摄结果" hidden /></div>
-        </article>
-      </section>
-
-      <aside id="pairingPanel" class="camera-side-panel">
-        <section class="vision-input-card">
-          <div class="side-heading"><span>VISION INPUT</span><b id="cameraConnectionState">WAITING</b></div>
-          <h2>Phone WebRTC</h2>
-          <dl>
-            <div><dt>DEVICE</dt><dd id="cameraDevice">Phone Camera</dd></div>
-            <div><dt>CONNECTION</dt><dd id="cameraConnection">● Waiting</dd></div>
-            <div><dt>MODE</dt><dd id="cameraMode">IDLE</dd></div>
-            <div><dt>RESOLUTION</dt><dd id="cameraSideResolution">—</dd></div>
-            <div><dt>FPS</dt><dd id="cameraSideFps">—</dd></div>
-            <div><dt>LATENCY</dt><dd id="cameraSideLatency">—</dd></div>
-          </dl>
-        </section>
-
-        <section class="pairing-card">
-          <div class="side-heading"><span>PAIRING</span><b id="pairingState">WAITING</b></div>
-          <div class="qr-frame"><img id="pairingQr" src="/api/camera/pairing-qr.png" alt="手机摄像头配对二维码" /></div>
-          <dl>
-            <div><dt>LAN ADDRESS</dt><dd id="cameraLanAddress">—</dd></div>
-            <div><dt>PAIRING TOKEN</dt><dd>••••••••</dd></div>
-            <div><dt>DEVICE</dt><dd id="pairedDevice">Not paired</dd></div>
-          </dl>
-          <button id="refreshPairingButton" class="pairing-action" type="button">刷新一次性二维码</button>
-          <details class="certificate-setup">
-            <summary>首次手机设置 · Local CA</summary>
-            <p>首次使用需安装一次玄枢本地 CA。核对证书指纹后，再扫描上方配对二维码。</p>
-            <div class="setup-qr"><img id="setupQr" src="/api/camera/setup-qr.png" alt="本地证书设置二维码" /></div>
-            <code id="certificateFingerprint">—</code>
-          </details>
-        </section>
-
-        <section class="privacy-status-card">
-          <span>PRIVACY</span>
-          <div><b>Cloud Relay</b><strong>OFF</strong></div>
-          <div><b>Cloud Storage</b><strong>OFF</strong></div>
-          <div><b>Internet Upload</b><strong>OFF</strong></div>
-        </section>
-      </aside>
-    </main>
-
-    <main id="realSceneShell" class="real-scene-shell" hidden>
-      <section class="real-view-grid" aria-label="真实场景四视图">
-        <article class="real-view-card">
-          <header><span>VIEW 01</span><h2>LIVE VISION</h2><b id="realLiveState">WAITING</b></header>
-          <div id="realLiveStage" class="real-media-stage is-clickable">
-            <div class="real-empty"><strong>等待真实摄像头</strong><span>电脑摄像头、Android 视频流或单张照片</span></div>
-            <img id="realLiveImage" alt="真实场景 YOLO 检测与 Mask" hidden />
-            <div id="calibrationMarkers" class="calibration-markers" aria-hidden="true"></div>
-          </div>
-          <footer><span>VISION · YOLO11N-SEG</span><strong id="realSourceLabel">NO SOURCE</strong></footer>
-        </article>
-
-        <article class="real-view-card">
-          <header><span>VIEW 02</span><h2>SPATIAL PERCEPTION</h2><b id="realSpatialState">UNCALIBRATED</b></header>
-          <div class="real-media-stage">
-            <div class="real-empty"><strong>等待桌面标定</strong><span>尺子测量 + 四点单应映射恢复桌面 XY</span></div>
-            <img id="realSpatialImage" alt="桌面坐标与目标位置" hidden />
-          </div>
-          <footer><span>MEASURED · TABLE XY</span><strong id="calibrationStatus">NOT READY</strong></footer>
-        </article>
-
-        <article class="real-view-card">
-          <header><span>VIEW 03</span><h2>GRASP PLANNER</h2><b id="realGraspState">WAITING</b></header>
-          <div class="real-media-stage">
-            <div class="real-empty"><strong>等待抓取候选</strong><span>Mask 几何、PCA 方向和双指夹爪 Overlay</span></div>
-            <img id="realGraspImage" alt="真实画面抓取姿态叠加" hidden />
-          </div>
-          <footer><span>ESTIMATED · TOP GRASP</span><strong id="realCandidateSummary">0 CANDIDATES</strong></footer>
-        </article>
-
-        <article class="real-view-card validation-card">
-          <header><span>VIEW 04</span><h2>SIM VALIDATION</h2><b id="realValidationState">NOT RUN</b></header>
-          <div class="validation-matrix">
-            <div><span>Reachability</span><strong id="validationReachability">NOT RUN</strong></div>
-            <div><span>Collision</span><strong id="validationCollision">NOT RUN</strong></div>
-            <div><span>Gripper Width</span><strong id="validationWidth">NOT RUN</strong></div>
-            <div><span>Lift Test</span><strong id="validationLift">NOT RUN</strong></div>
-            <section><small>FINAL RESULT</small><strong id="validationFinal">NOT RUN</strong></section>
-          </div>
-          <footer><span>SIMULATED · MUJOCO</span><strong>VALIDATOR PENDING</strong></footer>
-        </article>
-      </section>
-
-      <aside class="real-inspector" aria-label="真实场景感知状态">
-        <header><span>REAL SCENE INSPECTOR</span><h1>真实抓取感知</h1><b id="realPhaseBadge">ACQUIRE</b></header>
-        <section class="real-status-card">
-          <small>SYSTEM MESSAGE</small>
-          <strong id="realStatusMessage">等待真实输入源</strong>
-        </section>
-        <section class="real-data-section">
-          <h2><span>01</span>目标与视觉</h2>
-          <dl>
-            <div><dt>Target</dt><dd id="realTargetClass">—</dd></div>
-            <div><dt>Confidence · Vision</dt><dd id="realConfidence">—</dd></div>
-            <div><dt>Table X · Measured</dt><dd id="realTableX">—</dd></div>
-            <div><dt>Table Y · Measured</dt><dd id="realTableY">—</dd></div>
-            <div><dt>Yaw · Estimated</dt><dd id="realYaw">—</dd></div>
-            <div><dt>Width · Estimated</dt><dd id="realWidth">—</dd></div>
-          </dl>
-        </section>
-        <section class="real-data-section candidate-inspector">
-          <h2><span>02</span>抓取候选</h2>
-          <div id="realCandidateList" class="real-candidate-list"><p>等待标定和 bottle 检测</p></div>
-        </section>
-        <section class="truth-legend">
-          <h2>DATA PROVENANCE</h2>
-          <p><i class="is-measured"></i>Measured：尺子与桌面标定</p>
-          <p><i class="is-estimated"></i>Estimated：Mask 几何估计</p>
-          <p><i class="is-simulated"></i>Simulated：MuJoCo 验证</p>
-        </section>
-      </aside>
-    </main>
-
-    <main id="simulationShell" class="grasp-shell" hidden>
-      <section id="visionWorkspace" class="vision-workspace" aria-label="Gongshu Robotics 四视图">
-        <article class="view-panel" data-view="rgb">
-          <header class="view-header">
-            <div>
-              <span class="view-index">VIEW 01</span>
-              <h2>RGB 检测</h2>
-            </div>
-            <div class="view-tools">
-              <span id="rgbState" class="view-state">NO DATA</span>
-              <button class="focus-button" type="button" data-focus-view="rgb" aria-label="放大 RGB 检测视图" title="聚焦视图">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-              </button>
+        <article id="spatialPanel" class="workspace-view" data-view="spatial" data-slot="1">
+          <header class="workspace-view-header">
+            <div><span>02</span><h2>空间感知 <b>Spatial Perception</b></h2></div>
+            <div class="view-header-actions">
+              <strong id="spatialState" class="module-state">WAITING</strong>
+              <button class="pin-view-button" type="button" data-pin-view="spatial" aria-label="固定空间感知为主视图">Pin</button>
             </div>
           </header>
-          <div class="view-stage rgb-stage">
-            <div class="stage-grid" aria-hidden="true"></div>
-            <div class="view-empty">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="31" rx="5"/><circle cx="24" cy="23" r="6"/><path d="M14 8v7M34 8v7M14 32v7M34 32v7"/></svg>
-              <strong>等待 RGB 数据</strong>
-              <span>仅呈现真实检测画面与目标框</span>
+          <div class="workspace-view-stage pending-stage">
+            <img id="spatialSnapshot" class="workspace-media snapshot-media" alt="真实 RGB 场景快照，尚未产生空间分析结果" hidden />
+            <div id="spatialEmpty" class="workspace-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="m8 30 16-18 16 18-16 8z"/><path d="M8 30v6l16 8 16-8v-6M24 12v26"/></svg>
+              <strong>等待空间分析 WAITING</strong>
+              <span>模块未接入 Module Pending</span>
             </div>
-            <img class="view-image" alt="真实 RGB 检测画面" hidden />
-            <video class="view-video" muted playsinline controls hidden></video>
-            <div id="rgbTargetBox" class="rgb-target-box" hidden><span>TARGET</span></div>
+            <div id="spatialPendingOverlay" class="pending-overlay" hidden>
+              <strong>场景快照 Scene Snapshot</strong>
+              <span>空间分析模块未接入 · WAITING</span>
+            </div>
           </div>
-          <footer class="view-footer"><span>YOLO DETECTION</span><strong id="rgbSource">数据源未连接</strong></footer>
+          <footer class="workspace-view-footer"><span>输入接口 SpatialInput</span><strong id="spatialFooter">NOT AVAILABLE</strong></footer>
         </article>
 
-        <article class="view-panel" data-view="depth">
-          <header class="view-header">
-            <div>
-              <span class="view-index">VIEW 02</span>
-              <h2>Depth 热力图</h2>
-            </div>
-            <div class="view-tools">
-              <span id="depthState" class="view-state">NO DATA</span>
-              <button class="focus-button" type="button" data-focus-view="depth" aria-label="放大 Depth 热力图" title="聚焦视图">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-              </button>
+        <article id="graspPanel" class="workspace-view" data-view="grasp" data-slot="2">
+          <header class="workspace-view-header">
+            <div><span>03</span><h2>抓取规划 <b>Grasp Planning</b></h2></div>
+            <div class="view-header-actions">
+              <strong id="graspState" class="module-state">WAITING</strong>
+              <button class="pin-view-button" type="button" data-pin-view="grasp" aria-label="固定抓取规划为主视图">Pin</button>
             </div>
           </header>
-          <div class="view-stage depth-stage">
-            <div class="depth-scale" aria-hidden="true"><span>NEAR</span><i></i><span>FAR</span></div>
-            <div class="view-empty">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5c8 7 14 14 14 23a14 14 0 0 1-28 0C10 19 16 12 24 5Z"/><path d="M17 30a7 7 0 0 0 7 6"/></svg>
-              <strong>等待深度数据</strong>
-              <span>无真实深度帧时不生成热力图</span>
+          <div class="workspace-view-stage pending-stage">
+            <img id="graspMedia" class="workspace-media" alt="真实抓取规划运行产物" hidden />
+            <div id="graspEmpty" class="workspace-empty">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 7v15l7 7v10M34 7v15l-7 7v10M10 7h28"/><path d="M18 39h12"/></svg>
+              <strong>等待抓取规划 WAITING</strong>
+              <span>模块未接入 Module Pending</span>
             </div>
-            <img class="view-image" alt="真实 Depth 热力图" hidden />
-            <video class="view-video" muted playsinline controls hidden></video>
           </div>
-          <footer class="view-footer"><span>DEPTH FIELD</span><strong id="depthSource">数据源未连接</strong></footer>
+          <footer class="workspace-view-footer"><span>输出接口 GraspPlan</span><strong id="graspFooter">NOT AVAILABLE</strong></footer>
         </article>
 
-        <article class="view-panel" data-view="pointCloud">
-          <header class="view-header">
-            <div>
-              <span class="view-index">VIEW 03</span>
-              <h2>点云 / 抓取候选</h2>
-            </div>
-            <div class="view-tools">
-              <span id="pointCloudState" class="view-state">NO DATA</span>
-              <button class="focus-button" type="button" data-focus-view="pointCloud" aria-label="放大点云抓取候选视图" title="聚焦视图">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-              </button>
+        <article id="simulationPanel" class="workspace-view" data-view="simulation" data-slot="3">
+          <header class="workspace-view-header">
+            <div><span>04</span><h2>仿真验证 <b>MuJoCo Validation</b></h2></div>
+            <div class="view-header-actions">
+              <strong id="simulationState" class="module-state">WAITING</strong>
+              <button class="pin-view-button" type="button" data-pin-view="simulation" aria-label="固定仿真验证为主视图">Pin</button>
             </div>
           </header>
-          <div class="view-stage point-stage">
-            <div class="point-field" aria-hidden="true"></div>
-            <div class="view-empty">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="12" cy="14" r="2"/><circle cx="26" cy="9" r="2"/><circle cx="38" cy="17" r="2"/><circle cx="18" cy="25" r="2"/><circle cx="34" cy="30" r="2"/><circle cx="11" cy="37" r="2"/><circle cx="27" cy="40" r="2"/><path d="m19 20 5-3 5 3v8l-5 3-5-3z"/></svg>
-              <strong>等待点云与候选</strong>
-              <span>首期显示后端生成的真实渲染图</span>
-            </div>
-            <img class="view-image" alt="真实点云与抓取候选画面" hidden />
-            <video class="view-video" muted playsinline controls hidden></video>
-          </div>
-          <footer class="view-footer"><span>GRASP CANDIDATES</span><strong id="pointCloudSource">数据源未连接</strong></footer>
-        </article>
-
-        <article class="view-panel" data-view="mujoco">
-          <header class="view-header">
-            <div>
-              <span class="view-index">VIEW 04</span>
-              <h2>MuJoCo 执行画面</h2>
-            </div>
-            <div class="view-tools">
-              <span id="mujocoState" class="view-state">NO DATA</span>
-              <button class="focus-button" type="button" data-focus-view="mujoco" aria-label="放大 MuJoCo 执行视图" title="聚焦视图">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-              </button>
-            </div>
-          </header>
-          <div class="view-stage mujoco-stage">
-            <div class="world-plane" aria-hidden="true"></div>
-            <div class="view-empty">
+          <div class="workspace-view-stage pending-stage simulation-stage">
+            <img id="simulationMedia" class="workspace-media" alt="真实 MuJoCo 离线运行产物" hidden />
+            <div id="simulationEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 6v12l6 6v8M32 6v12l-6 6v8M12 6h24"/><path d="m18 32 6-3 6 3v8l-6 3-6-3z"/></svg>
-              <strong>等待 MuJoCo 画面</strong>
-              <span>执行阶段只由真实仿真状态驱动</span>
+              <strong>等待仿真 WAITING</strong>
+              <span>验证模块未接入 Phone 主流程</span>
             </div>
-            <img class="view-image" alt="真实 MuJoCo 执行画面" hidden />
-            <video class="view-video" muted playsinline controls hidden></video>
           </div>
-          <footer class="view-footer"><span>SIMULATION EXECUTION</span><strong id="mujocoSource">数据源未连接</strong></footer>
+          <footer class="workspace-view-footer"><span>输入接口 SimulationScene</span><strong id="simulationFooter">NOT AVAILABLE</strong></footer>
         </article>
       </section>
 
-      <aside class="inspector" aria-label="抓取运行数据">
-        <header class="inspector-header">
-          <div>
-            <span class="panel-kicker">RUN INSPECTOR</span>
-            <h1>实时抓取状态</h1>
-          </div>
-          <span id="stageBadge" class="stage-badge">WAITING</span>
-        </header>
-
-        <div class="inspector-scroll">
-          <section class="data-section target-section">
-            <div class="section-title">
-              <div><span>01</span><h2>当前目标</h2></div>
-              <span id="targetPresence" class="section-state">NO TARGET</span>
-            </div>
-            <div class="primary-target">
-              <div>
-                <small>目标类别</small>
-                <strong id="targetClass">—</strong>
-              </div>
-              <div class="confidence-block">
-                <small>YOLO 置信度</small>
-                <strong id="targetConfidence">—</strong>
-              </div>
-            </div>
-            <div class="metric-label">世界坐标 · mm</div>
-            <div class="metric-grid three-columns">
-              <div><span>X</span><strong id="worldX">—</strong></div>
-              <div><span>Y</span><strong id="worldY">—</strong></div>
-              <div><span>Z</span><strong id="worldZ">—</strong></div>
-            </div>
-            <div class="metric-label">抓取姿态 · degree</div>
-            <div class="metric-grid three-columns">
-              <div><span>ROLL</span><strong id="rollValue">—</strong></div>
-              <div><span>PITCH</span><strong id="pitchValue">—</strong></div>
-              <div><span>YAW</span><strong id="yawValue">—</strong></div>
-            </div>
-          </section>
-
-          <section class="data-section candidate-section">
-            <div class="section-title">
-              <div><span>02</span><h2>抓取候选</h2></div>
-              <span id="candidateCount" class="count-badge">0</span>
-            </div>
-            <div id="candidateList" class="candidate-list">
-              <div class="empty-list">尚未收到真实抓取候选</div>
-            </div>
-            <div class="selected-candidate">
-              <div><span>夹爪宽度</span><strong id="gripperWidth">—</strong><small>mm</small></div>
-              <div><span>候选评分</span><strong id="candidateScore">—</strong></div>
-              <div><span>可达性</span><strong id="reachability">—</strong></div>
-            </div>
-          </section>
-
-          <section class="data-section result-section">
-            <div class="section-title">
-              <div><span>03</span><h2>执行结果</h2></div>
-            </div>
-            <div id="resultCard" class="result-card is-waiting">
-              <span id="resultCode">WAITING</span>
-              <strong id="resultText">等待真实执行结果</strong>
-              <p id="resultReason">系统不会预设成功或失败。</p>
-            </div>
-          </section>
-
-          <details class="event-section">
-            <summary>
-              <span><i aria-hidden="true"></i>运行事件</span>
-              <b id="eventCount">0</b>
-            </summary>
-            <ol id="eventList" class="event-list">
-              <li class="empty-event">暂无真实运行事件</li>
-            </ol>
-          </details>
-        </div>
+      <aside class="workspace-inspector" aria-label="抓取任务状态">
+        <section class="inspector-block">
+          <header><div><span>01</span><h2>当前目标 <b>Target</b></h2></div><strong id="targetStatus">WAITING</strong></header>
+          <div class="inspector-value"><small>目标选择 Target Selection</small><strong id="targetValue">等待选择 WAITING</strong></div>
+          <p id="targetDetail">尚未接入真实目标选择结果。</p>
+        </section>
+        <section class="inspector-block">
+          <header><div><span>02</span><h2>空间信息 <b>Spatial</b></h2></div><strong id="spatialInspectorStatus">WAITING</strong></header>
+          <div class="inspector-value"><small>空间输出 Spatial Output</small><strong id="spatialValue">等待计算 WAITING</strong></div>
+          <p id="spatialDetail">Depth、XYZ 与 Point Cloud 均不可用。</p>
+        </section>
+        <section class="inspector-block">
+          <header><div><span>03</span><h2>抓取结果 <b>Grasp</b></h2></div><strong id="graspInspectorStatus">WAITING</strong></header>
+          <div class="inspector-value"><small>抓取方案 Grasp Plan</small><strong id="graspValue">等待规划 WAITING</strong></div>
+          <p id="graspDetail">角度、宽度、评分与碰撞结果均不可用。</p>
+        </section>
+        <section class="inspector-block system-block">
+          <header><div><span>04</span><h2>系统状态 <b>Status</b></h2></div><strong id="systemStatus">READY</strong></header>
+          <dl class="system-list">
+            <div><dt>视觉连接 Connection</dt><dd id="statusConnection">Disconnected</dd></div>
+            <div><dt>视图模式 View Mode</dt><dd id="statusViewMode">Auto Follow</dd></div>
+            <div><dt>当前主视图 Primary</dt><dd id="statusPrimaryView">Live RGB</dd></div>
+            <div><dt>场景快照 Snapshot</dt><dd id="statusSnapshot">WAITING</dd></div>
+          </dl>
+          <button id="resetPipelineButton" class="reset-button" type="button">重置流程 Reset</button>
+        </section>
       </aside>
-
-      <section class="execution-flow" aria-label="机器人抓取执行流程">
-        <div class="flow-heading">
-          <span>EXECUTION FLOW</span>
-          <strong id="flowStatus">等待真实状态</strong>
-        </div>
-        <ol class="flow-track">
-          <li data-stage="HOME"><i></i><span>HOME</span><small>初始位</small></li>
-          <li data-stage="PREGRASP"><i></i><span>PREGRASP</span><small>预抓取</small></li>
-          <li data-stage="DESCEND"><i></i><span>DESCEND</span><small>下降</small></li>
-          <li data-stage="CLOSE"><i></i><span>CLOSE</span><small>闭合</small></li>
-          <li data-stage="LIFT"><i></i><span>LIFT</span><small>抬升</small></li>
-          <li class="outcome-node success-node" data-stage="SUCCESS"><i></i><span>SUCCESS</span><small>成功</small></li>
-          <li class="outcome-node failure-node" data-stage="FAILURE"><i></i><span>FAILURE</span><small>失败</small></li>
-        </ol>
-      </section>
     </main>
 
-    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div id="notice" class="workspace-notice" role="status" aria-live="polite" hidden></div>
 
-    <dialog id="contractDialog" class="contract-dialog" aria-labelledby="contractTitle">
-      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭数据格式说明">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
-      </button>
-      <span class="dialog-kicker">VISION2GRASP.RUN/V1</span>
-      <h2 id="contractTitle">真实运行目录格式</h2>
-      <p>一键启动器会自动载入本次抓取结果。这里也可以手动选择包含 run.json 与 media/ 的历史运行目录；文件只在当前浏览器本地读取，不会上传。前端不读取评估器私有真值，也不补造结果。</p>
-      <pre><code>{
-  "schema_version": "vision2grasp.run/v1",
-  "run_id": "bottle-lift-seed7-...",
-  "timestamp": "2026-08-26T10:24:51+08:00",
-  "status": "success",
-  "stage": "SUCCESS",
-  "media": {
-    "rgb": { "path": "media/rgb.png", "kind": "image", "label": "RGB 检测" },
-    "depth": { "path": "media/depth.png", "kind": "image", "label": "深度图" },
-    "grasp_overlay": { "path": "media/grasp_overlay.png", "kind": "image", "label": "抓取候选" },
-    "mujoco": { "path": "media/mujoco.png", "kind": "image", "label": "MuJoCo 结果" }
-  },
-  "target": null,
-  "candidates": [],
-  "selected_candidate_id": null,
-  "execution": null,
-  "events": []
-}</code></pre>
-      <button class="dialog-confirm" type="button" data-close-dialog>我知道了</button>
+    <dialog id="cameraSetupDialog" class="workspace-dialog camera-setup-dialog" aria-labelledby="cameraSetupTitle">
+      <header class="dialog-header">
+        <div><span>VISION INPUT</span><h2 id="cameraSetupTitle">连接设置 Camera Setup</h2></div>
+        <button type="button" class="dialog-close-button" data-close-camera-setup aria-label="关闭连接设置">×</button>
+      </header>
+      <div class="camera-setup-grid">
+        <section class="setup-card connection-card">
+          <div class="setup-card-heading"><h3>手机连接 Phone WebRTC</h3><strong id="cameraConnectionState">WAITING</strong></div>
+          <dl>
+            <div><dt>设备 Device</dt><dd id="cameraDevice">Phone Camera</dd></div>
+            <div><dt>连接 Connection</dt><dd id="cameraConnection">Waiting</dd></div>
+            <div><dt>模式 Mode</dt><dd id="cameraMode">IDLE</dd></div>
+            <div><dt>分辨率 Resolution</dt><dd id="cameraSideResolution">—</dd></div>
+            <div><dt>接收速率 Receive FPS</dt><dd id="cameraSideFps">—</dd></div>
+            <div><dt>链路延迟 Link Latency</dt><dd id="cameraSideLatency">—</dd></div>
+          </dl>
+          <p>WebRTC 仅在当前私有局域网传输；主工作台通过现有本地 RGB 桥显示画面。</p>
+        </section>
+        <section id="pairingPanel" class="setup-card pairing-card-v3">
+          <div class="setup-card-heading"><h3>扫码配对 QR Pairing</h3><strong id="pairingState">WAITING</strong></div>
+          <div class="pairing-content">
+            <div class="qr-frame-v3"><img id="pairingQr" src="/api/camera/pairing-qr.png" alt="手机摄像头配对二维码" /></div>
+            <dl>
+              <div><dt>局域网地址 LAN Address</dt><dd id="cameraLanAddress">—</dd></div>
+              <div><dt>设备 Device</dt><dd id="pairedDevice">Not paired</dd></div>
+              <div><dt>配对令牌 Pairing Token</dt><dd>••••••••</dd></div>
+            </dl>
+          </div>
+          <button id="refreshPairingButton" class="dialog-action" type="button">刷新一次性二维码 Refresh</button>
+        </section>
+        <section class="setup-card capture-card-v3">
+          <div class="setup-card-heading"><h3>高清拍摄 LAN Capture</h3><strong id="captureResolution">NO CAPTURE</strong></div>
+          <div class="capture-preview-v3"><span id="captureEmpty">等待手机拍摄 WAITING</span><img id="captureImage" alt="手机高清拍摄结果" hidden /></div>
+          <p id="captureStatus">手机拍摄后原图仅保存在内存，明确保存后才写入磁盘。</p>
+          <button id="saveCaptureButton" class="dialog-action" type="button" disabled>保存原图 Save</button>
+        </section>
+        <section class="setup-card certificate-card-v3">
+          <div class="setup-card-heading"><h3>首次设置 Local CA</h3><strong>LAN ONLY</strong></div>
+          <div class="certificate-content">
+            <div class="setup-qr-v3"><img id="setupQr" src="/api/camera/setup-qr.png" alt="本地证书设置二维码" /></div>
+            <div><p>首次使用需安装一次玄枢本地 CA。请先核对 SHA-256 指纹，再扫描配对二维码。</p><code id="certificateFingerprint">—</code></div>
+          </div>
+          <div class="privacy-row"><span>Cloud Relay <b>OFF</b></span><span>Cloud Storage <b>OFF</b></span><span>Internet Upload <b>OFF</b></span></div>
+        </section>
+      </div>
     </dialog>
 
-    <script src="./gongshu.js"></script>
+    <dialog id="legacyDialog" class="workspace-dialog legacy-dialog" aria-labelledby="legacyTitle">
+      <header class="dialog-header">
+        <div><span>SECONDARY WORKFLOW</span><h2 id="legacyTitle">历史运行与离线验证 History</h2></div>
+        <button type="button" class="dialog-close-button" data-close-legacy aria-label="关闭历史运行窗口">×</button>
+      </header>
+      <div class="legacy-content">
+        <p>此入口保留现有固定种子离线闭环与公开运行目录读取能力。其结果不会接入 Phone RGB 主流程，也不会被当作真实相机计算结果。</p>
+        <div class="legacy-actions">
+          <button id="runSimulationButton" class="dialog-action is-primary" type="button">运行离线验证 Run Offline</button>
+          <label class="dialog-action" for="snapshotInput">导入运行目录 Import Run</label>
+          <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
+        </div>
+        <div class="legacy-status"><span>最近运行 Latest Run</span><strong id="legacyRunStatus">尚未载入 NOT LOADED</strong></div>
+      </div>
+    </dialog>
+
+    <script src="./pipeline-state.js"></script>
     <script src="./real-scene.js"></script>
   </body>
 </html>
