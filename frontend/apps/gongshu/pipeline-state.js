@@ -30,7 +30,7 @@
   });
 
   const NEXT_STATES = Object.freeze({
-    LIVE: new Set(["TARGET_SELECTED", "SCENE_CAPTURED", "RESET"]),
+    LIVE: new Set(["TARGET_SELECTED", "RESET"]),
     TARGET_SELECTED: new Set(["SCENE_CAPTURED", "RESET"]),
     SCENE_CAPTURED: new Set(["SPATIAL_ANALYSIS", "RESET"]),
     SPATIAL_ANALYSIS: new Set(["GRASP_PLANNING", "RESET"]),
@@ -89,5 +89,30 @@
     }
   }
 
-  return Object.freeze({ STATES, VIEW_BY_STATE, NEXT_STATES, PipelineStateMachine });
+  function hasTargetSnapshotAssociation(targetState) {
+    const frame = targetState?.frame;
+    const target = targetState?.selected_target;
+    const snapshot = targetState?.scene_snapshot;
+    return targetState?.status === "TARGET_LOCKED"
+      && Boolean(frame && target && snapshot?.available)
+      && target.id === targetState.selected_target_id
+      && target.source_frame_id === frame.id
+      && snapshot.source_frame_id === frame.id
+      && snapshot.target_id === target.id
+      && target.source_timestamp_s === frame.timestamp_s
+      && snapshot.source_timestamp_s === frame.timestamp_s;
+  }
+
+  function canStartGrasp(pipelineState, targetState) {
+    return pipelineState === "TARGET_SELECTED" && hasTargetSnapshotAssociation(targetState);
+  }
+
+  return Object.freeze({
+    STATES,
+    VIEW_BY_STATE,
+    NEXT_STATES,
+    PipelineStateMachine,
+    hasTargetSnapshotAssociation,
+    canStartGrasp,
+  });
 });

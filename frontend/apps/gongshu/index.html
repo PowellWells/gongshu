@@ -71,8 +71,11 @@
           <option value="manual">手动固定 Manual Pin</option>
         </select>
       </label>
+      <button id="analyzeTargetsButton" class="analyze-targets-button" type="button" disabled>
+        <span>分析目标</span><small>Analyze Targets</small>
+      </button>
       <button id="startGraspButton" class="start-grasp-button" type="button" disabled>
-        <span>开始抓取</span><small>Start Grasp</small>
+        <span id="startGraspLabel">请选择目标</span><small id="startGraspHint">Select Target</small>
       </button>
     </section>
 
@@ -94,6 +97,11 @@
               <button type="button" data-open-camera-setup>打开连接设置 Camera Setup</button>
             </div>
             <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
+            <svg id="targetOverlay" class="target-overlay" role="group" aria-label="目标候选 Object Candidates" hidden></svg>
+            <div id="analysisControls" class="analysis-controls" hidden>
+              <span id="analysisStatus">等待目标分析 WAITING</span>
+              <button id="resumeLiveButton" type="button">返回实时画面 Resume Live</button>
+            </div>
             <div class="frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           </div>
           <footer class="workspace-view-footer">
@@ -167,8 +175,13 @@
       <aside class="workspace-inspector" aria-label="抓取任务状态">
         <section class="inspector-block">
           <header><div><span>01</span><h2>当前目标 <b>Target</b></h2></div><strong id="targetStatus">WAITING</strong></header>
-          <div class="inspector-value"><small>目标选择 Target Selection</small><strong id="targetValue">等待选择 WAITING</strong></div>
-          <p id="targetDetail">尚未接入真实目标选择结果。</p>
+          <dl class="target-summary">
+            <div><dt>目标编号 Target ID</dt><dd id="targetValue">等待选择 WAITING</dd></div>
+            <div><dt>语义类别 Class</dt><dd id="targetClassValue">NOT AVAILABLE</dd></div>
+            <div><dt>置信度 Confidence</dt><dd id="targetConfidenceValue">NOT AVAILABLE</dd></div>
+            <div><dt>锁定状态 Selection</dt><dd id="targetLockValue">WAITING</dd></div>
+          </dl>
+          <p id="targetDetail">连接手机后分析真实 RGB 帧，再手动选择目标。</p>
         </section>
         <section class="inspector-block">
           <header><div><span>02</span><h2>空间信息 <b>Spatial</b></h2></div><strong id="spatialInspectorStatus">WAITING</strong></header>

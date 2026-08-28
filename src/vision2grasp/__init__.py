@@ -14,6 +14,7 @@ from .contracts import (
     RGBDFrame,
     TableCalibration,
 )
+from .target_perception import TargetInstance
 
 __all__ = [
     "CameraIntrinsics",
@@ -28,6 +29,7 @@ __all__ = [
     "RGBFrame",
     "RGBDFrame",
     "TableCalibration",
+    "TargetInstance",
 ]
 
 __version__ = "0.1.0"

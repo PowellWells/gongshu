@@ -27,6 +27,7 @@ from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOS
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
 from vision2grasp.sources import OpenCVCameraConfig, OpenCVCameraSource, RGBArraySource
+from vision2grasp.target_perception import FastSAMTargetSegmenter, TargetPerceptionService
 from vision2grasp.visualization import make_run_id
 
 
@@ -47,6 +48,7 @@ class Vision2GraspApp:
         self._real_scene: RealSceneProcessor | None = None
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
+        self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
 
     @property
     def real_scene(self) -> RealSceneProcessor:
@@ -84,6 +86,11 @@ class Vision2GraspApp:
             RGBArraySource(rgb),
             kind="image",
         )
+
+    def analyze_phone_targets(self) -> dict[str, object]:
+        """Freeze one real Phone RGB frame and generate selectable instances."""
+
+        return self.target_perception.analyze(self.camera.capture())
 
     def run_simulation(self) -> dict[str, Any]:
         if not self._simulation_lock.acquire(blocking=False):
@@ -154,6 +161,7 @@ class Vision2GraspApp:
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     server_version = "Vision2GraspLocal/1.0"
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".svg": "image/svg+xml"}
 
     def __init__(self, *args: Any, app: Vision2GraspApp, **kwargs: Any) -> None:
         self.app = app
@@ -166,6 +174,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/health",
             "/api/camera/state",
             "/api/real-scene/state",
+            "/api/target-perception/state",
         }
         if (
             path in quiet_paths
@@ -186,6 +195,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "camera.phone-lan/v1",
                         "camera.lan-live/webrtc",
                         "camera.lan-capture/original",
+                        "target-perception.instance-mask/v1",
+                        "target-selection.manual/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }
@@ -210,6 +221,23 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/camera/live.mjpeg":
             self._send_camera_mjpeg()
+            return
+        if path == "/api/target-perception/state":
+            self._send_json(self.app.target_perception.snapshot())
+            return
+        if path == "/api/target-perception/overlay.jpg":
+            overlay = self.app.target_perception.overlay_jpeg()
+            if overlay is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "target overlay not ready")
+                return
+            self._send_binary(overlay, "image/jpeg")
+            return
+        if path == "/api/target-perception/scene-snapshot.jpg":
+            snapshot = self.app.target_perception.scene_snapshot_jpeg()
+            if snapshot is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "locked target snapshot not ready")
+                return
+            self._send_binary(snapshot, "image/jpeg")
             return
         if path == "/api/real-scene/state":
             self._send_json(self.app.real_scene.snapshot())
@@ -245,6 +273,20 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 saved = self.app.camera.save_latest_capture()
                 self._send_json({"status": "ok", "path": str(saved)})
                 return
+            if path == "/api/target-perception/analyze":
+                self._send_json(self.app.analyze_phone_targets())
+                return
+            if path == "/api/target-perception/select":
+                self._send_json(
+                    self.app.target_perception.select(
+                        str(body["target_id"]),
+                        source_frame_id=int(body["source_frame_id"]),
+                    )
+                )
+                return
+            if path == "/api/target-perception/reset":
+                self._send_json(self.app.target_perception.reset())
+                return
             if path == "/api/real-scene/source":
                 self._set_source(body)
                 return
@@ -265,7 +307,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.app.run_simulation())
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
-        except (KeyError, TypeError, ValueError, RuntimeError) as error:
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as error:
             self._send_json({"status": "error", "message": str(error)}, status=400)
 
     def _set_source(self, body: dict[str, Any]) -> None:

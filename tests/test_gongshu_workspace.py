@@ -48,8 +48,14 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "conditionSelect",
             "robotSelect",
             "viewModeSelect",
+            "analyzeTargetsButton",
             "startGraspButton",
+            "targetOverlay",
+            "resumeLiveButton",
             "targetStatus",
+            "targetClassValue",
+            "targetConfidenceValue",
+            "targetLockValue",
             "spatialInspectorStatus",
             "graspInspectorStatus",
             "systemStatus",
@@ -91,6 +97,22 @@ class GongshuWorkspaceTests(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', self.html)
 
+    def test_target_analysis_uses_frozen_backend_frame_and_manual_selection(self) -> None:
+        for endpoint in (
+            "/api/target-perception/analyze",
+            "/api/target-perception/select",
+            "/api/target-perception/reset",
+            "/api/target-perception/overlay.jpg",
+            "/api/target-perception/scene-snapshot.jpg",
+        ):
+            self.assertIn(endpoint, self.controller)
+        self.assertIn('pipeline.transition("TARGET_SELECTED"', self.controller)
+        self.assertIn('pipeline.transition("SCENE_CAPTURED"', self.controller)
+        self.assertIn('pipeline.transition("SPATIAL_ANALYSIS"', self.controller)
+        self.assertNotIn("captureLiveFrame", self.controller)
+        self.assertNotIn("canvas.toBlob", self.controller)
+        self.assertIn("请选择目标", self.html)
+
     def test_pipeline_declares_all_states_and_stage_driven_views(self) -> None:
         for state in (
             "LIVE",
@@ -113,6 +135,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         script = r"""
 const { PipelineStateMachine } = require(process.argv[1]);
 const pipeline = new PipelineStateMachine();
+pipeline.transition("TARGET_SELECTED");
 pipeline.transition("SCENE_CAPTURED");
 pipeline.transition("SPATIAL_ANALYSIS");
 let rejected = false;
@@ -128,6 +151,46 @@ process.stdout.write(JSON.stringify({ rejected, state: pipeline.state, view: pip
         )
         result = json.loads(completed.stdout)
         self.assertEqual(result, {"rejected": True, "state": "LIVE", "view": "live"})
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the frontend target-gating test")
+    def test_start_grasp_requires_locked_target_and_exact_snapshot_association(self) -> None:
+        script = r"""
+const { canStartGrasp } = require(process.argv[1]);
+const valid = {
+  status: "TARGET_LOCKED",
+  frame: { id: 42, timestamp_s: 12.5 },
+  selected_target_id: "target-42-01",
+  selected_target: { id: "target-42-01", source_frame_id: 42, source_timestamp_s: 12.5 },
+  scene_snapshot: { available: true, target_id: "target-42-01", source_frame_id: 42, source_timestamp_s: 12.5 },
+};
+process.stdout.write(JSON.stringify({
+  liveRejected: canStartGrasp("LIVE", valid),
+  valid: canStartGrasp("TARGET_SELECTED", valid),
+  mismatchedFrameRejected: canStartGrasp("TARGET_SELECTED", {
+    ...valid,
+    scene_snapshot: { ...valid.scene_snapshot, source_frame_id: 41 },
+  }),
+  missingTargetRejected: canStartGrasp("TARGET_SELECTED", {
+    ...valid,
+    selected_target: null,
+  }),
+}));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script, str(GONGSHU_ROOT / "pipeline-state.js")],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {
+                "liveRejected": False,
+                "valid": True,
+                "mismatchedFrameRejected": False,
+                "missingTargetRejected": False,
+            },
+        )
 
 
 if __name__ == "__main__":

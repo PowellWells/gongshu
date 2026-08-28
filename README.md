@@ -7,7 +7,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 ## 当前实现范围
 
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
-- **Gongshu Workspace v0.3**：统一四视图机器人抓取主工作台，常驻 Live RGB、Spatial Perception、Grasp Planning 与 MuJoCo Validation，并由集中式 Pipeline State 驱动主视图。
+- **Gongshu Workspace v0.4**：在统一四视图主工作台中加入真实 RGB 冻结帧目标感知、实例候选与手动目标选择；布局继续由集中式 Pipeline State 驱动。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -15,12 +15,12 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 真实 Camera 主链路目前严格限定为：
 
 ```text
-Phone Camera → LAN → PC → RGB Frame
+Phone Camera → LAN → PC → RGB Frame → Target Instances → Manual Selection
 ```
 
 Camera 实时画面通过私有局域网 WebRTC 传输，只在内存中保留最新 RGB 帧；高清拍照先进入 PC 内存预览，只有用户明确保存时才写入 `artifacts/camera/captures/`。
 
-下面这条链路**尚未接入真实 Camera 主链路，也不应视为当前已完成功能**：
+Target Perception 只输出与同一冻结帧绑定的实例掩膜、边界框、二维中心和可选语义信息。FastSAM-s 未提供可靠语义类别，因此默认显示 `未知目标 Unknown Object`，但仍允许用户选择。下面这条链路**尚未接入真实 Camera 主链路，也不应视为当前已完成功能**：
 
 ```text
 YOLO → Depth → Grasp → MuJoCo
@@ -71,7 +71,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-YOLO 权重不随 Git 仓库发布。需要运行相关离线算法时，请从模型官方发布渠道获取 `yolo11n-seg.pt`，放到 `artifacts/models/`，并自行确认许可证和文件完整性。Camera RGB 接入不需要该权重。
+模型权重不随 Git 仓库发布。Gongshu v0.4 的目标感知需要官方 `FastSAM-s.pt`，放到 `artifacts/models/FastSAM-s.pt`；程序会在首次分析前核对 SHA-256：`c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844`。需要运行旧的离线 YOLO 模块时，另行从官方渠道获取 `yolo11n-seg.pt`。请在使用或分发前自行确认权重与运行时许可证。
 
 ## 启动
 
@@ -91,7 +91,7 @@ YOLO 权重不随 Git 仓库发布。需要运行相关离线算法时，请从�
 
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
 
-进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。当前“开始抓取”只从已连接的 Phone Live RGB 获取真实场景快照，并停留在 `SPATIAL_ANALYSIS / WAITING`，不会伪造尚未接入的 Depth、XYZ、抓取或仿真数据。扫码、证书、连接状态与高清 Capture 位于 `连接设置 Camera Setup`；原离线仿真和公开运行目录读取位于 `历史运行 History` 次级入口。
+进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用 `开始抓取 Start Grasp`。开始抓取只把同一冻结帧作为 Scene Snapshot 送到预留空间接口，状态依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS / WAITING`，不会伪造 Depth、XYZ、抓取或仿真数据。扫码、证书、连接状态与高清 Capture 位于 `连接设置 Camera Setup`；原离线仿真和公开运行目录读取位于 `历史运行 History` 次级入口。
 
 ## 项目结构
 
@@ -121,7 +121,7 @@ Vision2Grasp/
 
 ## 当前限制
 
-- 真实 Camera 主链路只提供 RGB Frame，不提供真实深度、点云、抓取候选或 MuJoCo 回写。
+- 真实 Camera 主链路目前提供 RGB Frame、对象无关实例候选与手动目标选择，不提供真实深度、点云、抓取候选或 MuJoCo 回写。
 - USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
 - 尚未接入真实机器人控制，也没有真实场景完整闭环验证。
 - Hetu 只提供预览入口，没有世界模型算法。
@@ -133,7 +133,7 @@ Vision2Grasp/
 本仓库目前**尚未选择项目级开源许可证**。公开源代码不等于自动授予复制、修改或分发权；正式发布前应由项目所有者选择并添加合适的 `LICENSE`。
 
 - PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 第三方组件。未来分发 EXE 时需完成动态链接、许可证文本和第三方声明审计。
-- Ultralytics 软件及官方 YOLO 权重采用 AGPL-3.0 系列许可。闭源、内部商业或产品化使用前，应确认 AGPL 义务或取得适用的商业许可。
+- v0.4 通过 Ultralytics 运行 FastSAM-s；当前 Ultralytics 软件采用 AGPL-3.0 系列许可。FastSAM 上游仓库声明 Apache-2.0，但闭源、内部商业或产品化使用前仍应分别确认运行时、权重及上游代码的适用许可。
 - Camera v1 直接使用 aiortc、aiohttp、PyAV、cryptography 和 qrcode；发布二进制或安装包前应保留相应许可证和传递依赖声明。
 - MuJoCo、robosuite、PyTorch、torchvision、OpenCV、NumPy 等算法依赖也需要在正式分发前形成完整的第三方清单。
 - 仓库中的 UI 图片作为源代码资产被跟踪；公开发布前仍应由项目所有者确认这些图片的原创性、授权来源和可再分发范围。它们不应与 `artifacts/` 下的实验图片、用户抓拍或模型权重混淆。
