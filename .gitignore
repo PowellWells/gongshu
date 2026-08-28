@@ -1,15 +1,103 @@
+# Python environments, caches, test output, and builds
 .venv/
+venv/
+env/
+ENV/
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
 build/
 dist/
+
+# Editors and operating-system metadata
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local configuration, credentials, certificates, and camera sessions
+.env
+.env.*
+!.env.example
+*.camera-session
+*.camera-token
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Logs, temporary files, runtime state, caches, and generated reports
+*.log
+*.log.*
+*.tmp
+*.temp
+*.bak
+*.orig
+*.swp
+*~
+logs/
+tmp/
+temp/
+runtime/
+cache/
+.cache/
+sessions/
 artifacts/
 frontend/runtime/
 
-# Runtime-only LAN camera identity and session data.
-*.camera-session
-*.camera-token
+# Camera captures, user uploads, and ad-hoc screenshots
+captures/
+camera_captures/
+uploads/
+screenshots/
+
+# Model weights, datasets, experiment output, and large generated media
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.engine
+*.safetensors
+*.tflite
+*.weights
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.zip
+*.7z
+*.tar
+*.tar.gz
+data/
+datasets/
+runs/
+wandb/
+mlruns/
+tensorboard/
+.mujoco/
+ultralytics/
+
+# Frontend tooling (not currently required, but safe for local experiments)
+node_modules/
+
+# Local Codex project handoff/context; keep it outside the public repository.
+/CODEX_HANDOFF.md

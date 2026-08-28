@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from vision2grasp.control import PandaOSCGraspExecutor
 from vision2grasp.evaluation import RobosuiteBottleLiftEvaluator
@@ -11,6 +12,14 @@ from vision2grasp.pipeline import PipelinePhase, Vision2GraspPipeline
 from vision2grasp.simulation import RobosuiteRGBDSimulator, RobosuiteSimulationConfig
 
 
+ROOT = Path(__file__).resolve().parents[1]
+WEIGHTS = ROOT / "artifacts" / "models" / "yolo11n-seg.pt"
+
+
+@unittest.skipUnless(
+    WEIGHTS.is_file(),
+    "official YOLO weights are required for the end-to-end pipeline integration test",
+)
 class BottlePipelineIntegrationTests(unittest.TestCase):
     def test_seeded_bottle_scene_completes_and_lifts_without_truth_feedback(self) -> None:
         simulator = RobosuiteRGBDSimulator(

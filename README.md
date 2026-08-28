@@ -1,129 +1,139 @@
-# XUANSHU LAB · 玄枢实验室
+# XUANSHU LAB · Jingwei / Vision2Grasp
 
-XUANSHU LAB v0.1 是一个真正可运行的 Windows AI / 机器人科研桌面平台。当前版本优先完成成熟、稳定、可扩展的软件骨架，不宣称一次性完成全部机器人或世界模型算法。
+XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平台。本仓库目前包含统一桌面壳、Jingwei Moment 图像理解工作台、Gongshu Vision2Grasp 抓取研究代码，以及 Hetu 预览入口。
 
-桌面容器使用 PySide6，但所有用户可见的产品界面仍由原版 HTML / CSS / JavaScript 提供。`QWebEngineView` 铺满 Windows 窗口，直接载入原开机动画、玄枢门户和各 Workspace；PySide6 只负责窗口、本地服务生命周期、日志、单实例和后续打包。
+当前版本的目标是提供可运行、可扩展的软件骨架和本地研究工具，不宣称已经完成真实机器人端到端抓取或世界模型能力。PySide6 负责桌面窗口和本地服务生命周期，用户界面由仓库内的 HTML / CSS / JavaScript 提供。
 
-## 一键启动
+## 当前实现范围
 
-双击项目根目录的 [Start-XUANSHU-LAB.cmd](Start-XUANSHU-LAB.cmd)。
+- **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
+- **Gongshu Vision2Grasp**：已有分割、几何定位、抓取候选、Panda 控制接口、MuJoCo / robosuite 仿真与结果导出代码。
+- **Jingwei Camera v1**：在 Gongshu 的真实场景页提供手机 LAN 实时 RGB 输入与高清拍照上传。
+- **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
+- **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
 
-启动器会：
-
-1. 使用项目虚拟环境启动 PySide6 桌面程序；
-2. 启动或复用 `127.0.0.1:8765` 上兼容的本地科研服务；
-3. 播放原版 HTML 开机动画，进入原版玄枢门户，并在同一窗口内运行 Workspace；
-4. 再次双击时唤醒已有窗口，不重复启动平台实例。
-
-原 [Start-Vision2Grasp.cmd](Start-Vision2Grasp.cmd) 继续保留，供只启动公输 Web 工作台时使用。
-
-## Jingwei Camera v1 · Local RGB Acquisition
-
-公输真实场景页当前冻结为纯摄像头接入版本，不启动 YOLO、Depth、点云、Grasp 或 MuJoCo。两个正式输入能力会同时随本地服务启动：
+真实 Camera 主链路目前严格限定为：
 
 ```text
-LAN Live    手机后置摄像头 → LAN WebRTC → PC 持续 RGB Frames → CAMERA INPUT 实时画面
-LAN Capture 手机原生高清拍照 → LAN 原图上传 → PC 内存预览 → 用户明确点击后才保存
+Phone Camera → LAN → PC → RGB Frame
 ```
 
-WebRTC 不配置 STUN / TURN，也不使用 Cloudflare；Cloud Relay、Cloud Storage、Internet Upload 和实时录像默认全部关闭。PC 端显示实际收到的分辨率、两秒滚动窗口接收 FPS、数据通道往返时延的一半、连接状态和递增帧版本。实时画面只在内存中保留最新一帧，不落盘。
+Camera 实时画面通过私有局域网 WebRTC 传输，只在内存中保留最新 RGB 帧；高清拍照先进入 PC 内存预览，只有用户明确保存时才写入 `artifacts/camera/captures/`。
 
-### 荣耀 Magic4 首次连接
-
-1. 手机与电脑连接同一个普通 Wi-Fi；不要使用开启“客户端隔离”的访客网络，临时关闭手机 VPN。
-2. 双击 `Start-XUANSHU-LAB.cmd`，进入“公输 Gongshu”，保持 `REAL SCENE MODE`。
-3. Windows 首次询问防火墙权限时，只允许“专用网络”，不要允许公用网络。程序本身不会修改防火墙规则。
-4. 先用手机扫描 PC 右侧的 `LOCAL CA SETUP` 二维码，下载 `xuanshu-camera-ca.crt`。
-5. 在荣耀设置中搜索“安装证书”，选择“CA 证书 / 从存储设备安装”，核对手机页面与 PC 显示的 SHA-256 指纹后安装。系统可能要求先设置锁屏，并提示该 CA 可检查网络流量；这是 Android 对用户 CA 的标准警示。
-6. 完全关闭并重新打开 Chrome，再扫描 `PAIRING` 二维码。二维码中的一次性令牌五分钟后失效，或在成功配对后立即失效。
-7. 手机点击 `START CAMERA`，允许后置摄像头；点击 `START LIVE` 后，PC 的 `CAMERA INPUT` 应持续显示实时画面及 FPS、分辨率、延迟和状态。
-8. 在同一手机页面切换到 `CAPTURE` 可调用高清拍照。PC 收到原始 JPEG / PNG / WebP 后仅保存在内存；只有点击 PC 的“保存高清原图”才写入 `artifacts/camera/captures/`。
-
-本地 CA 只需在同一部手机安装一次。CA 私钥和服务端私钥位于 Git 忽略的 `artifacts/camera/secrets/`，不得复制到手机、提交 Git 或公开分享。若电脑 LAN IP 改变，服务会在下次启动时为当前私网地址重新签发服务端证书，手机无需重新安装 CA。
-
-### 连接排查
-
-- 扫码后页面打不开：确认手机和 PC 在同一网段、Wi-Fi 没有客户端隔离、Windows 网络类型是“专用”，并允许 Python 访问专用网络；配对使用 TCP `8766`（HTTPS）和 `8767`（首次证书设置），WebRTC Live 还会在同一私网内协商临时 UDP 端口，不需要路由器端口转发。
-- 页面显示 `HTTPS REQUIRED`：本地 CA 尚未成功安装或 Chrome 尚未重启；不要跳过浏览器证书警告继续使用。
-- 已配对但没有画面：手机必须先允许摄像头，再点击 `START LIVE`；PC 状态应从 `PAIRED → CONNECTING → LIVE`，且 `frame_revision` 持续增长。
-- 断线后：在 PC 点击“生成新配对”，重新扫码即可，不需要重启整个程序；旧 Session 会立即失效。
-- 二维码指向错误网卡：关闭不使用的虚拟网卡 / VPN 后重启平台，或开发运行时显式配置正确 LAN 地址。
-
-CameraProvider 的稳定输出边界是 `RGB Frame + Timestamp + Resolution + Camera Source + Camera Status`。当前实现为 `PhoneLANProvider`，前端已保留 USB / Network Stream / RGB-D 状态，但本版本不声称它们已经可用。
-
-## 三个 Workspace
-
-- **经纬 · Jingwei Moment**：可运行的本地图像理解工作台。
-- **公输 · Gongshu Vision2Grasp**：可运行的真实场景优先、MuJoCo 仿真验证机器人抓取工作台；当前真实目标固定为 `bottle`。
-- **河图 · Hetu Preview**：沿用原门户中的世界模型预告入口；不运行未完成模型，不显示虚假结果。
-
-经纬和公输页面都提供“返回玄枢主页”入口；桌面层另保留 `Alt+Home` 作为备用返回快捷键。`F5` 或 `Ctrl+R` 刷新当前页面，`Ctrl+Shift+L` 临时显示或隐藏本地运行日志。
-
-## 软件架构
+下面这条链路**尚未接入真实 Camera 主链路，也不应视为当前已完成功能**：
 
 ```text
-Start-XUANSHU-LAB.cmd
-→ run_xuanshu_lab.py
-→ xuanshu_lab.app（启动、单实例）
-→ xuanshu_lab.shell（Windows 窗口、隐藏日志、快捷键）
-→ 全窗口 QWebEngineView → /index.html
-   ├─ 原版 HTML 开机动画
-   ├─ 原版玄枢门户
-   ├─ Jingwei Moment → /apps/moment/
-   ├─ Gongshu Grasp  → /apps/gongshu/
-   └─ Hetu Preview   → 原门户预告入口
-→ LocalServiceController
-→ run_vision2grasp_app.py / 本地 API / 现有算法模块
+YOLO → Depth → Grasp → MuJoCo
 ```
 
-Workspace 的框架无关契约位于 `src/xuanshu_lab/contracts.py`，默认注册表位于 `src/xuanshu_lab/registry.py`。新增研究域应注册新的 `WorkspaceSpec` 并在门户提供对应前端入口，不应把领域 UI 或算法写进桌面 Shell。
+仓库中已有 YOLO、Depth / 几何、Grasp 和 MuJoCo 相关算法与仿真代码，但它们目前属于独立研究模块、离线验证能力或后续集成基础。
 
-## 开发运行
+## Camera 安全与网络边界
+
+- WebRTC 不配置 STUN / TURN，不使用 Cloudflare；Cloud Relay、Cloud Storage、Internet Upload 和实时录像默认关闭。
+- 配对使用五分钟有效的一次性 Token；成功配对后立即失效，刷新配对会使旧 Session 失效。
+- 本地 CA 私钥和服务端私钥生成在 `artifacts/camera/secrets/`，该目录被 Git 忽略。不要复制、提交或公开这些文件。
+- 手机和 PC 必须位于同一可信私有局域网。程序不会修改 Windows 防火墙规则。
+- CameraProvider 的当前稳定输出边界是 `RGB Frame + Timestamp + Resolution + Camera Source + Camera Status`。
+- 当前正式实现是 `PhoneLANProvider`；USB、Network Stream 和 RGB-D 仅保留接口或状态，不代表已经可用。
+
+### 手机首次连接
+
+1. 让手机与电脑连接同一个普通 Wi-Fi，避免开启客户端隔离的访客网络，并临时关闭手机 VPN。
+2. 启动 XUANSHU LAB，进入 Gongshu 并保持 `REAL SCENE MODE`。
+3. Windows 首次询问防火墙权限时，只允许“专用网络”。
+4. 用手机扫描 `LOCAL CA SETUP` 二维码，安装本地 CA，并核对手机页面与 PC 显示的 SHA-256 指纹。
+5. 完全关闭并重新打开 Chrome，再扫描 `PAIRING` 二维码。
+6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`。
+7. 如需高清照片，切换到 `CAPTURE`；PC 端收到预览后，再由用户决定是否保存原图。
+
+配对页默认使用 TCP `8766`（HTTPS）和 `8767`（首次证书设置）；WebRTC 会在同一私网内协商临时 UDP 端口。LAN IP 改变后，服务会在下次启动时为当前私网地址重新签发服务端证书。
+
+## 环境要求
+
+- Windows 11（当前已验证平台）
+- Python 3.12.x（`pyproject.toml` 限定 `>=3.12,<3.13`）
+- 支持 Qt WebEngine 的 Windows 桌面环境
+- 同一私有局域网内的手机与 PC（仅 Camera v1 需要）
+- MuJoCo / YOLO 模块需要额外的 CPU、内存和磁盘空间；它们不是 Camera RGB 接入的前置条件
+
+当前验证环境包括 PySide6 6.8.3、OpenCV 4.11、MuJoCo 3.9.0、robosuite 1.5.2、PyTorch 2.13.0 CPU、Ultralytics 8.4.128、aiohttp 3.14.3、aiortc 1.15.0 和 cryptography 50.0.1。
+
+## 安装
+
+项目使用 `pyproject.toml` 作为 Python 依赖的唯一来源，不需要额外维护重复的 `requirements.txt`。
+
+在项目根目录运行：
 
 ```powershell
-$env:PYTHONPATH = "G:\Vision2Grasp\src"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" "G:\Vision2Grasp\run_xuanshu_lab.py"
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-安装或修复环境：
+YOLO 权重不随 Git 仓库发布。需要运行相关离线算法时，请从模型官方发布渠道获取 `yolo11n-seg.pt`，放到 `artifacts/models/`，并自行确认许可证和文件完整性。Camera RGB 接入不需要该权重。
+
+## 启动
+
+双击项目根目录的 `Start-XUANSHU-LAB.cmd` 启动完整桌面平台。
+
+也可以在 PowerShell 中运行：
 
 ```powershell
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m pip install -e "G:\Vision2Grasp"
+.\.venv\Scripts\python.exe .\run_xuanshu_lab.py
+```
+
+只启动 Gongshu Web 工作台：
+
+```powershell
+.\Start-Vision2Grasp.cmd
+```
+
+启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
+
+## 项目结构
+
+```text
+Vision2Grasp/
+├─ configs/                 研究管线默认配置
+├─ contracts/               公开运行结果数据契约
+├─ frontend/                门户、Jingwei、Gongshu 与 Camera 前端
+├─ scripts/                 Windows 启动脚本
+├─ src/vision2grasp/        感知、几何、抓取、控制、仿真与 Camera 模块
+├─ src/xuanshu_lab/         桌面 Shell、Workspace 注册与服务管理
+├─ tests/                   单元测试与集成测试
+├─ artifacts/               本地权重、密钥、抓拍和实验输出（Git 忽略）
+├─ run_vision2grasp_app.py  本地 Web/API 服务入口
+└─ run_xuanshu_lab.py       XUANSHU LAB 桌面入口
 ```
 
 ## 验证
 
+在项目根目录运行：
+
 ```powershell
-$env:PYTHONPATH = "G:\Vision2Grasp\src"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m compileall -q "G:\Vision2Grasp\src" "G:\Vision2Grasp\tests" "G:\Vision2Grasp\run_xuanshu_lab.py" "G:\Vision2Grasp\run_vision2grasp_app.py"
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m unittest discover -s "G:\Vision2Grasp\tests" -v
-& "G:\Vision2Grasp\.venv\Scripts\python.exe" -m pip check
+.\.venv\Scripts\python.exe -m compileall -q .\src .\tests .\run_xuanshu_lab.py .\run_vision2grasp_app.py
+.\.venv\Scripts\python.exe -m unittest discover -s .\tests -v
+.\.venv\Scripts\python.exe -m pip check
 ```
 
-## 当前冻结环境
+## 当前限制
 
-```text
-Windows 11
-Python 3.12.5
-PySide6 / Qt 6.8.3
-OpenCV 4.11.0
-MuJoCo 3.9.0
-robosuite 1.5.2
-PyTorch 2.13.0+cpu
-Ultralytics 8.4.128
-aiohttp 3.14.3
-aiortc 1.15.0
-cryptography 50.0.1
-qrcode 8.2
-```
+- 真实 Camera 主链路只提供 RGB Frame，不提供真实深度、点云、抓取候选或 MuJoCo 回写。
+- USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
+- 尚未接入真实机器人控制，也没有真实场景完整闭环验证。
+- Hetu 只提供预览入口，没有世界模型算法。
+- 尚未提供正式安装包、自动更新、账户、云同步或互联网中继。
+- 运行产物、用户图片、证书私钥和模型权重均为本地数据，不随仓库发布。
 
-## 许可证边界
+## 许可证与第三方边界
 
-- PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 的第三方许可证。未来分发 EXE 时必须同时完成动态链接、许可证文本和第三方声明审计。
-- Ultralytics 软件与官方 YOLO11 权重默认采用 AGPL-3.0。当前仅用于本地个人 / 研究演示；闭源、内部商业或产品化前必须履行相应义务或取得商业许可。
-- Camera v1 使用 aiortc（BSD-3-Clause）、aiohttp（Apache-2.0，且包含 MIT 许可的传递代码）、cryptography（Apache-2.0 OR BSD-3-Clause）和 qrcode（BSD-3-Clause）。正式分发时应随安装包保留各依赖的许可证与传递依赖声明。
-- 本仓库当前没有擅自替整个项目选择统一许可证。
+本仓库目前**尚未选择项目级开源许可证**。公开源代码不等于自动授予复制、修改或分发权；正式发布前应由项目所有者选择并添加合适的 `LICENSE`。
 
-## v0.1 边界
+- PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 第三方组件。未来分发 EXE 时需完成动态链接、许可证文本和第三方声明审计。
+- Ultralytics 软件及官方 YOLO 权重采用 AGPL-3.0 系列许可。闭源、内部商业或产品化使用前，应确认 AGPL 义务或取得适用的商业许可。
+- Camera v1 直接使用 aiortc、aiohttp、PyAV、cryptography 和 qrcode；发布二进制或安装包前应保留相应许可证和传递依赖声明。
+- MuJoCo、robosuite、PyTorch、torchvision、OpenCV、NumPy 等算法依赖也需要在正式分发前形成完整的第三方清单。
+- 仓库中的 UI 图片作为源代码资产被跟踪；公开发布前仍应由项目所有者确认这些图片的原创性、授权来源和可再分发范围。它们不应与 `artifacts/` 下的实验图片、用户抓拍或模型权重混淆。
 
-已经完成的是桌面平台、三 Workspace 骨架和现有功能接入。尚未包含：正式安装包 / EXE、自动更新、账户或云同步、Hetu 世界模型算法、真实机器人控制，以及真实抓取候选到 MuJoCo 的完整验证回写。
+以上仅说明当前已识别的许可证边界，不构成法律意见，也没有修改任何第三方许可证。

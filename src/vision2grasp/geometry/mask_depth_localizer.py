@@ -180,4 +180,3 @@ class MaskDepthTargetLocalizer:
         if not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-7):
             raise ValueError("world_from_camera rotation must have determinant +1")
         return transform
-
