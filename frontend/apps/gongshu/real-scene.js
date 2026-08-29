@@ -4,6 +4,8 @@
   const CAMERA_SCHEMA_VERSION = "vision2grasp.camera/v1";
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v1";
+  const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning/v1";
+  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v1";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
@@ -11,6 +13,7 @@
     PipelineStateMachine,
     canStartGrasp,
     hasSpatialObservationAssociation,
+    hasGraspPlanAssociation,
   } = window.GongshuPipeline;
   const {
     clientPointToSource,
@@ -23,11 +26,11 @@
     TARGET_SELECTED: "已接收真实目标选择",
     SCENE_CAPTURED: "已获取真实 RGB 场景快照",
     SPATIAL_ANALYSIS: "正在从冻结场景快照计算空间结构",
-    SPATIAL_READY: "空间感知完成，等待真实抓取模块",
-    GRASP_PLANNING: "抓取规划模块未接入 · WAITING",
-    SCENE_SYNC: "等待真实场景同步 · WAITING",
-    SIMULATION: "仿真验证进行中",
-    VERIFIED: "已载入真实离线运行产物",
+    SPATIAL_READY: "空间感知完成，正在准备抓取规划",
+    GRASP_PLANNING: "真实空间结果已进入抓取规划",
+    SCENE_SYNC: "正在映射至规范化仿真场景 · SIMULATION ONLY",
+    SIMULATION: "真实连续 MuJoCo Physics 仿真验证进行中",
+    VERIFIED: "Simulation Validation 已完成",
     RESET: "正在重置流程",
   });
 
@@ -93,11 +96,21 @@
     graspState: byId("graspState"),
     graspMedia: byId("graspMedia"),
     graspEmpty: byId("graspEmpty"),
+    graspPendingOverlay: byId("graspPendingOverlay"),
+    graspProgressTitle: byId("graspProgressTitle"),
+    graspProgressDetail: byId("graspProgressDetail"),
     graspFooter: byId("graspFooter"),
     simulationState: byId("simulationState"),
     simulationMedia: byId("simulationMedia"),
     simulationEmpty: byId("simulationEmpty"),
     simulationFooter: byId("simulationFooter"),
+    simulationHud: byId("simulationHud"),
+    simulationHudState: byId("simulationHudState"),
+    simulationCollision: byId("simulationCollision"),
+    simulationLift: byId("simulationLift"),
+    simulationTarget: byId("simulationTarget"),
+    simulationResult: byId("simulationResult"),
+    startValidationButton: byId("startValidationButton"),
     targetStatus: byId("targetStatus"),
     targetValue: byId("targetValue"),
     targetClassValue: byId("targetClassValue"),
@@ -113,6 +126,11 @@
     spatialDetail: byId("spatialDetail"),
     graspInspectorStatus: byId("graspInspectorStatus"),
     graspValue: byId("graspValue"),
+    graspAngleValue: byId("graspAngleValue"),
+    graspWidthValue: byId("graspWidthValue"),
+    graspQualityValue: byId("graspQualityValue"),
+    graspApproachValue: byId("graspApproachValue"),
+    graspFrameValue: byId("graspFrameValue"),
     graspDetail: byId("graspDetail"),
     systemStatus: byId("systemStatus"),
     statusConnection: byId("statusConnection"),
@@ -164,7 +182,13 @@
   let noticeTimer = 0;
   let targetPerceptionState = null;
   let spatialPerceptionState = null;
+  let graspPlanningState = null;
+  let validationState = null;
   let spatialAnalysisRunning = false;
+  let graspPlanningRunning = false;
+  let validationRunning = false;
+  let validationTimer = 0;
+  let simulationStreamStarted = false;
   let analysisFrozen = false;
   let targetAnalysisRunning = false;
   let targetAnalysisRequest = 0;
@@ -235,6 +259,11 @@
       && canStartGrasp(pipeline.state, targetPerceptionState);
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
+    const validationReady = pipeline.state === "GRASP_PLANNING"
+      && graspPlanningState?.status === "READY"
+      && els.robotSelect.value === "panda"
+      && !validationRunning;
+    els.startValidationButton.disabled = !validationReady;
     if (mayStart) {
       els.startGraspLabel.textContent = "开始抓取";
       els.startGraspHint.textContent = "Start Grasp";
@@ -244,6 +273,15 @@
     } else if (pipeline.state === "SPATIAL_READY") {
       els.startGraspLabel.textContent = "空间感知就绪";
       els.startGraspHint.textContent = "Spatial Ready";
+    } else if (pipeline.state === "GRASP_PLANNING" && graspPlanningState?.status === "READY") {
+      els.startGraspLabel.textContent = "抓取计划就绪";
+      els.startGraspHint.textContent = "Grasp Ready";
+    } else if (pipeline.state === "GRASP_PLANNING") {
+      els.startGraspLabel.textContent = "抓取规划中";
+      els.startGraspHint.textContent = "Grasp Planning";
+    } else if (["SCENE_SYNC", "SIMULATION", "VERIFIED"].includes(pipeline.state)) {
+      els.startGraspLabel.textContent = "仿真验证";
+      els.startGraspHint.textContent = "Simulation Validation";
     } else {
       els.startGraspLabel.textContent = "请选择目标";
       els.startGraspHint.textContent = "Select Target";
@@ -422,12 +460,33 @@
     els.spatialDetail.textContent = "Depth、XYZ 与 Point Cloud 均不可用。";
     els.graspInspectorStatus.textContent = "WAITING";
     els.graspValue.textContent = "等待规划 WAITING";
-    els.graspDetail.textContent = "角度、宽度、评分与碰撞结果均不可用。";
+    els.graspAngleValue.textContent = "NOT AVAILABLE";
+    els.graspWidthValue.textContent = "NOT AVAILABLE";
+    els.graspQualityValue.textContent = "NOT AVAILABLE";
+    els.graspApproachValue.textContent = "NOT AVAILABLE";
+    els.graspFrameValue.textContent = "NOT AVAILABLE";
+    els.graspDetail.textContent = "真实规划结果尚不可用。";
+    els.graspPendingOverlay.hidden = true;
+    els.simulationHud.hidden = true;
+    els.simulationHudState.textContent = "WAITING";
+    els.simulationCollision.textContent = "CLEAR";
+    els.simulationLift.textContent = "0.000 m";
+    els.simulationTarget.textContent = "—";
+    els.simulationResult.textContent = "SIMULATION ONLY";
+    els.simulationResult.className = "simulation-result";
+    els.startValidationButton.disabled = true;
     els.statusSnapshot.textContent = "WAITING";
     els.legacyRunStatus.textContent = "尚未载入 NOT LOADED";
     targetPerceptionState = null;
     spatialPerceptionState = null;
+    graspPlanningState = null;
+    validationState = null;
     spatialAnalysisRunning = false;
+    graspPlanningRunning = false;
+    validationRunning = false;
+    simulationStreamStarted = false;
+    window.clearInterval(validationTimer);
+    validationTimer = 0;
     analysisFrozen = false;
     targetAnalysisRunning = false;
     targetAnalysisRequest += 1;
@@ -730,6 +789,29 @@
     } catch { /* stale or incomplete spatial state must not advance the pipeline */ }
   }
 
+  async function restoreGraspAndValidationState() {
+    if (pipeline.state !== "SPATIAL_READY" || !spatialPerceptionState?.observation) return;
+    try {
+      const graspState = await apiGet(`/api/grasp-planning/state?t=${Date.now()}`);
+      if (!hasGraspPlanAssociation(spatialPerceptionState, graspState)) return;
+      pipeline.transition("GRASP_PLANNING", { restored: true });
+      renderGraspPlanning(graspState);
+      const simulationState = await apiGet(`/api/mujoco-validation/state?t=${Date.now()}`);
+      if (!simulationState.request || simulationState.request.grasp_plan?.target_id !== graspState.plan.target_id) return;
+      pipeline.transition("SCENE_SYNC", { restored: true });
+      pipeline.transition("SIMULATION", { restored: true });
+      if (simulationState.media?.stream_available) {
+        els.simulationMedia.src = `/api/mujoco-validation/live.mjpeg?opened=${Date.now()}`;
+        els.simulationMedia.hidden = false;
+        els.simulationEmpty.hidden = true;
+        simulationStreamStarted = true;
+      }
+      validationRunning = !["SUCCESS", "FAILED"].includes(simulationState.status);
+      renderValidation(simulationState);
+      if (validationRunning) validationTimer = window.setInterval(pollValidationState, 160);
+    } catch { /* stale downstream state must not advance the restored pipeline */ }
+  }
+
   async function resumeLive() {
     try {
       await apiPost("/api/target-perception/reset");
@@ -849,6 +931,7 @@
           sourceFrameId: snapshot.source_frame_id,
         });
         showNotice("空间感知完成：真实 Depth、Target Point Cloud 与 Camera Frame XYZ 已生成。", "success");
+        await runGraspPlanning();
       } else {
         showNotice(SPATIAL_ERROR_MESSAGES[state.error_code] || "空间分析失败 SPATIAL ERROR", "error");
       }
@@ -862,6 +945,181 @@
       showNotice(`空间分析未完成：${error.message}`, "error");
     } finally {
       spatialAnalysisRunning = false;
+      updateActionButtons();
+    }
+  }
+
+  function vectorLabel(vector, digits = 3) {
+    if (!Array.isArray(vector) || vector.length !== 3) return "NOT AVAILABLE";
+    return `X ${Number(vector[0]).toFixed(digits)} · Y ${Number(vector[1]).toFixed(digits)} · Z ${Number(vector[2]).toFixed(digits)}`;
+  }
+
+  function renderGraspPlanning(state) {
+    if (!state || state.schema_version !== GRASP_PLANNING_SCHEMA_VERSION) {
+      throw new Error("Grasp Planning API 版本不匹配");
+    }
+    graspPlanningState = state;
+    const plan = state.plan;
+    if (state.status === "READY" && plan) {
+      if (!hasGraspPlanAssociation(spatialPerceptionState, state)) {
+        throw new Error("GraspPlan 与 SpatialResult 关联不一致");
+      }
+      els.graspMedia.src = `/api/grasp-planning/overlay.jpg?revision=${state.revision}`;
+      els.graspMedia.hidden = false;
+      els.graspEmpty.hidden = true;
+      els.graspPendingOverlay.hidden = true;
+      els.graspState.textContent = "READY";
+      els.graspState.classList.add("has-data");
+      els.graspInspectorStatus.textContent = "READY";
+      els.graspValue.textContent = `${vectorLabel(plan.grasp_point_xyz)} m`;
+      els.graspAngleValue.textContent = `${Number(plan.grasp_angle_deg).toFixed(1)}°`;
+      els.graspWidthValue.textContent = `${(Number(plan.gripper_width) * 1000).toFixed(1)} mm`;
+      els.graspQualityValue.textContent = `${(Number(plan.quality_score) * 100).toFixed(1)} / 100`;
+      els.graspApproachValue.textContent = vectorLabel(plan.approach_vector, 2);
+      els.graspFrameValue.textContent = "相机坐标系 Camera Frame";
+      const confidence = plan.confidence || {};
+      els.graspDetail.textContent = `近似空间抓取 Approx. Spatial Grasp · 启发式未校准置信度 ${Number(confidence.value || 0).toFixed(2)} · ${plan.calibration_state} · SIMULATION ONLY`;
+      els.graspFooter.textContent = `${plan.candidate_count} CANDIDATES · ${plan.target_id}`;
+      updateActionButtons();
+      return;
+    }
+    if (state.status === "FAILED") {
+      els.graspState.textContent = "FAILED";
+      els.graspState.classList.remove("has-data");
+      els.graspInspectorStatus.textContent = "FAILED";
+      els.graspValue.textContent = "规划失败 FAILED";
+      els.graspAngleValue.textContent = "NOT AVAILABLE";
+      els.graspWidthValue.textContent = "NOT AVAILABLE";
+      els.graspQualityValue.textContent = "NOT AVAILABLE";
+      els.graspApproachValue.textContent = "NOT AVAILABLE";
+      els.graspFrameValue.textContent = "NOT AVAILABLE";
+      els.graspDetail.textContent = `${state.error_code || "GRASP_PLANNING_FAILED"} · ${state.message || "抓取规划失败"}`;
+      els.graspFooter.textContent = state.error_code || "FAILED";
+      els.graspPendingOverlay.hidden = false;
+      els.graspProgressTitle.textContent = "抓取规划失败 GRASP FAILED";
+      els.graspProgressDetail.textContent = state.error_code || "PLANNING ERROR";
+      updateActionButtons();
+    }
+  }
+
+  async function runGraspPlanning() {
+    if (graspPlanningRunning || pipeline.state !== "SPATIAL_READY") return;
+    graspPlanningRunning = true;
+    pipeline.transition("GRASP_PLANNING", { source: "spatial-result" });
+    els.graspState.textContent = "PLANNING";
+    els.graspInspectorStatus.textContent = "PLANNING";
+    els.graspPendingOverlay.hidden = false;
+    els.graspProgressTitle.textContent = "抓取规划 Grasp Planning";
+    els.graspProgressDetail.textContent = "PCA、Top-down 与候选评分正在计算 PROCESSING";
+    updateActionButtons();
+    try {
+      const state = await apiPost("/api/grasp-planning/plan", {
+        snapshot_id: spatialPerceptionState?.observation?.snapshot_id,
+      });
+      renderGraspPlanning(state);
+      if (state.status === "READY") {
+        showNotice("抓取规划完成：GraspPlan 已由真实目标点云生成，等待用户启动仿真。", "success");
+      } else {
+        showNotice(`抓取规划失败：${state.error_code || "GRASP_PLANNING_FAILED"}`, "error");
+      }
+    } catch (error) {
+      renderGraspPlanning({
+        schema_version: GRASP_PLANNING_SCHEMA_VERSION,
+        status: "FAILED",
+        error_code: "GRASP_PLANNING_FAILED",
+        message: error.message,
+        plan: null,
+      });
+      showNotice(`抓取规划未完成：${error.message}`, "error");
+    } finally {
+      graspPlanningRunning = false;
+      updateActionButtons();
+    }
+  }
+
+  function renderValidation(state) {
+    if (!state || state.schema_version !== MUJOCO_VALIDATION_SCHEMA_VERSION) {
+      throw new Error("MuJoCo Validation API 版本不匹配");
+    }
+    validationState = state;
+    const telemetry = state.telemetry || {};
+    const result = state.result;
+    els.simulationState.textContent = state.status;
+    els.simulationState.classList.toggle("has-data", Boolean(state.media?.stream_available));
+    els.simulationHud.hidden = !state.media?.stream_available;
+    els.simulationHudState.textContent = telemetry.robot_state || state.status;
+    els.simulationCollision.textContent = telemetry.collision ? "COLLISION" : "CLEAR";
+    els.simulationCollision.classList.toggle("is-alert", Boolean(telemetry.collision));
+    els.simulationTarget.textContent = telemetry.target_id || state.request?.grasp_plan?.target_id || "—";
+    const initialZ = Number(state.request?.scene_transform?.target_position_world?.[2]);
+    const currentZ = Number(telemetry.target_position_world?.[2]);
+    const liveLift = Number.isFinite(initialZ) && Number.isFinite(currentZ) ? Math.max(0, currentZ - initialZ) : 0;
+    els.simulationLift.textContent = `${Number(result?.lift_height_m ?? liveLift).toFixed(3)} m`;
+    els.simulationFooter.textContent = `${state.camera_mode} · ${state.status}`;
+    document.querySelectorAll("[data-sim-camera]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.simCamera === state.camera_mode);
+    });
+    if (["SUCCESS", "FAILED"].includes(state.status)) {
+      validationRunning = false;
+      window.clearInterval(validationTimer);
+      validationTimer = 0;
+      els.simulationResult.textContent = state.status === "SUCCESS"
+        ? "仿真验证成功 Simulation Validation SUCCESS"
+        : `仿真验证失败 Simulation Validation FAILED · ${state.reason || "State Error"}`;
+      els.simulationResult.className = `simulation-result is-${state.status.toLowerCase()}`;
+      if (pipeline.state === "SIMULATION") {
+        pipeline.transition("VERIFIED", { result: state.status, reason: state.reason || null });
+      }
+      showNotice(els.simulationResult.textContent, state.status === "SUCCESS" ? "success" : "error");
+    } else {
+      els.simulationResult.textContent = "真实连续物理 REAL-TIME PHYSICS · SIMULATION ONLY";
+      els.simulationResult.className = "simulation-result";
+    }
+    updateActionButtons();
+  }
+
+  async function pollValidationState() {
+    try {
+      renderValidation(await apiGet(`/api/mujoco-validation/state?t=${Date.now()}`));
+    } catch (error) {
+      window.clearInterval(validationTimer);
+      validationTimer = 0;
+      validationRunning = false;
+      showNotice(`无法读取仿真状态：${error.message}`, "error");
+    }
+  }
+
+  async function startValidation() {
+    if (
+      pipeline.state !== "GRASP_PLANNING"
+      || graspPlanningState?.status !== "READY"
+      || els.robotSelect.value !== "panda"
+      || validationRunning
+    ) return;
+    validationRunning = true;
+    els.startValidationButton.disabled = true;
+    pipeline.transition("SCENE_SYNC", { transform: "NORMALIZED_VALIDATION_SCENE" });
+    els.simulationState.textContent = "INITIALIZING";
+    els.simulationFooter.textContent = "UNCALIBRATED · SIMULATION ONLY";
+    try {
+      const state = await apiPost("/api/mujoco-validation/start", { target_id: graspPlanningState.plan.target_id });
+      renderValidation(state);
+      els.simulationMedia.src = `/api/mujoco-validation/live.mjpeg?opened=${Date.now()}`;
+      simulationStreamStarted = true;
+      els.simulationMedia.onload = () => {
+        els.simulationMedia.hidden = false;
+        els.simulationEmpty.hidden = true;
+        els.simulationHud.hidden = false;
+      };
+      pipeline.transition("SIMULATION", { controller: "MUJOCO_POSITION_DLS_IK" });
+      await pollValidationState();
+      validationTimer = window.setInterval(pollValidationState, 160);
+    } catch (error) {
+      validationRunning = false;
+      els.simulationState.textContent = "FAILED";
+      els.simulationFooter.textContent = "STATE ERROR";
+      if (pipeline.state === "SCENE_SYNC") pipeline.transition("SIMULATION", { error: true });
+      showNotice(`仿真验证无法启动：${error.message}`, "error");
       updateActionButtons();
     }
   }
@@ -1097,15 +1355,58 @@
   els.robotSelect.addEventListener("change", () => {
     const pending = els.robotSelect.value !== "panda";
     showNotice(pending ? "UR5e 接口已预留；本轮不执行多机器人仿真。" : "已选择 Franka Panda。", pending ? "error" : "success");
+    updateActionButtons();
   });
   els.viewModeSelect.addEventListener("change", () => setViewMode(els.viewModeSelect.value));
   els.targetOverlay.addEventListener("pointerdown", selectTargetAtPointer);
   els.analyzeTargetsButton.addEventListener("click", analyzeTargets);
   els.startGraspButton.addEventListener("click", startGrasp);
+  els.startValidationButton.addEventListener("click", startValidation);
   els.retrySpatialButton.addEventListener("click", retrySpatialAnalysis);
   els.newSceneButton.addEventListener("click", resumeLive);
   els.resumeLiveButton.addEventListener("click", resumeLive);
   els.resetPipelineButton.addEventListener("click", resetPipeline);
+  document.querySelectorAll("[data-sim-camera]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (!validationState?.request) return;
+      try {
+        renderValidation(await apiPost("/api/mujoco-validation/camera-mode", { mode: button.dataset.simCamera }));
+      } catch (error) {
+        showNotice(`虚拟相机切换失败：${error.message}`, "error");
+      }
+    });
+  });
+  const simulationStage = els.simulationMedia.closest(".simulation-stage");
+  let simulationPointer = null;
+  simulationStage.addEventListener("pointerdown", (event) => {
+    if (!validationState?.request || event.target.closest("button")) return;
+    simulationPointer = { x: event.clientX, y: event.clientY, pan: event.shiftKey || event.button === 1 };
+    simulationStage.setPointerCapture(event.pointerId);
+    simulationStage.classList.add("is-dragging");
+  });
+  simulationStage.addEventListener("pointermove", (event) => {
+    if (!simulationPointer || !simulationStage.hasPointerCapture(event.pointerId)) return;
+    const dx = event.clientX - simulationPointer.x;
+    const dy = event.clientY - simulationPointer.y;
+    simulationPointer.x = event.clientX;
+    simulationPointer.y = event.clientY;
+    apiPost("/api/mujoco-validation/camera-manual", simulationPointer.pan
+      ? { pan_x: -dx, pan_y: dy }
+      : { rotate_x: -dx, rotate_y: dy }).then(renderValidation).catch(() => {});
+  });
+  function releaseSimulationPointer(event) {
+    if (simulationStage.hasPointerCapture(event.pointerId)) simulationStage.releasePointerCapture(event.pointerId);
+    simulationPointer = null;
+    simulationStage.classList.remove("is-dragging");
+  }
+  simulationStage.addEventListener("pointerup", releaseSimulationPointer);
+  simulationStage.addEventListener("pointercancel", releaseSimulationPointer);
+  simulationStage.addEventListener("wheel", (event) => {
+    if (!validationState?.request) return;
+    event.preventDefault();
+    apiPost("/api/mujoco-validation/camera-manual", { zoom: event.deltaY }).then(renderValidation).catch(() => {});
+  }, { passive: false });
   els.cameraSetupButton.addEventListener("click", () => openDialog(els.cameraSetupDialog));
   document.querySelector("[data-close-camera-setup]").addEventListener("click", () => closeDialog(els.cameraSetupDialog));
   els.cameraSetupDialog.addEventListener("click", (event) => {
@@ -1176,6 +1477,7 @@
   });
   window.addEventListener("beforeunload", () => {
     window.clearInterval(cameraStateTimer);
+    window.clearInterval(validationTimer);
     clearHistoricalUrls();
   });
 
@@ -1184,6 +1486,7 @@
   (async function initializeWorkspace() {
     await restoreTargetPerceptionState();
     await restoreSpatialPerceptionState();
+    await restoreGraspAndValidationState();
     await pollCameraState();
     cameraStateTimer = window.setInterval(pollCameraState, 1000);
   })();

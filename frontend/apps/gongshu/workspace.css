@@ -599,6 +599,161 @@
 .pending-overlay strong { font-size: 10px; }
 .pending-overlay span { color: #c7d7e7; font-size: 8px; }
 
+.simulation-stage {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(24, 83, 110, .2), transparent 58%),
+    #050b12;
+  cursor: grab;
+}
+
+.simulation-stage.is-dragging { cursor: grabbing; }
+
+.simulation-stream {
+  object-fit: cover;
+  background: #050b12;
+}
+
+.simulation-hud {
+  position: absolute;
+  inset: 16px 16px auto 16px;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: #eaf8ff;
+  pointer-events: none;
+}
+
+.simulation-hud > div:first-child {
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid rgba(84, 218, 255, .38);
+  border-radius: 8px;
+  background: rgba(3, 14, 24, .72);
+  box-shadow: 0 0 24px rgba(34, 186, 230, .12);
+  backdrop-filter: blur(8px);
+}
+
+.simulation-hud small {
+  color: #93b7cb;
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.simulation-hud strong {
+  color: #86ecff;
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+
+.simulation-hud-metrics {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.simulation-hud-metrics span {
+  display: grid;
+  gap: 2px;
+  min-width: 76px;
+  padding: 7px 9px;
+  border: 1px solid rgba(125, 163, 185, .25);
+  border-radius: 7px;
+  background: rgba(3, 12, 20, .62);
+  color: #94b0c2;
+  font-size: 7px;
+  backdrop-filter: blur(8px);
+}
+
+.simulation-hud-metrics b { color: #f1fbff; font-size: 9px; }
+
+.simulation-result {
+  padding: 9px 12px;
+  border: 1px solid rgba(125, 163, 185, .28);
+  border-radius: 8px;
+  background: rgba(3, 12, 20, .68);
+  color: #a9c1d0 !important;
+  font-size: 9px !important;
+  box-shadow: 0 0 28px rgba(36, 189, 232, .1);
+}
+
+.simulation-result.is-success {
+  border-color: rgba(69, 238, 178, .62);
+  color: #7af3c4 !important;
+  box-shadow: 0 0 34px rgba(53, 235, 173, .22);
+}
+
+.simulation-result.is-failed {
+  border-color: rgba(255, 111, 105, .62);
+  color: #ff9a95 !important;
+  box-shadow: 0 0 34px rgba(255, 91, 82, .18);
+}
+
+.simulation-camera-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  display: flex;
+  gap: 5px;
+}
+
+.simulation-camera-controls button,
+.start-validation-button {
+  border: 1px solid rgba(116, 184, 216, .38);
+  border-radius: 7px;
+  background: rgba(4, 18, 29, .78);
+  color: #b9d3e2;
+  font: inherit;
+  font-size: 7px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.simulation-camera-controls button { padding: 7px 9px; }
+
+.simulation-camera-controls button.is-active {
+  border-color: rgba(71, 221, 255, .72);
+  color: #8cecff;
+  box-shadow: inset 0 0 16px rgba(49, 198, 235, .13);
+}
+
+.start-validation-button {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 5;
+  padding: 8px 13px;
+  border-color: rgba(255, 194, 75, .58);
+  color: #ffe2a0;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.start-validation-button b {
+  margin-left: 5px;
+  color: #fff4d2;
+  font-size: 7px;
+  letter-spacing: .07em;
+}
+
+.start-validation-button:disabled {
+  border-color: rgba(116, 141, 157, .22);
+  color: #718494;
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.workspace-view:not(.is-primary) .simulation-hud-metrics,
+.workspace-view:not(.is-primary) .simulation-camera-controls,
+.workspace-view:not(.is-primary) .start-validation-button {
+  display: none;
+}
+
+.grasp-summary dd { max-width: 55%; }
+
 .frame-corners {
   position: absolute;
   inset: 13px;

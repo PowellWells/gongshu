@@ -150,11 +150,15 @@
             </div>
           </header>
           <div class="workspace-view-stage pending-stage">
-            <img id="graspMedia" class="workspace-media" alt="真实抓取规划运行产物" hidden />
+            <img id="graspMedia" class="workspace-media" alt="真实空间结果驱动的抓取规划可视化" hidden />
             <div id="graspEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 7v15l7 7v10M34 7v15l-7 7v10M10 7h28"/><path d="M18 39h12"/></svg>
               <strong>等待抓取规划 WAITING</strong>
-              <span>模块未接入 Module Pending</span>
+              <span>等待真实 SpatialResult 与目标点云</span>
+            </div>
+            <div id="graspPendingOverlay" class="pending-overlay" hidden>
+              <strong id="graspProgressTitle">抓取规划 Grasp Planning</strong>
+              <span id="graspProgressDetail">等待规划 WAITING</span>
             </div>
           </div>
           <footer class="workspace-view-footer"><span>输出接口 GraspPlan</span><strong id="graspFooter">NOT AVAILABLE</strong></footer>
@@ -169,14 +173,31 @@
             </div>
           </header>
           <div class="workspace-view-stage pending-stage simulation-stage">
-            <img id="simulationMedia" class="workspace-media" alt="真实 MuJoCo 离线运行产物" hidden />
+            <img id="simulationMedia" class="workspace-media simulation-stream" alt="当前 GraspPlan 驱动的连续 MuJoCo Physics 渲染" hidden />
             <div id="simulationEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 6v12l6 6v8M32 6v12l-6 6v8M12 6h24"/><path d="m18 32 6-3 6 3v8l-6 3-6-3z"/></svg>
               <strong>等待仿真 WAITING</strong>
-              <span>验证模块未接入 Phone 主流程</span>
+              <span>等待 READY GraspPlan 与用户启动</span>
             </div>
+            <div id="simulationHud" class="simulation-hud" hidden>
+              <div><small>仿真状态 Simulation State</small><strong id="simulationHudState">WAITING</strong></div>
+              <div class="simulation-hud-metrics">
+                <span>碰撞 Collision <b id="simulationCollision">CLEAR</b></span>
+                <span>抬升 Lift <b id="simulationLift">0.000 m</b></span>
+                <span>目标 Target <b id="simulationTarget">—</b></span>
+              </div>
+              <strong id="simulationResult" class="simulation-result">SIMULATION ONLY</strong>
+            </div>
+            <div class="simulation-camera-controls" aria-label="MuJoCo 虚拟相机控制">
+              <button type="button" data-sim-camera="CINEMATIC" class="is-active">电影镜头 Cinematic</button>
+              <button type="button" data-sim-camera="AUTO_FOLLOW">自动跟随 Auto Follow</button>
+              <button type="button" data-sim-camera="MANUAL">手动 Manual</button>
+            </div>
+            <button id="startValidationButton" class="start-validation-button" type="button" disabled>
+              开始仿真验证 <b>Start Validation</b>
+            </button>
           </div>
-          <footer class="workspace-view-footer"><span>输入接口 SimulationScene</span><strong id="simulationFooter">NOT AVAILABLE</strong></footer>
+          <footer class="workspace-view-footer"><span>输入接口 ValidationRequest</span><strong id="simulationFooter">NOT AVAILABLE</strong></footer>
         </article>
       </section>
 
@@ -204,8 +225,15 @@
         </section>
         <section class="inspector-block">
           <header><div><span>03</span><h2>抓取结果 <b>Grasp</b></h2></div><strong id="graspInspectorStatus">WAITING</strong></header>
-          <div class="inspector-value"><small>抓取方案 Grasp Plan</small><strong id="graspValue">等待规划 WAITING</strong></div>
-          <p id="graspDetail">角度、宽度、评分与碰撞结果均不可用。</p>
+          <dl class="target-summary grasp-summary">
+            <div><dt>抓取点 Grasp Point</dt><dd id="graspValue">等待规划 WAITING</dd></div>
+            <div><dt>抓取角度 Angle</dt><dd id="graspAngleValue">NOT AVAILABLE</dd></div>
+            <div><dt>夹爪宽度 Width</dt><dd id="graspWidthValue">NOT AVAILABLE</dd></div>
+            <div><dt>质量评分 Quality</dt><dd id="graspQualityValue">NOT AVAILABLE</dd></div>
+            <div><dt>接近方向 Approach</dt><dd id="graspApproachValue">NOT AVAILABLE</dd></div>
+            <div><dt>坐标系 Frame</dt><dd id="graspFrameValue">NOT AVAILABLE</dd></div>
+          </dl>
+          <p id="graspDetail">真实规划结果尚不可用。</p>
         </section>
         <section class="inspector-block system-block">
           <header><div><span>04</span><h2>系统状态 <b>Status</b></h2></div><strong id="systemStatus">READY</strong></header>

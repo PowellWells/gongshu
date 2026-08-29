@@ -122,6 +122,14 @@ class SpatialPerceptionService:
         with self._lock:
             return None if self._overview_jpeg is None else bytes(self._overview_jpeg)
 
+    def current_observation(self) -> SpatialObservation:
+        """Return the immutable READY observation for downstream contracts."""
+
+        with self._lock:
+            if self._status != "READY" or self._observation is None:
+                raise RuntimeError("SpatialObservation is not ready")
+            return self._observation
+
     @staticmethod
     def _validate_expected_association(
         snapshot: TargetSceneSnapshot,

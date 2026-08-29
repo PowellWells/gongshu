@@ -104,3 +104,24 @@ minimum_points = 30
 maximum_points = 4096
 outlier_mad_scale = 3.5
 minimum_depth_band = 0.02
+
+[gongshu_grasp_planning]
+strategy = "geometric_pca_top_down"
+minimum_points = 30
+extent_lower_quantile = 0.02
+extent_upper_quantile = 0.98
+minimum_gripper_width_m = 0.01
+maximum_gripper_width_m = 0.08
+width_clearance_m = 0.008
+maximum_object_extent_m = 0.35
+point_support_reference = 1000
+
+[gongshu_validation]
+scene_transform = "NORMALIZED_VALIDATION_SCENE"
+controller = "MUJOCO_POSITION_DLS_IK"
+camera_mode = "CINEMATIC"
+render_width = 960
+render_height = 540
+render_fps = 24
+lift_height_m = 0.08
+stable_window_s = 0.45

@@ -36,7 +36,7 @@
     TARGET_SELECTED: new Set(["SCENE_CAPTURED", "RESET"]),
     SCENE_CAPTURED: new Set(["SPATIAL_ANALYSIS", "RESET"]),
     SPATIAL_ANALYSIS: new Set(["SPATIAL_READY", "GRASP_PLANNING", "RESET"]),
-    SPATIAL_READY: new Set(["RESET"]),
+    SPATIAL_READY: new Set(["GRASP_PLANNING", "RESET"]),
     GRASP_PLANNING: new Set(["SCENE_SYNC", "RESET"]),
     SCENE_SYNC: new Set(["SIMULATION", "RESET"]),
     SIMULATION: new Set(["VERIFIED", "RESET"]),
@@ -121,6 +121,17 @@
       && observation.source_timestamp_s === snapshot.source_timestamp_s;
   }
 
+  function hasGraspPlanAssociation(spatialState, graspState) {
+    const observation = spatialState?.observation;
+    const plan = graspState?.plan;
+    return graspState?.status === "READY"
+      && Boolean(observation && plan)
+      && plan.planning_state === "READY"
+      && plan.snapshot_id === observation.snapshot_id
+      && plan.source_frame_id === observation.source_frame_id
+      && plan.target_id === observation.target_instance_id;
+  }
+
   return Object.freeze({
     STATES,
     VIEW_BY_STATE,
@@ -128,6 +139,7 @@
     PipelineStateMachine,
     hasTargetSnapshotAssociation,
     hasSpatialObservationAssociation,
+    hasGraspPlanAssociation,
     canStartGrasp,
   });
 });

@@ -24,6 +24,11 @@ import cv2
 import numpy as np
 
 from vision2grasp.camera import PhoneLANConfig, PhoneLANProvider
+from vision2grasp.grasp_planning import (
+    GeometricGraspPlanner,
+    GeometricGraspPlannerConfig,
+    GraspPlanningService,
+)
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
@@ -40,6 +45,7 @@ from vision2grasp.spatial_perception import (
     SpatialPerceptionService,
 )
 from vision2grasp.target_perception import FastSAMTargetSegmenter, TargetPerceptionService
+from vision2grasp.simulation import MuJoCoValidationService
 from vision2grasp.visualization import make_run_id
 
 
@@ -83,6 +89,54 @@ def build_spatial_perception_provider() -> SpatialPerceptionProvider:
     )
 
 
+def build_grasp_planner() -> GeometricGraspPlanner:
+    with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
+        config = tomllib.load(stream)["gongshu_grasp_planning"]
+    if str(config["strategy"]) != "geometric_pca_top_down":
+        raise ValueError("unsupported Gongshu grasp planning strategy")
+    return GeometricGraspPlanner(
+        GeometricGraspPlannerConfig(
+            minimum_points=int(config["minimum_points"]),
+            extent_lower_quantile=float(config["extent_lower_quantile"]),
+            extent_upper_quantile=float(config["extent_upper_quantile"]),
+            minimum_gripper_width_m=float(config["minimum_gripper_width_m"]),
+            maximum_gripper_width_m=float(config["maximum_gripper_width_m"]),
+            width_clearance_m=float(config["width_clearance_m"]),
+            maximum_object_extent_m=float(config["maximum_object_extent_m"]),
+            point_support_reference=int(config["point_support_reference"]),
+        )
+    )
+
+
+def build_mujoco_validation_service() -> MuJoCoValidationService:
+    with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
+        config = tomllib.load(stream)["gongshu_validation"]
+    if str(config["scene_transform"]) != "NORMALIZED_VALIDATION_SCENE":
+        raise ValueError("unsupported Gongshu validation scene transform")
+    if str(config["controller"]) != "MUJOCO_POSITION_DLS_IK":
+        raise ValueError("unsupported Gongshu validation controller")
+
+    def create_backend(request, director):
+        from vision2grasp.simulation.native_panda_validation import (
+            NativePandaValidation,
+            NativePandaValidationConfig,
+        )
+
+        return NativePandaValidation(
+            request,
+            director,
+            NativePandaValidationConfig(
+                width=int(config["render_width"]),
+                height=int(config["render_height"]),
+                render_fps=int(config["render_fps"]),
+                lift_height_m=float(config["lift_height_m"]),
+                stable_window_s=float(config["stable_window_s"]),
+            ),
+        )
+
+    return MuJoCoValidationService(create_backend)
+
+
 class Vision2GraspApp:
     def __init__(
         self,
@@ -100,6 +154,8 @@ class Vision2GraspApp:
         self.spatial_perception = SpatialPerceptionService(
             spatial_provider or build_spatial_perception_provider()
         )
+        self.grasp_planning = GraspPlanningService(build_grasp_planner())
+        self.mujoco_validation = build_mujoco_validation_service()
 
     @property
     def real_scene(self) -> RealSceneProcessor:
@@ -118,6 +174,7 @@ class Vision2GraspApp:
             return self._real_scene
 
     def stop(self) -> None:
+        self.mujoco_validation.reset()
         self.camera.stop()
         if self._real_scene is not None:
             self._real_scene.stop()
@@ -142,11 +199,15 @@ class Vision2GraspApp:
         """Freeze one real Phone RGB frame and generate selectable instances."""
 
         self.spatial_perception.reset()
+        self.grasp_planning.reset()
+        self.mujoco_validation.reset()
         return self.target_perception.analyze(self.camera.capture())
 
     def analyze_spatial(self, request: dict[str, Any]) -> dict[str, object]:
         """Analyze only the already-selected frozen Scene Snapshot."""
 
+        self.grasp_planning.reset()
+        self.mujoco_validation.reset()
         snapshot = self.target_perception.selected_scene_snapshot()
         return self.spatial_perception.analyze(
             snapshot,
@@ -155,6 +216,20 @@ class Vision2GraspApp:
             expected_target_instance_id=str(request["target_instance_id"]),
             expected_source_timestamp_s=float(request["source_timestamp_s"]),
         )
+
+    def plan_grasp(self) -> dict[str, object]:
+        """Plan only from the immutable SpatialResult and selected snapshot."""
+
+        self.mujoco_validation.reset()
+        return self.grasp_planning.plan(
+            self.spatial_perception.current_observation(),
+            self.target_perception.selected_scene_snapshot(),
+        )
+
+    def start_validation(self) -> dict[str, object]:
+        """Create a normalized simulation-only request from the READY GraspPlan."""
+
+        return self.mujoco_validation.start(self.grasp_planning.current_plan())
 
     def run_simulation(self) -> dict[str, Any]:
         if not self._simulation_lock.acquire(blocking=False):
@@ -240,6 +315,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/real-scene/state",
             "/api/target-perception/state",
             "/api/spatial-perception/state",
+            "/api/grasp-planning/state",
+            "/api/mujoco-validation/state",
         }
         if (
             path in quiet_paths
@@ -264,6 +341,10 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "target-selection.manual/v1",
                         "spatial-perception.monocular/v1",
                         "spatial-observation.camera-frame/v1",
+                        "grasp-planning.geometric-pca/v1",
+                        "grasp-plan/v1",
+                        "mujoco-validation.normalized-scene/v1",
+                        "mujoco-validation.cinematic-stream/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }
@@ -315,6 +396,29 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND, "spatial overview not ready")
                 return
             self._send_binary(overview, "image/jpeg")
+            return
+        if path == "/api/grasp-planning/state":
+            self._send_json(self.app.grasp_planning.snapshot())
+            return
+        if path == "/api/grasp-planning/overlay.jpg":
+            overlay = self.app.grasp_planning.overlay_jpeg()
+            if overlay is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "grasp overlay not ready")
+                return
+            self._send_binary(overlay, "image/jpeg")
+            return
+        if path == "/api/mujoco-validation/state":
+            self._send_json(self.app.mujoco_validation.snapshot())
+            return
+        if path == "/api/mujoco-validation/live.mjpeg":
+            self._send_validation_mjpeg()
+            return
+        if path == "/api/mujoco-validation/frame.jpg":
+            frame = self.app.mujoco_validation.latest_frame()
+            if frame is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "MuJoCo frame not ready")
+                return
+            self._send_binary(frame, "image/jpeg")
             return
         if path == "/api/real-scene/state":
             self._send_json(self.app.real_scene.snapshot())
@@ -375,6 +479,12 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 spatial = getattr(self.app, "spatial_perception", None)
                 if spatial is not None:
                     spatial.reset()
+                grasp = getattr(self.app, "grasp_planning", None)
+                if grasp is not None:
+                    grasp.reset()
+                validation = getattr(self.app, "mujoco_validation", None)
+                if validation is not None:
+                    validation.reset()
                 self._send_json(result)
                 return
             if path == "/api/spatial-perception/analyze":
@@ -382,6 +492,24 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             if path == "/api/spatial-perception/reset":
                 self._send_json(self.app.spatial_perception.reset())
+                return
+            if path == "/api/grasp-planning/plan":
+                self._send_json(self.app.plan_grasp())
+                return
+            if path == "/api/grasp-planning/reset":
+                self._send_json(self.app.grasp_planning.reset())
+                return
+            if path == "/api/mujoco-validation/start":
+                self._send_json(self.app.start_validation())
+                return
+            if path == "/api/mujoco-validation/reset":
+                self._send_json(self.app.mujoco_validation.reset())
+                return
+            if path == "/api/mujoco-validation/camera-mode":
+                self._send_json(self.app.mujoco_validation.set_camera_mode(str(body["mode"])))
+                return
+            if path == "/api/mujoco-validation/camera-manual":
+                self._send_json(self.app.mujoco_validation.manual_camera(body))
                 return
             if path == "/api/real-scene/source":
                 self._set_source(body)
@@ -458,7 +586,10 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
     def _send_binary(self, payload: bytes, content_type: str) -> None:
         self.send_response(HTTPStatus.OK)
@@ -466,7 +597,10 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
     def _send_camera_mjpeg(self) -> None:
         boundary = b"xuanshu-camera-frame"
@@ -480,6 +614,32 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             while True:
                 frame = self.app.camera.wait_for_live_jpeg(revision, timeout=2.0)
                 if frame is None:
+                    continue
+                revision, jpeg = frame
+                self.wfile.write(b"--" + boundary + b"\r\n")
+                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                self.wfile.write(f"Content-Length: {len(jpeg)}\r\n\r\n".encode("ascii"))
+                self.wfile.write(jpeg)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
+
+    def _send_validation_mjpeg(self) -> None:
+        boundary = b"gongshu-mujoco-frame"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", f"multipart/x-mixed-replace; boundary={boundary.decode()}")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        revision = -1
+        try:
+            while True:
+                frame = self.app.mujoco_validation.wait_for_frame(revision, timeout=2.0)
+                if frame is None:
+                    state = self.app.mujoco_validation.snapshot()["status"]
+                    if state in {"WAITING", "FAILED", "SUCCESS"} and revision < 0:
+                        return
                     continue
                 revision, jpeg = frame
                 self.wfile.write(b"--" + boundary + b"\r\n")

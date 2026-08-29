@@ -66,6 +66,14 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "retrySpatialButton",
             "newSceneButton",
             "graspInspectorStatus",
+            "graspAngleValue",
+            "graspWidthValue",
+            "graspQualityValue",
+            "graspApproachValue",
+            "graspFrameValue",
+            "startValidationButton",
+            "simulationHud",
+            "simulationHudState",
             "systemStatus",
             "cameraSetupDialog",
             "legacyDialog",
@@ -127,6 +135,11 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/spatial-perception/analyze",
             "/api/spatial-perception/state",
             "/api/spatial-perception/overview.jpg",
+            "/api/grasp-planning/plan",
+            "/api/grasp-planning/overlay.jpg",
+            "/api/mujoco-validation/start",
+            "/api/mujoco-validation/live.mjpeg",
+            "/api/mujoco-validation/state",
         ):
             self.assertIn(endpoint, self.controller)
         self.assertIn('pipeline.transition("TARGET_SELECTED"', self.controller)
@@ -158,6 +171,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('SPATIAL_READY: "spatial"', self.pipeline)
         self.assertIn('GRASP_PLANNING: "grasp"', self.pipeline)
         self.assertIn('SIMULATION: "simulation"', self.pipeline)
+        self.assertIn('SPATIAL_READY: new Set(["GRASP_PLANNING", "RESET"])', self.pipeline)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for the frontend state-machine test")
     def test_pipeline_rejects_invalid_transitions_and_resets_to_live(self) -> None:

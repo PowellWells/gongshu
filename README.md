@@ -7,7 +7,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 ## 当前实现范围
 
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
-- **Gongshu Workspace v0.5**：在 v0.4 冻结帧目标选择之后加入单次单目深度、Mask 内稳健目标深度、相机坐标系反投影、目标点云与 `SpatialObservation`；布局继续由集中式 Pipeline State 驱动。
+- **Gongshu Workspace v0.6**：在 v0.5 `SpatialObservation` 之后加入 CPU 几何抓取规划、标准 `GraspPlan`、规范化 MuJoCo 验证场景、Panda 连续物理动画与状态驱动 Cinematic Camera；布局继续由集中式 Pipeline State 驱动。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -15,18 +15,12 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 真实 Camera 主链路目前严格限定为：
 
 ```text
-Phone Camera → LAN → PC → Frozen RGB Frame → Target Instance → Manual Selection → Depth → Target Point Cloud → Camera-frame XYZ
+Phone Camera → Frozen RGB Frame → Manual Target → Depth / Point Cloud → GraspPlan → Normalized MuJoCo Validation
 ```
 
 Camera 实时画面通过私有局域网 WebRTC 传输，只在内存中保留最新 RGB 帧；高清拍照先进入 PC 内存预览，只有用户明确保存时才写入 `artifacts/camera/captures/`。
 
-Target Perception 只输出与同一冻结帧绑定的实例掩膜、边界框、二维中心和可选语义信息。FastSAM-s 未提供可靠语义类别，因此默认显示 `未知目标 Unknown Object`，但仍允许用户选择。v0.5 空间感知只消费该冻结 Scene Snapshot，不会重新抽取 Live RGB 帧。下面这条链路**尚未接入真实 Camera 主链路，也不应视为当前已完成功能**：
-
-```text
-YOLO → Depth → Grasp → MuJoCo
-```
-
-仓库中已有 YOLO、Depth / 几何、Grasp 和 MuJoCo 相关算法与仿真代码，但它们目前属于独立研究模块、离线验证能力或后续集成基础。
+Target Perception 只输出与同一冻结帧绑定的实例掩膜、边界框、二维中心和可选语义信息。FastSAM-s 未提供可靠语义类别，因此默认显示 `未知目标 Unknown Object`，但仍允许用户选择。后续 Spatial / Grasp 只消费该冻结 Scene Snapshot 及其标准下游结果，不会重新抽取 Live RGB 帧；MuJoCo 只消费 `GraspPlan`，不读取 Phone Camera、Depth Backend 或前端状态。
 
 ## Camera 安全与网络边界
 
@@ -91,7 +85,11 @@ py -3.12 -m venv .venv
 
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
 
-进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用 `开始抓取 Start Grasp`。开始抓取严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY`；空间视图显示真实 Depth 输出、Mask 反投影目标点云和 Camera Frame XYZ。普通 Phone RGB 使用可配置标称对角视场角构造 `NOMINAL_FOV / UNCALIBRATED` 投影参数；该步骤不会给相对深度恢复绝对尺度。当前后端原生输出 metric-scaled depth，但由于单目估计和未标定内参，对外只标记 `Approx. Metric`。抓取规划与 Phone→MuJoCo 仍保持 WAITING。扫码、证书、连接状态与高清 Capture 位于 `连接设置 Camera Setup`；原离线仿真和公开运行目录读取位于 `历史运行 History` 次级入口。
+进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用 `开始抓取 Start Grasp`。开始抓取严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING`。普通 Phone RGB 使用可配置标称对角视场角构造 `NOMINAL_FOV / UNCALIBRATED` 投影参数；当前 metric-scaled 单目结果只标记 `Approx. Metric`。
+
+v0.6 规划器在 OpenCV Camera Frame（`+X` 右、`+Y` 下、`+Z` 前）中对真实目标点云执行稳健范围估计与二维 PCA，生成中心及沿主轴偏移的 Top-down 候选，夹爪闭合方向取 PCA 短轴。所需宽度为目标短轴稳健范围加 8 mm clearance；Panda 有效范围固定为 `0.01–0.08 m`，超限直接 `FAILED`。`quality_score` 仅排序候选；`confidence` 为 `HEURISTIC_UNCALIBRATED`，由点支持、深度有效性、PCA 稳定性和宽度余量构成，不代表真实成功概率。
+
+规划 READY 后必须由用户点击 `开始仿真验证 Start Validation`。由于没有 Camera→Robot/Table 外参，`ValidationSceneTransform / NORMALIZED_VALIDATION_SCENE` 只保留相对尺度、主轴、宽度与 Approach，并映射到 Panda 安全工作区；始终标记 `UNCALIBRATED / SIMULATION_ONLY`。MuJoCo 使用原生关节位置执行器、DLS IK 轨迹、动态目标接触、摩擦与重力，按 `HOME → PRE_GRASP → APPROACH → ALIGN → CLOSE → LIFT → VERIFY` 连续执行。`SUCCESS` 要求状态完整、无无效桌面碰撞、已执行 Close、达到 Lift Height 且通过稳定窗口。Cinematic / Auto Follow / Manual 只改变虚拟相机表现，不修改物理结果。扫码、证书、连接状态与高清 Capture 仍位于 `连接设置 Camera Setup`；原离线运行读取位于 `历史运行 History` 次级入口。
 
 ## 项目结构
 
@@ -121,10 +119,10 @@ Vision2Grasp/
 
 ## 当前限制
 
-- 真实 Camera 主链路目前提供 RGB Frame、对象无关实例候选、手动目标选择、单目近似深度、目标点云和 Camera Frame XYZ；结果不是传感器级 Metric，也不是 Robot / World 坐标。
-- Honor Magic4 的 v0.5 实体空间感知验收仍由用户完成；自动化与静态样本结果不得描述为实体手机实测。
+- 真实 Camera 主链路目前可生成 RGB Frame、手动目标、单目近似深度、目标点云、Camera Frame GraspPlan 与规范化 MuJoCo Validation；它不是标定后的 Camera→Robot / World 坐标闭环。
+- Honor Magic4 的 v0.6 实体完整链路验收仍由用户完成；自动化、静态样本和 MuJoCo 结果不得描述为实体手机或实体机器人实测。
 - USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
-- 尚未接入真实机器人控制，也没有真实场景完整闭环验证。
+- 尚未接入真实机械臂、外参标定、在线碰撞场景重建或物理执行闭环；当前 SUCCESS 仅表示 Simulation Validation。
 - Hetu 只提供预览入口，没有世界模型算法。
 - 尚未提供正式安装包、自动更新、账户、云同步或互联网中继。
 - 运行产物、用户图片、证书私钥和模型权重均为本地数据，不随仓库发布。
