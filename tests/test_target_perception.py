@@ -184,6 +184,23 @@ class TargetPerceptionServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not match"):
             service.select(state["candidates"][0]["id"], source_frame_id=frame.frame_id + 1)
 
+    def test_mask_hit_test_selects_only_an_explicit_clicked_instance(self) -> None:
+        frame = make_frame()
+        service = TargetPerceptionService(_UnknownSegmenter())
+        service.analyze(frame)
+        selected = service.select_at(
+            source_x=20.5,
+            source_y=12.5,
+            source_frame_id=frame.frame_id,
+        )
+        self.assertEqual(selected["selected_target_id"], f"target-{frame.frame_id}-01")
+        with self.assertRaisesRegex(ValueError, "did not hit"):
+            service.select_at(
+                source_x=2.0,
+                source_y=2.0,
+                source_frame_id=frame.frame_id,
+            )
+
 
 class TargetPerceptionHTTPTests(unittest.TestCase):
     def test_analyze_select_snapshot_and_reset_endpoints_preserve_frame_identity(self) -> None:
@@ -223,8 +240,8 @@ class TargetPerceptionHTTPTests(unittest.TestCase):
                 self.assertGreater(len(response.read()), 100)
 
             selected = post(
-                "/api/target-perception/select",
-                {"target_id": target_id, "source_frame_id": frame.frame_id},
+                "/api/target-perception/select-at",
+                {"source_x": 20.5, "source_y": 12.5, "source_frame_id": frame.frame_id},
             )
             self.assertEqual(selected["status"], "TARGET_LOCKED")
             self.assertEqual(selected["scene_snapshot"]["target_id"], target_id)

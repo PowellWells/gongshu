@@ -32,6 +32,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         cls.html = (GONGSHU_ROOT / "index.html").read_text(encoding="utf-8")
         cls.controller = (GONGSHU_ROOT / "real-scene.js").read_text(encoding="utf-8")
         cls.pipeline = (GONGSHU_ROOT / "pipeline-state.js").read_text(encoding="utf-8")
+        cls.target_selection = (GONGSHU_ROOT / "target-selection.js").read_text(encoding="utf-8")
         cls.parser = _WorkspaceParser()
         cls.parser.feed(cls.html)
 
@@ -101,6 +102,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         for endpoint in (
             "/api/target-perception/analyze",
             "/api/target-perception/select",
+            "/api/target-perception/select-at",
             "/api/target-perception/reset",
             "/api/target-perception/overlay.jpg",
             "/api/target-perception/scene-snapshot.jpg",
@@ -109,6 +111,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('pipeline.transition("TARGET_SELECTED"', self.controller)
         self.assertIn('pipeline.transition("SCENE_CAPTURED"', self.controller)
         self.assertIn('pipeline.transition("SPATIAL_ANALYSIS"', self.controller)
+        self.assertIn('addEventListener("pointerdown", selectTargetAtPointer)', self.controller)
+        self.assertIn('preserveAspectRatio", "xMidYMid meet"', self.controller)
+        self.assertIn('targetOverlay.removeAttribute("hidden")', self.controller)
+        self.assertNotIn("targetOverlay.hidden = false", self.controller)
         self.assertNotIn("captureLiveFrame", self.controller)
         self.assertNotIn("canvas.toBlob", self.controller)
         self.assertIn("请选择目标", self.html)
@@ -191,6 +197,41 @@ process.stdout.write(JSON.stringify({
                 "missingTargetRejected": False,
             },
         )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frozen-frame geometry tests")
+    def test_portrait_frozen_frame_remains_selectable_when_phone_disconnects(self) -> None:
+        script = r"""
+const { clientPointToSource, canSelectFrozenTarget, formatOptionalConfidence } = require(process.argv[1]);
+const targetState = {
+  status: "CANDIDATES",
+  frame: { id: 2386, width: 540, height: 960 },
+  candidates: [{ id: "target-2386-03" }],
+};
+const rect = { left: 10, top: 20, width: 1200, height: 800 };
+const center = clientPointToSource({ clientX: 610, clientY: 420 }, rect, targetState.frame);
+const letterbox = clientPointToSource({ clientX: 100, clientY: 420 }, rect, targetState.frame);
+process.stdout.write(JSON.stringify({
+  disconnectedStillSelectable: canSelectFrozenTarget("LIVE", targetState),
+  center,
+  letterbox,
+  missingConfidence: formatOptionalConfidence(null),
+  realConfidence: formatOptionalConfidence(0.937),
+}));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script, str(GONGSHU_ROOT / "target-selection.js")],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = json.loads(completed.stdout)
+        self.assertTrue(result["disconnectedStillSelectable"])
+        self.assertAlmostEqual(result["center"]["x"], 270.0)
+        self.assertAlmostEqual(result["center"]["y"], 480.0)
+        self.assertIsNone(result["letterbox"])
+        self.assertIsNone(result["missingConfidence"])
+        self.assertEqual(result["realConfidence"], "93.7%")
+        self.assertNotIn("const mayStart = phoneLive", self.controller)
 
 
 if __name__ == "__main__":

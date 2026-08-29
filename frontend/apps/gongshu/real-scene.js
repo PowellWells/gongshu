@@ -7,6 +7,11 @@
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
   const { PipelineStateMachine, canStartGrasp } = window.GongshuPipeline;
+  const {
+    clientPointToSource,
+    canSelectFrozenTarget,
+    formatOptionalConfidence,
+  } = window.GongshuTargetSelection;
 
   const PIPELINE_MESSAGES = Object.freeze({
     LIVE: "实时视觉已就绪，等待真实输入",
@@ -168,6 +173,16 @@
     return document;
   }
 
+  async function apiGet(path) {
+    const response = await fetch(path, { cache: "no-store" });
+    let document = null;
+    try { document = await response.json(); } catch { /* handled below */ }
+    if (!response.ok || document?.status === "error") {
+      throw new Error(document?.message || `本地服务返回 HTTP ${response.status}`);
+    }
+    return document;
+  }
+
   function formatResolution(resolution) {
     return resolution ? `${resolution.width} × ${resolution.height}` : "—";
   }
@@ -186,11 +201,18 @@
       && els.sourceSelect.value === "phone"
       && cameraIsLive();
     const mayAnalyze = phoneLive && pipeline.state === "LIVE" && !targetAnalysisRunning;
-    const mayStart = phoneLive && canStartGrasp(pipeline.state, targetPerceptionState);
+    const mayStart = workspaceMode === "phone"
+      && els.sourceSelect.value === "phone"
+      && canStartGrasp(pipeline.state, targetPerceptionState);
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
     els.startGraspLabel.textContent = mayStart ? "开始抓取" : "请选择目标";
     els.startGraspHint.textContent = mayStart ? "Start Grasp" : "Select Target";
+  }
+
+  function setTargetOverlayVisible(visible) {
+    if (visible) els.targetOverlay.removeAttribute("hidden");
+    else els.targetOverlay.setAttribute("hidden", "");
   }
 
   function renderTargetHitboxes(state) {
@@ -198,10 +220,18 @@
     const frame = state?.frame;
     const candidates = Array.isArray(state?.candidates) ? state.candidates : [];
     if (!frame || !candidates.length) {
-      els.targetOverlay.hidden = true;
+      setTargetOverlayVisible(false);
       return;
     }
     els.targetOverlay.setAttribute("viewBox", `0 0 ${frame.width} ${frame.height}`);
+    els.targetOverlay.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    const hitSurface = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    hitSurface.classList.add("target-hit-surface");
+    hitSurface.setAttribute("x", "0");
+    hitSurface.setAttribute("y", "0");
+    hitSurface.setAttribute("width", String(frame.width));
+    hitSurface.setAttribute("height", String(frame.height));
+    els.targetOverlay.append(hitSurface);
     candidates.forEach((candidate, index) => {
       const [x1, y1, x2, y2] = candidate.bbox_xyxy;
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -218,17 +248,16 @@
       box.setAttribute("height", String(y2 - y1));
       box.setAttribute("rx", "4");
       group.append(box);
-      const select = (event) => {
-        event.stopPropagation();
-        selectTarget(candidate.id);
-      };
-      group.addEventListener("click", select);
       group.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") select(event);
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          selectTarget(candidate.id);
+        }
       });
       els.targetOverlay.append(group);
     });
-    els.targetOverlay.hidden = false;
+    setTargetOverlayVisible(true);
   }
 
   function renderTargetPerception(state) {
@@ -243,12 +272,11 @@
     els.analysisControls.hidden = !analysisFrozen;
     els.analysisStatus.textContent = state.message || "等待目标分析 WAITING";
     if (selected) {
+      const confidenceLabel = formatOptionalConfidence(selected.confidence);
       els.targetStatus.textContent = "TARGET LOCKED";
       els.targetValue.textContent = selected.id;
       els.targetClassValue.textContent = selected.class_name || "未知目标 Unknown Object";
-      els.targetConfidenceValue.textContent = Number.isFinite(Number(selected.confidence))
-        ? `${(Number(selected.confidence) * 100).toFixed(1)}%`
-        : "NOT AVAILABLE";
+      els.targetConfidenceValue.textContent = confidenceLabel || "NOT AVAILABLE";
       els.targetLockValue.textContent = "已锁定 LOCKED";
       els.targetDetail.textContent = `源帧 Frame ${selected.source_frame_id} · 手动选择 Manual Selection`;
     } else {
@@ -353,7 +381,7 @@
     targetAnalysisRunning = false;
     targetAnalysisRequest += 1;
     els.targetOverlay.replaceChildren();
-    els.targetOverlay.hidden = true;
+    setTargetOverlayVisible(false);
     els.analysisControls.hidden = true;
     els.analysisStatus.textContent = "等待目标分析 WAITING";
     updateActionButtons();
@@ -419,10 +447,17 @@
     }
 
     if (workspaceMode === "phone" && els.sourceSelect.value === "phone") {
-      els.liveState.textContent = live ? "LIVE" : paired ? "PAIRED" : "DISCONNECTED";
-      els.liveState.classList.toggle("is-live", live);
-      els.liveSourceLabel.textContent = live ? "手机 Phone · WebRTC LAN Live" : "手机 Phone · 等待连接";
-      els.liveResolution.textContent = resolution;
+      const frozenFrame = analysisFrozen ? targetPerceptionState?.frame : null;
+      els.liveState.textContent = frozenFrame
+        ? targetPerceptionState?.status === "TARGET_LOCKED" ? "TARGET LOCKED" : "FRAME FROZEN"
+        : live ? "LIVE" : paired ? "PAIRED" : "DISCONNECTED";
+      els.liveState.classList.toggle("is-live", live || Boolean(frozenFrame));
+      els.liveSourceLabel.textContent = frozenFrame
+        ? `手机 Phone · 冻结帧 Frame ${frozenFrame.id}`
+        : live ? "手机 Phone · WebRTC LAN Live" : "手机 Phone · 等待连接";
+      els.liveResolution.textContent = frozenFrame
+        ? `${frozenFrame.width} × ${frozenFrame.height}`
+        : resolution;
       els.liveConnection.textContent = live ? "Live" : connection.status || "Disconnected";
       els.statusConnection.textContent = live ? "Live" : paired ? "Paired" : "Disconnected";
       updateActionButtons();
@@ -460,8 +495,8 @@
         els.liveState.textContent = "OFFLINE";
         els.liveConnection.textContent = "Offline";
         els.statusConnection.textContent = "Offline";
+        updateActionButtons();
         els.analyzeTargetsButton.disabled = true;
-        els.startGraspButton.disabled = true;
       }
     }
   }
@@ -557,6 +592,62 @@
     } catch (error) {
       showNotice(`无法选择目标：${error.message}`, "error");
     }
+  }
+
+  async function selectTargetAtPointer(event) {
+    if (
+      event.button !== 0
+      || !canSelectFrozenTarget(pipeline.state, targetPerceptionState)
+    ) return;
+    const sourcePoint = clientPointToSource(
+      { clientX: event.clientX, clientY: event.clientY },
+      els.liveMedia.getBoundingClientRect(),
+      targetPerceptionState.frame,
+    );
+    if (!sourcePoint) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const frameId = targetPerceptionState.frame.id;
+    const requestRevision = targetAnalysisRequest;
+    els.targetOverlay.classList.add("is-selecting");
+    try {
+      const state = await apiPost("/api/target-perception/select-at", {
+        source_x: sourcePoint.x,
+        source_y: sourcePoint.y,
+        source_frame_id: frameId,
+      });
+      if (requestRevision !== targetAnalysisRequest) return;
+      showFrozenTargetFrame(state);
+      if (pipeline.state === "LIVE") {
+        pipeline.transition("TARGET_SELECTED", {
+          targetId: state.selected_target_id,
+          sourceFrameId: state.frame.id,
+          sourceTimestampS: state.frame.timestamp_s,
+        });
+      }
+      updateActionButtons();
+      showNotice(`目标已锁定：${state.selected_target.class_name} · ${state.selected_target_id}`);
+    } catch (error) {
+      showNotice(`未选择目标：${error.message}`, "error");
+    } finally {
+      els.targetOverlay.classList.remove("is-selecting");
+    }
+  }
+
+  async function restoreTargetPerceptionState() {
+    try {
+      const state = await apiGet(`/api/target-perception/state?t=${Date.now()}`);
+      if (!["CANDIDATES", "TARGET_LOCKED"].includes(state.status) || !state.frame) return;
+      showFrozenTargetFrame(state);
+      if (state.status === "TARGET_LOCKED" && pipeline.state === "LIVE") {
+        pipeline.transition("TARGET_SELECTED", {
+          targetId: state.selected_target_id,
+          sourceFrameId: state.frame.id,
+          sourceTimestampS: state.frame.timestamp_s,
+          restored: true,
+        });
+      }
+    } catch { /* a clean workspace does not require persisted target state */ }
   }
 
   async function resumeLive() {
@@ -658,7 +749,7 @@
     analysisFrozen = false;
     targetPerceptionState = null;
     els.targetOverlay.replaceChildren();
-    els.targetOverlay.hidden = true;
+    setTargetOverlayVisible(false);
     els.analysisControls.hidden = true;
     stopLiveView();
     pipeline.reset({ reason: "legacy-run-loaded" });
@@ -699,10 +790,9 @@
       els.targetStatus.textContent = "AVAILABLE";
       els.targetValue.textContent = raw.target.class_name || "真实运行目标";
       els.targetClassValue.textContent = raw.target.class_name || "NOT AVAILABLE";
-      const confidence = Number(raw.target.confidence);
-      els.targetConfidenceValue.textContent = Number.isFinite(confidence)
-        ? `${(confidence * 100).toFixed(1)}%`
-        : "NOT AVAILABLE";
+      const confidenceLabel = formatOptionalConfidence(raw.target.confidence);
+      const confidence = confidenceLabel ? Number(raw.target.confidence) : Number.NaN;
+      els.targetConfidenceValue.textContent = confidenceLabel || "NOT AVAILABLE";
       els.targetLockValue.textContent = "离线产物 OFFLINE";
       els.targetDetail.textContent = Number.isFinite(confidence)
         ? `离线运行公开输出 · 置信度 ${(confidence * 100).toFixed(1)}%`
@@ -796,6 +886,7 @@
     showNotice(pending ? "UR5e 接口已预留；本轮不执行多机器人仿真。" : "已选择 Franka Panda。", pending ? "error" : "success");
   });
   els.viewModeSelect.addEventListener("change", () => setViewMode(els.viewModeSelect.value));
+  els.targetOverlay.addEventListener("pointerdown", selectTargetAtPointer);
   els.analyzeTargetsButton.addEventListener("click", analyzeTargets);
   els.startGraspButton.addEventListener("click", startGrasp);
   els.resumeLiveButton.addEventListener("click", resumeLive);
@@ -875,6 +966,9 @@
 
   renderPipeline();
   setPrimaryView("live");
-  pollCameraState();
-  cameraStateTimer = window.setInterval(pollCameraState, 1000);
+  (async function initializeWorkspace() {
+    await restoreTargetPerceptionState();
+    await pollCameraState();
+    cameraStateTimer = window.setInterval(pollCameraState, 1000);
+  })();
 })();

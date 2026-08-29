@@ -284,6 +284,15 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     )
                 )
                 return
+            if path == "/api/target-perception/select-at":
+                self._send_json(
+                    self.app.target_perception.select_at(
+                        source_x=float(body["source_x"]),
+                        source_y=float(body["source_y"]),
+                        source_frame_id=int(body["source_frame_id"]),
+                    )
+                )
+                return
             if path == "/api/target-perception/reset":
                 self._send_json(self.app.target_perception.reset())
                 return

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 from typing import Final
 
@@ -109,6 +110,46 @@ class TargetPerceptionService:
             self._overlay_jpeg = encode_jpeg(overlay)
             self._revision += 1
             return self.snapshot()
+
+    def select_at(
+        self,
+        *,
+        source_x: float,
+        source_y: float,
+        source_frame_id: int,
+    ) -> dict[str, object]:
+        """Resolve a user click against frozen instance masks, then select it.
+
+        Candidates are tested in reverse render order so overlapping masks use
+        the instance visually painted on top. This is still an explicit user
+        selection and never falls back to an arbitrary or largest candidate.
+        """
+
+        if not math.isfinite(source_x) or not math.isfinite(source_y):
+            raise ValueError("target click coordinates must be finite")
+        with self._lock:
+            frame = self._frame
+            if frame is None or self._status not in {"CANDIDATES", "TARGET_LOCKED"}:
+                raise RuntimeError("no target candidates are available")
+            if source_frame_id != frame.frame_id:
+                raise ValueError("target selection frame does not match frozen analysis frame")
+            height, width = frame.rgb.shape[:2]
+            if not 0.0 <= source_x < width or not 0.0 <= source_y < height:
+                raise ValueError("target click is outside the frozen source frame")
+            pixel_x = int(source_x)
+            pixel_y = int(source_y)
+            hit = next(
+                (
+                    instance
+                    for instance in reversed(self._instances)
+                    if bool(instance.mask[pixel_y, pixel_x])
+                ),
+                None,
+            )
+            if hit is None:
+                raise ValueError("target click did not hit an instance mask")
+            target_id = hit.instance_id
+        return self.select(target_id, source_frame_id=source_frame_id)
 
     def reset(self) -> dict[str, object]:
         with self._lock:
