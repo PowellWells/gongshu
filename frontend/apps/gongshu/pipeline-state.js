@@ -10,6 +10,7 @@
     "TARGET_SELECTED",
     "SCENE_CAPTURED",
     "SPATIAL_ANALYSIS",
+    "SPATIAL_READY",
     "GRASP_PLANNING",
     "SCENE_SYNC",
     "SIMULATION",
@@ -22,6 +23,7 @@
     TARGET_SELECTED: "live",
     SCENE_CAPTURED: "live",
     SPATIAL_ANALYSIS: "spatial",
+    SPATIAL_READY: "spatial",
     GRASP_PLANNING: "grasp",
     SCENE_SYNC: "grasp",
     SIMULATION: "simulation",
@@ -33,7 +35,8 @@
     LIVE: new Set(["TARGET_SELECTED", "RESET"]),
     TARGET_SELECTED: new Set(["SCENE_CAPTURED", "RESET"]),
     SCENE_CAPTURED: new Set(["SPATIAL_ANALYSIS", "RESET"]),
-    SPATIAL_ANALYSIS: new Set(["GRASP_PLANNING", "RESET"]),
+    SPATIAL_ANALYSIS: new Set(["SPATIAL_READY", "GRASP_PLANNING", "RESET"]),
+    SPATIAL_READY: new Set(["RESET"]),
     GRASP_PLANNING: new Set(["SCENE_SYNC", "RESET"]),
     SCENE_SYNC: new Set(["SIMULATION", "RESET"]),
     SIMULATION: new Set(["VERIFIED", "RESET"]),
@@ -94,7 +97,7 @@
     const target = targetState?.selected_target;
     const snapshot = targetState?.scene_snapshot;
     return targetState?.status === "TARGET_LOCKED"
-      && Boolean(frame && target && snapshot?.available)
+      && Boolean(frame && target && snapshot?.available && snapshot.snapshot_id)
       && target.id === targetState.selected_target_id
       && target.source_frame_id === frame.id
       && snapshot.source_frame_id === frame.id
@@ -107,12 +110,24 @@
     return pipelineState === "TARGET_SELECTED" && hasTargetSnapshotAssociation(targetState);
   }
 
+  function hasSpatialObservationAssociation(targetState, spatialState) {
+    const snapshot = targetState?.scene_snapshot;
+    const observation = spatialState?.observation;
+    return spatialState?.status === "READY"
+      && Boolean(snapshot?.available && observation)
+      && observation.snapshot_id === snapshot.snapshot_id
+      && observation.source_frame_id === snapshot.source_frame_id
+      && observation.target_instance_id === snapshot.target_id
+      && observation.source_timestamp_s === snapshot.source_timestamp_s;
+  }
+
   return Object.freeze({
     STATES,
     VIEW_BY_STATE,
     NEXT_STATES,
     PipelineStateMachine,
     hasTargetSnapshotAssociation,
+    hasSpatialObservationAssociation,
     canStartGrasp,
   });
 });

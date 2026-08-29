@@ -58,6 +58,13 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "targetConfidenceValue",
             "targetLockValue",
             "spatialInspectorStatus",
+            "spatialMediaLabels",
+            "spatialDepthValue",
+            "spatialSourceValue",
+            "spatialModeValue",
+            "spatialProjectionValue",
+            "retrySpatialButton",
+            "newSceneButton",
             "graspInspectorStatus",
             "systemStatus",
             "cameraSetupDialog",
@@ -78,8 +85,19 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "系统状态 <b>Status</b>",
         ):
             self.assertIn(label, self.html)
-        for forbidden in ("YOLO11n-seg", "GR-ConvNet", "Depth Model", "SPANet", "VERGNet", "KufeNet"):
+        for forbidden in (
+            "YOLO11n-seg",
+            "GR-ConvNet",
+            "Depth Model",
+            "SPANet",
+            "VERGNet",
+            "KufeNet",
+            "Pinhole Camera",
+            "针孔相机",
+            "超微型相机",
+        ):
             self.assertNotIn(forbidden.lower(), self.html.lower())
+            self.assertNotIn(forbidden.lower(), self.controller.lower())
 
     def test_phone_camera_api_and_pairing_controls_are_reused(self) -> None:
         for endpoint in (
@@ -106,6 +124,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/target-perception/reset",
             "/api/target-perception/overlay.jpg",
             "/api/target-perception/scene-snapshot.jpg",
+            "/api/spatial-perception/analyze",
+            "/api/spatial-perception/state",
+            "/api/spatial-perception/overview.jpg",
         ):
             self.assertIn(endpoint, self.controller)
         self.assertIn('pipeline.transition("TARGET_SELECTED"', self.controller)
@@ -125,6 +146,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "TARGET_SELECTED",
             "SCENE_CAPTURED",
             "SPATIAL_ANALYSIS",
+            "SPATIAL_READY",
             "GRASP_PLANNING",
             "SCENE_SYNC",
             "SIMULATION",
@@ -133,6 +155,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         ):
             self.assertIn(f'"{state}"', self.pipeline)
         self.assertIn('SPATIAL_ANALYSIS: "spatial"', self.pipeline)
+        self.assertIn('SPATIAL_READY: "spatial"', self.pipeline)
         self.assertIn('GRASP_PLANNING: "grasp"', self.pipeline)
         self.assertIn('SIMULATION: "simulation"', self.pipeline)
 
@@ -144,6 +167,7 @@ const pipeline = new PipelineStateMachine();
 pipeline.transition("TARGET_SELECTED");
 pipeline.transition("SCENE_CAPTURED");
 pipeline.transition("SPATIAL_ANALYSIS");
+pipeline.transition("SPATIAL_READY");
 let rejected = false;
 try { pipeline.transition("SIMULATION"); } catch (_) { rejected = true; }
 pipeline.reset({ reason: "test" });
@@ -167,7 +191,7 @@ const valid = {
   frame: { id: 42, timestamp_s: 12.5 },
   selected_target_id: "target-42-01",
   selected_target: { id: "target-42-01", source_frame_id: 42, source_timestamp_s: 12.5 },
-  scene_snapshot: { available: true, target_id: "target-42-01", source_frame_id: 42, source_timestamp_s: 12.5 },
+  scene_snapshot: { available: true, snapshot_id: "snapshot-42", target_id: "target-42-01", source_frame_id: 42, source_timestamp_s: 12.5 },
 };
 process.stdout.write(JSON.stringify({
   liveRejected: canStartGrasp("LIVE", valid),
@@ -196,6 +220,51 @@ process.stdout.write(JSON.stringify({
                 "mismatchedFrameRejected": False,
                 "missingTargetRejected": False,
             },
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for spatial association tests")
+    def test_spatial_ready_requires_exact_frozen_snapshot_association(self) -> None:
+        script = r"""
+const { hasSpatialObservationAssociation } = require(process.argv[1]);
+const target = {
+  scene_snapshot: {
+    available: true,
+    snapshot_id: "snapshot-42",
+    target_id: "target-42-01",
+    source_frame_id: 42,
+    source_timestamp_s: 12.5,
+  },
+};
+const ready = {
+  status: "READY",
+  observation: {
+    snapshot_id: "snapshot-42",
+    target_instance_id: "target-42-01",
+    source_frame_id: 42,
+    source_timestamp_s: 12.5,
+  },
+};
+process.stdout.write(JSON.stringify({
+  valid: hasSpatialObservationAssociation(target, ready),
+  newLiveFrameRejected: hasSpatialObservationAssociation(target, {
+    ...ready,
+    observation: { ...ready.observation, source_frame_id: 43 },
+  }),
+  wrongTargetRejected: hasSpatialObservationAssociation(target, {
+    ...ready,
+    observation: { ...ready.observation, target_instance_id: "target-42-02" },
+  }),
+}));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script, str(GONGSHU_ROOT / "pipeline-state.js")],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {"valid": True, "newLiveFrameRejected": False, "wrongTargetRejected": False},
         )
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frozen-frame geometry tests")

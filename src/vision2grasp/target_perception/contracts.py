@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from vision2grasp.contracts import RGBFrame
+
 
 UNKNOWN_TARGET_LABEL = "未知目标 Unknown Object"
 
@@ -86,4 +88,41 @@ class TargetInstance:
             "semantic_source": self.semantic_source,
             "selectable": True,
             "state": "LOCKED" if selected else "SELECTABLE",
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSceneSnapshot:
+    """One selected target and its immutable source RGB frame association."""
+
+    snapshot_id: str
+    frame: RGBFrame
+    target: TargetInstance
+
+    def __post_init__(self) -> None:
+        if not self.snapshot_id.strip():
+            raise ValueError("snapshot_id must not be empty")
+        immutable_rgb = np.ascontiguousarray(self.frame.rgb.copy(), dtype=np.uint8)
+        immutable_rgb.setflags(write=False)
+        immutable_frame = RGBFrame(
+            frame_id=self.frame.frame_id,
+            timestamp_s=self.frame.timestamp_s,
+            camera_name=self.frame.camera_name,
+            rgb=immutable_rgb,
+        )
+        object.__setattr__(self, "frame", immutable_frame)
+        if self.target.source_frame_id != self.frame.frame_id:
+            raise ValueError("target source_frame_id does not match snapshot frame")
+        if self.target.source_timestamp_s != self.frame.timestamp_s:
+            raise ValueError("target timestamp does not match snapshot frame")
+        if self.target.mask.shape != self.frame.rgb.shape[:2]:
+            raise ValueError("target mask does not match snapshot frame")
+
+    def public_metadata(self) -> dict[str, object]:
+        return {
+            "available": True,
+            "snapshot_id": self.snapshot_id,
+            "source_frame_id": self.frame.frame_id,
+            "source_timestamp_s": self.frame.timestamp_s,
+            "target_id": self.target.instance_id,
         }

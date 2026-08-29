@@ -8,7 +8,7 @@ from typing import Final
 
 from vision2grasp.contracts import RGBFrame
 
-from .contracts import TargetInstance
+from .contracts import TargetInstance, TargetSceneSnapshot
 from .interfaces import TargetInstanceSegmenter
 from .visualization import encode_jpeg, render_target_overlay
 
@@ -196,12 +196,7 @@ class TargetPerceptionService:
                 "scene_snapshot": (
                     None
                     if selected is None or frame is None
-                    else {
-                        "available": True,
-                        "source_frame_id": frame.frame_id,
-                        "source_timestamp_s": frame.timestamp_s,
-                        "target_id": selected.instance_id,
-                    }
+                    else self._make_scene_snapshot(frame, selected).public_metadata()
                 ),
             }
 
@@ -227,3 +222,32 @@ class TargetPerceptionService:
             if self._selected_target_id is None or self._snapshot_jpeg is None:
                 return None
             return bytes(self._snapshot_jpeg)
+
+    def selected_scene_snapshot(self) -> TargetSceneSnapshot:
+        """Return a copy of the exact frozen RGB frame associated with selection."""
+
+        with self._lock:
+            frame = self._frame
+            selected = self.selected_instance()
+            if frame is None or selected is None or self._status != "TARGET_LOCKED":
+                raise RuntimeError("no locked target Scene Snapshot is available")
+            frozen_copy = RGBFrame(
+                frame_id=frame.frame_id,
+                timestamp_s=frame.timestamp_s,
+                camera_name=frame.camera_name,
+                rgb=frame.rgb.copy(),
+            )
+            return self._make_scene_snapshot(frozen_copy, selected)
+
+    @staticmethod
+    def _make_scene_snapshot(
+        frame: RGBFrame, selected: TargetInstance
+    ) -> TargetSceneSnapshot:
+        timestamp_us = int(round(frame.timestamp_s * 1_000_000.0))
+        return TargetSceneSnapshot(
+            snapshot_id=(
+                f"snapshot-{frame.frame_id}-{timestamp_us}-{selected.instance_id}"
+            ),
+            frame=frame,
+            target=selected,
+        )

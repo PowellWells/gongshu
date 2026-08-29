@@ -3,10 +3,15 @@
 
   const CAMERA_SCHEMA_VERSION = "vision2grasp.camera/v1";
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
+  const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v1";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
-  const { PipelineStateMachine, canStartGrasp } = window.GongshuPipeline;
+  const {
+    PipelineStateMachine,
+    canStartGrasp,
+    hasSpatialObservationAssociation,
+  } = window.GongshuPipeline;
   const {
     clientPointToSource,
     canSelectFrozenTarget,
@@ -17,7 +22,8 @@
     LIVE: "实时视觉已就绪，等待真实输入",
     TARGET_SELECTED: "已接收真实目标选择",
     SCENE_CAPTURED: "已获取真实 RGB 场景快照",
-    SPATIAL_ANALYSIS: "空间分析模块未接入 · WAITING",
+    SPATIAL_ANALYSIS: "正在从冻结场景快照计算空间结构",
+    SPATIAL_READY: "空间感知完成，等待真实抓取模块",
     GRASP_PLANNING: "抓取规划模块未接入 · WAITING",
     SCENE_SYNC: "等待真实场景同步 · WAITING",
     SIMULATION: "仿真验证进行中",
@@ -37,6 +43,17 @@
     usb: "USB 相机 USB Camera",
     network: "网络流 Network Stream",
     rgbd: "RGB-D 相机 RGB-D Camera",
+  });
+
+  const SPATIAL_ERROR_MESSAGES = Object.freeze({
+    DEPTH_UNAVAILABLE: "深度不可用 DEPTH UNAVAILABLE",
+    TARGET_MASK_EMPTY: "目标掩膜为空 TARGET MASK EMPTY",
+    TOO_FEW_VALID_DEPTH_PIXELS: "有效深度像素不足 INSUFFICIENT DEPTH",
+    INVALID_INTRINSICS: "相机投影参数无效 INVALID PROJECTION PARAMETERS",
+    FRAME_MISMATCH: "场景快照关联不一致 FRAME MISMATCH",
+    TARGET_MISMATCH: "目标实例关联不一致 TARGET MISMATCH",
+    POINT_CLOUD_EMPTY: "目标点云为空 POINT CLOUD EMPTY",
+    SPATIAL_ANALYSIS_FAILED: "空间分析失败 SPATIAL ERROR",
   });
 
   const byId = (id) => document.getElementById(id);
@@ -64,8 +81,14 @@
     liveConnection: byId("liveConnection"),
     spatialState: byId("spatialState"),
     spatialSnapshot: byId("spatialSnapshot"),
+    spatialMediaLabels: byId("spatialMediaLabels"),
     spatialEmpty: byId("spatialEmpty"),
     spatialPendingOverlay: byId("spatialPendingOverlay"),
+    spatialProgressTitle: byId("spatialProgressTitle"),
+    spatialProgressDetail: byId("spatialProgressDetail"),
+    spatialErrorActions: byId("spatialErrorActions"),
+    retrySpatialButton: byId("retrySpatialButton"),
+    newSceneButton: byId("newSceneButton"),
     spatialFooter: byId("spatialFooter"),
     graspState: byId("graspState"),
     graspMedia: byId("graspMedia"),
@@ -82,7 +105,11 @@
     targetLockValue: byId("targetLockValue"),
     targetDetail: byId("targetDetail"),
     spatialInspectorStatus: byId("spatialInspectorStatus"),
+    spatialDepthValue: byId("spatialDepthValue"),
     spatialValue: byId("spatialValue"),
+    spatialSourceValue: byId("spatialSourceValue"),
+    spatialModeValue: byId("spatialModeValue"),
+    spatialProjectionValue: byId("spatialProjectionValue"),
     spatialDetail: byId("spatialDetail"),
     graspInspectorStatus: byId("graspInspectorStatus"),
     graspValue: byId("graspValue"),
@@ -136,6 +163,8 @@
   let cameraStateTimer = 0;
   let noticeTimer = 0;
   let targetPerceptionState = null;
+  let spatialPerceptionState = null;
+  let spatialAnalysisRunning = false;
   let analysisFrozen = false;
   let targetAnalysisRunning = false;
   let targetAnalysisRequest = 0;
@@ -206,8 +235,19 @@
       && canStartGrasp(pipeline.state, targetPerceptionState);
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
-    els.startGraspLabel.textContent = mayStart ? "开始抓取" : "请选择目标";
-    els.startGraspHint.textContent = mayStart ? "Start Grasp" : "Select Target";
+    if (mayStart) {
+      els.startGraspLabel.textContent = "开始抓取";
+      els.startGraspHint.textContent = "Start Grasp";
+    } else if (["SCENE_CAPTURED", "SPATIAL_ANALYSIS"].includes(pipeline.state)) {
+      els.startGraspLabel.textContent = "空间分析中";
+      els.startGraspHint.textContent = "Spatial Analysis";
+    } else if (pipeline.state === "SPATIAL_READY") {
+      els.startGraspLabel.textContent = "空间感知就绪";
+      els.startGraspHint.textContent = "Spatial Ready";
+    } else {
+      els.startGraspLabel.textContent = "请选择目标";
+      els.startGraspHint.textContent = "Select Target";
+    }
   }
 
   function setTargetOverlayVisible(visible) {
@@ -324,7 +364,7 @@
     els.pipelineMessage.textContent = PIPELINE_MESSAGES[state];
     els.systemStatus.textContent = state === "LIVE" ? "READY" : state;
     [els.spatialState, els.graspState, els.simulationState].forEach((element) => element.classList.remove("is-active"));
-    if (state === "SPATIAL_ANALYSIS") els.spatialState.classList.add("is-active");
+    if (["SPATIAL_ANALYSIS", "SPATIAL_READY"].includes(state)) els.spatialState.classList.add("is-active");
     if (["GRASP_PLANNING", "SCENE_SYNC"].includes(state)) els.graspState.classList.add("is-active");
     if (["SIMULATION", "VERIFIED"].includes(state)) els.simulationState.classList.add("is-active");
     if (viewMode === "auto") setPrimaryView(pipeline.primaryView());
@@ -355,6 +395,11 @@
     clearMediaElement(els.graspMedia, els.graspEmpty);
     clearMediaElement(els.simulationMedia, els.simulationEmpty);
     els.spatialPendingOverlay.hidden = true;
+    els.spatialMediaLabels.hidden = true;
+    els.spatialPendingOverlay.classList.remove("is-error");
+    els.spatialProgressTitle.textContent = "空间分析 Spatial Analysis";
+    els.spatialProgressDetail.textContent = "等待计算 WAITING";
+    els.spatialErrorActions.hidden = true;
     els.spatialState.textContent = "WAITING";
     els.graspState.textContent = "WAITING";
     els.simulationState.textContent = "WAITING";
@@ -369,7 +414,11 @@
     els.targetLockValue.textContent = "WAITING";
     els.targetDetail.textContent = "连接手机后分析真实 RGB 帧，再手动选择目标。";
     els.spatialInspectorStatus.textContent = "WAITING";
-    els.spatialValue.textContent = "等待计算 WAITING";
+    els.spatialDepthValue.textContent = "等待计算 WAITING";
+    els.spatialValue.textContent = "NOT AVAILABLE";
+    els.spatialSourceValue.textContent = "NOT AVAILABLE";
+    els.spatialModeValue.textContent = "NOT AVAILABLE";
+    els.spatialProjectionValue.textContent = "NOT AVAILABLE";
     els.spatialDetail.textContent = "Depth、XYZ 与 Point Cloud 均不可用。";
     els.graspInspectorStatus.textContent = "WAITING";
     els.graspValue.textContent = "等待规划 WAITING";
@@ -377,6 +426,8 @@
     els.statusSnapshot.textContent = "WAITING";
     els.legacyRunStatus.textContent = "尚未载入 NOT LOADED";
     targetPerceptionState = null;
+    spatialPerceptionState = null;
+    spatialAnalysisRunning = false;
     analysisFrozen = false;
     targetAnalysisRunning = false;
     targetAnalysisRequest += 1;
@@ -650,6 +701,35 @@
     } catch { /* a clean workspace does not require persisted target state */ }
   }
 
+  async function restoreSpatialPerceptionState() {
+    if (pipeline.state !== "TARGET_SELECTED" || !targetPerceptionState?.scene_snapshot) return;
+    try {
+      const state = await apiGet(`/api/spatial-perception/state?t=${Date.now()}`);
+      if (!hasSpatialObservationAssociation(targetPerceptionState, state)) return;
+      const snapshot = targetPerceptionState.scene_snapshot;
+      pipeline.transition("SCENE_CAPTURED", {
+        restored: true,
+        snapshotId: snapshot.snapshot_id,
+        targetId: snapshot.target_id,
+        sourceFrameId: snapshot.source_frame_id,
+      });
+      pipeline.transition("SPATIAL_ANALYSIS", {
+        restored: true,
+        snapshotId: snapshot.snapshot_id,
+        targetId: snapshot.target_id,
+        sourceFrameId: snapshot.source_frame_id,
+      });
+      renderSpatialPerception(state);
+      pipeline.transition("SPATIAL_READY", {
+        restored: true,
+        snapshotId: snapshot.snapshot_id,
+        targetId: snapshot.target_id,
+        sourceFrameId: snapshot.source_frame_id,
+      });
+      els.statusSnapshot.textContent = `Frame ${snapshot.source_frame_id} · 已恢复 Restored`;
+    } catch { /* stale or incomplete spatial state must not advance the pipeline */ }
+  }
+
   async function resumeLive() {
     try {
       await apiPost("/api/target-perception/reset");
@@ -663,36 +743,166 @@
     showNotice("已返回实时画面 Live RGB；可重新分析目标。");
   }
 
+  function depthModeLabel(mode) {
+    if (mode === "METRIC") return "米制 Metric";
+    if (mode === "APPROX_METRIC") return "近似米制 Approx. Metric";
+    if (mode === "RELATIVE") return "相对深度 Relative";
+    return "NOT AVAILABLE";
+  }
+
+  function renderSpatialPerception(state) {
+    if (!state || state.schema_version !== SPATIAL_PERCEPTION_SCHEMA_VERSION) {
+      throw new Error("Spatial Perception API 版本不匹配");
+    }
+    spatialPerceptionState = state;
+    const observation = state.observation;
+    if (state.status === "READY" && observation) {
+      const unit = observation.unit === "m" ? "m" : "relative";
+      const xyz = Array.isArray(observation.centroid_xyz) ? observation.centroid_xyz : null;
+      if (!xyz || xyz.length !== 3 || !xyz.every((value) => Number.isFinite(Number(value)))) {
+        throw new Error("Spatial Observation 缺少有效 Target XYZ");
+      }
+      els.spatialSnapshot.src = `/api/spatial-perception/overview.jpg?revision=${state.revision}`;
+      els.spatialSnapshot.hidden = false;
+      els.spatialMediaLabels.hidden = false;
+      els.spatialEmpty.hidden = true;
+      els.spatialPendingOverlay.hidden = true;
+      els.spatialPendingOverlay.classList.remove("is-error");
+      els.spatialErrorActions.hidden = true;
+      els.spatialState.textContent = "READY";
+      els.spatialState.classList.add("has-data");
+      els.spatialInspectorStatus.textContent = "READY";
+      els.spatialDepthValue.textContent = `${Number(observation.target_depth).toFixed(3)} ${unit}`;
+      els.spatialValue.textContent = `X ${Number(xyz[0]).toFixed(3)} · Y ${Number(xyz[1]).toFixed(3)} · Z ${Number(xyz[2]).toFixed(3)} ${unit}`;
+      els.spatialSourceValue.textContent = observation.depth_source === "RGBD" ? "RGB-D 相机 RGB-D" : "单目 Monocular";
+      els.spatialModeValue.textContent = depthModeLabel(observation.depth_mode);
+      els.spatialProjectionValue.textContent = observation.intrinsics_source === "NOMINAL_FOV"
+        ? "标称视场角 Nominal FOV · 未标定"
+        : "已标定 Calibrated";
+      const quality = observation.quality || {};
+      const validRatio = Number(quality.valid_depth_ratio);
+      const qualityText = Number.isFinite(validRatio) ? `${(validRatio * 100).toFixed(1)}% 有效深度` : "有效深度已验证";
+      els.spatialDetail.textContent = `相机坐标系 Camera Frame · ${observation.point_count} 个真实目标点 · ${qualityText}`;
+      els.spatialFooter.textContent = `FRAME ${observation.source_frame_id} · ${observation.target_instance_id}`;
+      return;
+    }
+
+    if (state.status === "ERROR") {
+      const errorLabel = SPATIAL_ERROR_MESSAGES[state.error_code] || SPATIAL_ERROR_MESSAGES.SPATIAL_ANALYSIS_FAILED;
+      els.spatialState.textContent = "ERROR";
+      els.spatialState.classList.remove("has-data");
+      els.spatialInspectorStatus.textContent = "ERROR";
+      els.spatialDepthValue.textContent = "NOT AVAILABLE";
+      els.spatialValue.textContent = "NOT AVAILABLE";
+      els.spatialSourceValue.textContent = "NOT AVAILABLE";
+      els.spatialModeValue.textContent = "NOT AVAILABLE";
+      els.spatialProjectionValue.textContent = "NOT AVAILABLE";
+      els.spatialDetail.textContent = `${errorLabel}；未生成 XYZ 或 Point Cloud。`;
+      els.spatialFooter.textContent = state.error_code || "SPATIAL ERROR";
+      els.spatialPendingOverlay.hidden = false;
+      els.spatialPendingOverlay.classList.add("is-error");
+      els.spatialProgressTitle.textContent = "空间分析失败 SPATIAL ERROR";
+      els.spatialProgressDetail.textContent = errorLabel;
+      els.spatialErrorActions.hidden = false;
+    }
+  }
+
+  function showSpatialAnalyzing() {
+    els.spatialMediaLabels.hidden = true;
+    els.spatialPendingOverlay.hidden = false;
+    els.spatialPendingOverlay.classList.remove("is-error");
+    els.spatialProgressTitle.textContent = "空间分析 Spatial Analysis";
+    els.spatialProgressDetail.textContent = "深度估计与三维反投影正在计算 PROCESSING";
+    els.spatialErrorActions.hidden = true;
+    els.spatialState.textContent = "ANALYZING";
+    els.spatialState.classList.remove("has-data");
+    els.spatialInspectorStatus.textContent = "ANALYZING";
+    els.spatialDepthValue.textContent = "正在计算 PROCESSING";
+    els.spatialValue.textContent = "NOT AVAILABLE";
+    els.spatialSourceValue.textContent = "单目 Monocular";
+    els.spatialModeValue.textContent = "正在确认 CHECKING";
+    els.spatialProjectionValue.textContent = "相机投影模型 Camera Projection Model";
+    els.spatialDetail.textContent = "仅处理已冻结且与目标锁定关联的 Scene Snapshot。";
+  }
+
+  async function runSpatialAnalysis() {
+    const snapshot = targetPerceptionState?.scene_snapshot;
+    if (spatialAnalysisRunning || !snapshot?.available || pipeline.state !== "SPATIAL_ANALYSIS") return;
+    spatialAnalysisRunning = true;
+    showSpatialAnalyzing();
+    updateActionButtons();
+    try {
+      const state = await apiPost("/api/spatial-perception/analyze", {
+        snapshot_id: snapshot.snapshot_id,
+        source_frame_id: snapshot.source_frame_id,
+        target_instance_id: snapshot.target_id,
+        source_timestamp_s: snapshot.source_timestamp_s,
+      });
+      renderSpatialPerception(state);
+      if (state.status === "READY") {
+        if (!hasSpatialObservationAssociation(targetPerceptionState, state)) {
+          throw new Error("空间结果与冻结 Scene Snapshot 关联不一致");
+        }
+        pipeline.transition("SPATIAL_READY", {
+          snapshotId: snapshot.snapshot_id,
+          targetId: snapshot.target_id,
+          sourceFrameId: snapshot.source_frame_id,
+        });
+        showNotice("空间感知完成：真实 Depth、Target Point Cloud 与 Camera Frame XYZ 已生成。", "success");
+      } else {
+        showNotice(SPATIAL_ERROR_MESSAGES[state.error_code] || "空间分析失败 SPATIAL ERROR", "error");
+      }
+    } catch (error) {
+      renderSpatialPerception({
+        schema_version: SPATIAL_PERCEPTION_SCHEMA_VERSION,
+        status: "ERROR",
+        error_code: "SPATIAL_ANALYSIS_FAILED",
+        observation: null,
+      });
+      showNotice(`空间分析未完成：${error.message}`, "error");
+    } finally {
+      spatialAnalysisRunning = false;
+      updateActionButtons();
+    }
+  }
+
   async function startGrasp() {
     if (!canStartGrasp(pipeline.state, targetPerceptionState)) return;
     const state = targetPerceptionState;
     const frame = state.frame;
     const target = state.selected_target;
+    const snapshot = state.scene_snapshot;
     els.startGraspButton.disabled = true;
     try {
       els.spatialSnapshot.src = `/api/target-perception/scene-snapshot.jpg?revision=${state.revision}`;
-      els.spatialSnapshot.hidden = false;
+    els.spatialSnapshot.hidden = false;
+    els.spatialMediaLabels.hidden = true;
       els.spatialEmpty.hidden = true;
-      els.spatialPendingOverlay.hidden = false;
-      els.spatialState.textContent = "WAITING";
       els.spatialFooter.textContent = `FRAME ${frame.id} · ${target.id}`;
       els.statusSnapshot.textContent = `${frame.width} × ${frame.height} · Frame ${frame.id}`;
-      els.spatialInspectorStatus.textContent = "WAITING";
-      els.spatialValue.textContent = "等待计算 WAITING";
-      els.spatialDetail.textContent = "已接收与锁定目标同帧的真实 RGB 场景快照；Depth、XYZ 与 Point Cloud 仍不可用。";
       pipeline.transition("SCENE_CAPTURED", {
         source: "phone-live-rgb",
+        snapshotId: snapshot.snapshot_id,
         targetId: target.id,
         sourceFrameId: frame.id,
         sourceTimestampS: frame.timestamp_s,
       });
-      pipeline.transition("SPATIAL_ANALYSIS", { module: "pending", targetId: target.id, sourceFrameId: frame.id });
-      updateActionButtons();
-      showNotice("真实目标与场景快照关联完成；空间分析模块未接入，流程停留在 WAITING。", "success");
+      pipeline.transition("SPATIAL_ANALYSIS", {
+        module: "monocular-depth",
+        snapshotId: snapshot.snapshot_id,
+        targetId: target.id,
+        sourceFrameId: frame.id,
+      });
+      await runSpatialAnalysis();
     } catch (error) {
       updateActionButtons();
-      showNotice(`无法开始抓取：${error.message}`, "error");
+      showNotice(`无法开始空间分析：${error.message}`, "error");
     }
+  }
+
+  async function retrySpatialAnalysis() {
+    if (pipeline.state !== "SPATIAL_ANALYSIS") return;
+    await runSpatialAnalysis();
   }
 
   async function resetPipeline() {
@@ -748,6 +958,9 @@
     workspaceMode = "legacy";
     analysisFrozen = false;
     targetPerceptionState = null;
+    spatialPerceptionState = null;
+    spatialAnalysisRunning = false;
+    els.spatialMediaLabels.hidden = true;
     els.targetOverlay.replaceChildren();
     setTargetOverlayVisible(false);
     els.analysisControls.hidden = true;
@@ -889,6 +1102,8 @@
   els.targetOverlay.addEventListener("pointerdown", selectTargetAtPointer);
   els.analyzeTargetsButton.addEventListener("click", analyzeTargets);
   els.startGraspButton.addEventListener("click", startGrasp);
+  els.retrySpatialButton.addEventListener("click", retrySpatialAnalysis);
+  els.newSceneButton.addEventListener("click", resumeLive);
   els.resumeLiveButton.addEventListener("click", resumeLive);
   els.resetPipelineButton.addEventListener("click", resetPipeline);
   els.cameraSetupButton.addEventListener("click", () => openDialog(els.cameraSetupDialog));
@@ -968,6 +1183,7 @@
   setPrimaryView("live");
   (async function initializeWorkspace() {
     await restoreTargetPerceptionState();
+    await restoreSpatialPerceptionState();
     await pollCameraState();
     cameraStateTimer = window.setInterval(pollCameraState, 1000);
   })();

@@ -15,6 +15,7 @@ import signal
 import subprocess
 import sys
 import threading
+import tomllib
 from typing import Any
 from urllib.parse import urlparse
 import webbrowser
@@ -27,6 +28,17 @@ from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOS
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
 from vision2grasp.sources import OpenCVCameraConfig, OpenCVCameraSource, RGBArraySource
+from vision2grasp.spatial_perception import (
+    MaskSpatialPerceptionProvider,
+    MaskSpatialPerceptionConfig,
+    MODEL_REVISION,
+    MonocularDepthConfig,
+    MonocularDepthProvider,
+    NominalFOVCameraIntrinsicsProvider,
+    NominalFOVIntrinsicsConfig,
+    SpatialPerceptionProvider,
+    SpatialPerceptionService,
+)
 from vision2grasp.target_perception import FastSAMTargetSegmenter, TargetPerceptionService
 from vision2grasp.visualization import make_run_id
 
@@ -40,8 +52,44 @@ LAUNCHER_LOG_ROOT = PROJECT_ROOT / "artifacts" / "launcher"
 MAX_JSON_BODY_BYTES = 20 * 1024 * 1024
 
 
+def build_spatial_perception_provider() -> SpatialPerceptionProvider:
+    with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
+        document = tomllib.load(stream)
+    config = document["spatial_perception"]
+    if str(config["backend"]) != "depth_anything_v2_metric_indoor_small":
+        raise ValueError("unsupported spatial perception backend")
+    if str(config["model_revision"]) != MODEL_REVISION:
+        raise ValueError("spatial perception model revision does not match frozen backend")
+    model_directory = PROJECT_ROOT / str(config["model_directory"])
+    return MaskSpatialPerceptionProvider(
+        MonocularDepthProvider(
+            MonocularDepthConfig(
+                model_directory=model_directory,
+                device=str(config["device"]),
+            )
+        ),
+        NominalFOVCameraIntrinsicsProvider(
+            NominalFOVIntrinsicsConfig(
+                nominal_diagonal_fov_deg=float(config["nominal_diagonal_fov_deg"])
+            )
+        ),
+        MaskSpatialPerceptionConfig(
+            minimum_valid_depth_ratio=float(config["minimum_valid_depth_ratio"]),
+            minimum_points=int(config["minimum_points"]),
+            maximum_points=int(config["maximum_points"]),
+            outlier_mad_scale=float(config["outlier_mad_scale"]),
+            minimum_depth_band=float(config["minimum_depth_band"]),
+        ),
+    )
+
+
 class Vision2GraspApp:
-    def __init__(self, *, phone_camera_config: PhoneLANConfig | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        phone_camera_config: PhoneLANConfig | None = None,
+        spatial_provider: SpatialPerceptionProvider | None = None,
+    ) -> None:
         self.camera = PhoneLANProvider(
             phone_camera_config or PhoneLANConfig(project_root=PROJECT_ROOT)
         )
@@ -49,6 +97,9 @@ class Vision2GraspApp:
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
         self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
+        self.spatial_perception = SpatialPerceptionService(
+            spatial_provider or build_spatial_perception_provider()
+        )
 
     @property
     def real_scene(self) -> RealSceneProcessor:
@@ -90,7 +141,20 @@ class Vision2GraspApp:
     def analyze_phone_targets(self) -> dict[str, object]:
         """Freeze one real Phone RGB frame and generate selectable instances."""
 
+        self.spatial_perception.reset()
         return self.target_perception.analyze(self.camera.capture())
+
+    def analyze_spatial(self, request: dict[str, Any]) -> dict[str, object]:
+        """Analyze only the already-selected frozen Scene Snapshot."""
+
+        snapshot = self.target_perception.selected_scene_snapshot()
+        return self.spatial_perception.analyze(
+            snapshot,
+            expected_snapshot_id=str(request["snapshot_id"]),
+            expected_source_frame_id=int(request["source_frame_id"]),
+            expected_target_instance_id=str(request["target_instance_id"]),
+            expected_source_timestamp_s=float(request["source_timestamp_s"]),
+        )
 
     def run_simulation(self) -> dict[str, Any]:
         if not self._simulation_lock.acquire(blocking=False):
@@ -175,6 +239,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/camera/state",
             "/api/real-scene/state",
             "/api/target-perception/state",
+            "/api/spatial-perception/state",
         }
         if (
             path in quiet_paths
@@ -197,6 +262,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "camera.lan-capture/original",
                         "target-perception.instance-mask/v1",
                         "target-selection.manual/v1",
+                        "spatial-perception.monocular/v1",
+                        "spatial-observation.camera-frame/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }
@@ -238,6 +305,16 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND, "locked target snapshot not ready")
                 return
             self._send_binary(snapshot, "image/jpeg")
+            return
+        if path == "/api/spatial-perception/state":
+            self._send_json(self.app.spatial_perception.snapshot())
+            return
+        if path == "/api/spatial-perception/overview.jpg":
+            overview = self.app.spatial_perception.overview_jpeg()
+            if overview is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "spatial overview not ready")
+                return
+            self._send_binary(overview, "image/jpeg")
             return
         if path == "/api/real-scene/state":
             self._send_json(self.app.real_scene.snapshot())
@@ -294,7 +371,17 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 )
                 return
             if path == "/api/target-perception/reset":
-                self._send_json(self.app.target_perception.reset())
+                result = self.app.target_perception.reset()
+                spatial = getattr(self.app, "spatial_perception", None)
+                if spatial is not None:
+                    spatial.reset()
+                self._send_json(result)
+                return
+            if path == "/api/spatial-perception/analyze":
+                self._send_json(self.app.analyze_spatial(body))
+                return
+            if path == "/api/spatial-perception/reset":
+                self._send_json(self.app.spatial_perception.reset())
                 return
             if path == "/api/real-scene/source":
                 self._set_source(body)

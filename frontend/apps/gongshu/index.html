@@ -119,15 +119,23 @@
             </div>
           </header>
           <div class="workspace-view-stage pending-stage">
-            <img id="spatialSnapshot" class="workspace-media snapshot-media" alt="真实 RGB 场景快照，尚未产生空间分析结果" hidden />
+            <img id="spatialSnapshot" class="workspace-media spatial-media" alt="真实深度图与目标点云空间分析结果" hidden />
+            <div id="spatialMediaLabels" class="spatial-media-labels" hidden>
+              <span>深度图 <b>Depth Map</b></span>
+              <span>目标点云 <b>Target Point Cloud</b></span>
+            </div>
             <div id="spatialEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="m8 30 16-18 16 18-16 8z"/><path d="M8 30v6l16 8 16-8v-6M24 12v26"/></svg>
               <strong>等待空间分析 WAITING</strong>
-              <span>模块未接入 Module Pending</span>
+              <span>等待已锁定目标与场景快照 Scene Snapshot</span>
             </div>
             <div id="spatialPendingOverlay" class="pending-overlay" hidden>
-              <strong>场景快照 Scene Snapshot</strong>
-              <span>空间分析模块未接入 · WAITING</span>
+              <strong id="spatialProgressTitle">空间分析 Spatial Analysis</strong>
+              <span id="spatialProgressDetail">等待计算 WAITING</span>
+              <div id="spatialErrorActions" class="pending-actions" hidden>
+                <button id="retrySpatialButton" type="button">重新分析 Analyze Again</button>
+                <button id="newSceneButton" type="button">重新采集 New Scene</button>
+              </div>
             </div>
           </div>
           <footer class="workspace-view-footer"><span>输入接口 SpatialInput</span><strong id="spatialFooter">NOT AVAILABLE</strong></footer>
@@ -185,7 +193,13 @@
         </section>
         <section class="inspector-block">
           <header><div><span>02</span><h2>空间信息 <b>Spatial</b></h2></div><strong id="spatialInspectorStatus">WAITING</strong></header>
-          <div class="inspector-value"><small>空间输出 Spatial Output</small><strong id="spatialValue">等待计算 WAITING</strong></div>
+          <dl class="target-summary spatial-summary">
+            <div><dt>目标深度 Target Depth</dt><dd id="spatialDepthValue">等待计算 WAITING</dd></div>
+            <div><dt>目标中心 Target XYZ</dt><dd id="spatialValue">NOT AVAILABLE</dd></div>
+            <div><dt>深度来源 Depth Source</dt><dd id="spatialSourceValue">NOT AVAILABLE</dd></div>
+            <div><dt>深度模式 Depth Mode</dt><dd id="spatialModeValue">NOT AVAILABLE</dd></div>
+            <div><dt>投影模型 Projection</dt><dd id="spatialProjectionValue">NOT AVAILABLE</dd></div>
+          </dl>
           <p id="spatialDetail">Depth、XYZ 与 Point Cloud 均不可用。</p>
         </section>
         <section class="inspector-block">

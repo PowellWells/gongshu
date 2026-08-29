@@ -91,3 +91,16 @@ processing_fps = 2.0
 calibration_method = "manual_four_point_ruler"
 candidate_count = 3
 metric_depth_available = false
+
+[spatial_perception]
+backend = "depth_anything_v2_metric_indoor_small"
+device = "cpu"
+model_directory = "artifacts/models/depth-anything-v2-metric-indoor-small-hf"
+model_revision = "8078d68a9c75a972131914f6afd0c1723be0da7f"
+intrinsics_source = "nominal_fov"
+nominal_diagonal_fov_deg = 75.0
+minimum_valid_depth_ratio = 0.50
+minimum_points = 30
+maximum_points = 4096
+outlier_mad_scale = 3.5
+minimum_depth_band = 0.02
