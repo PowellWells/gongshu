@@ -8,6 +8,7 @@ from .contracts import (
     DepthSource,
     IntrinsicsObservation,
     IntrinsicsSource,
+    SpatialGeometryDiagnostics,
     SpatialObservation,
     TargetDepth,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "NominalFOVIntrinsicsConfig",
     "RGBDDepthProvider",
     "SPATIAL_PERCEPTION_SCHEMA_VERSION",
+    "SpatialGeometryDiagnostics",
     "SpatialObservation",
     "SpatialPerceptionProvider",
     "SpatialPerceptionService",

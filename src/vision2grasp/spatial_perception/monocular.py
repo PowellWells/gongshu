@@ -76,15 +76,21 @@ class MonocularDepthProvider:
             inputs = self._processor(images=frame.rgb, return_tensors="pt")
             started = time.perf_counter()
             with torch.inference_mode():
-                output = self._model(**inputs).predicted_depth
-                resized = torch.nn.functional.interpolate(
-                    output.unsqueeze(1),
-                    size=frame.rgb.shape[:2],
-                    mode="bicubic",
-                    align_corners=False,
-                ).squeeze(0).squeeze(0)
+                output = self._model(**inputs)
+                processed = self._processor.post_process_depth_estimation(
+                    output,
+                    target_sizes=[frame.rgb.shape[:2]],
+                )
             inference_time_s = time.perf_counter() - started
-            values = resized.detach().cpu().numpy().astype(np.float32, copy=False)
+            if len(processed) != 1 or "predicted_depth" not in processed[0]:
+                raise RuntimeError("depth post-processing returned an invalid result")
+            values = (
+                processed[0]["predicted_depth"]
+                .detach()
+                .cpu()
+                .numpy()
+                .astype(np.float32, copy=False)
+            )
         except Exception as error:
             raise DepthUnavailableError(f"depth inference failed: {error}") from error
         if values.shape != frame.rgb.shape[:2]:

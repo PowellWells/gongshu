@@ -85,7 +85,9 @@ py -3.12 -m venv .venv
 
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
 
-进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用 `开始抓取 Start Grasp`。开始抓取严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING`。普通 Phone RGB 使用可配置标称对角视场角构造 `NOMINAL_FOV / UNCALIBRATED` 投影参数；当前 metric-scaled 单目结果只标记 `Approx. Metric`。
+进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用 `开始抓取 Start Grasp`。开始抓取严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING`。普通 Phone RGB 使用可配置标称对角视场角构造 `NOMINAL_FOV / UNCALIBRATED` 投影参数；当前 metric-scaled 单目结果只标记 `Approx. Metric`。`SpatialObservation.geometry_diagnostics` 会在本地 API 中记录 Snapshot / Depth / Mask 尺寸、水平与垂直标称 FOV、`fx/fy/cx/cy`、目标像素 bbox、中位深度、Mask 连通性和点云稳健 XYZ 范围，供现场诊断使用，但不把这些调试字段堆到主 Workspace。
+
+当前默认尺度路径明确为 `scale_mode = DIRECT`：它不使用桌面或已知物体先验，也不会在尺度异常时自动修正结果。单目 metric-scaled 模型跨手机、焦段和近距离小物体时仍可能产生系统性绝对尺度偏差，因此 `ABNORMAL_SCALE` 与 Panda `0.01–0.08 m` 宽度保护继续生效。后续可选的轻量 `Scale Assistance` 方案是不依赖标准桌子的“单一已知长度”：用户可输入当前目标或同平面任意参考物的一条真实长度，系统只计算一个统一尺度因子并同时作用于 Depth / XYZ / Extent；结果仍标记 `APPROX_METRIC + REFERENCE + UNCALIBRATED`，不得升级为严格 Metric。该辅助模式本轮尚未启用，Direct Mode 仍是默认且完整保留。
 
 v0.6 规划器在 OpenCV Camera Frame（`+X` 右、`+Y` 下、`+Z` 前）中对真实目标点云执行稳健范围估计与二维 PCA，生成中心及沿主轴偏移的 Top-down 候选，夹爪闭合方向取 PCA 短轴。所需宽度为目标短轴稳健范围加 8 mm clearance；Panda 有效范围固定为 `0.01–0.08 m`，超限直接 `FAILED`。`quality_score` 仅排序候选；`confidence` 为 `HEURISTIC_UNCALIBRATED`，由点支持、深度有效性、PCA 稳定性和宽度余量构成，不代表真实成功概率。
 
@@ -120,6 +122,7 @@ Vision2Grasp/
 ## 当前限制
 
 - 真实 Camera 主链路目前可生成 RGB Frame、手动目标、单目近似深度、目标点云、Camera Frame GraspPlan 与规范化 MuJoCo Validation；它不是标定后的 Camera→Robot / World 坐标闭环。
+- 单目绝对尺度在近距离小目标上可能偏离真实数量级；Nominal FOV 只能提供投影比例，不能纠正深度模型的绝对尺度。系统会保留真实输出并由 `ABNORMAL_SCALE / WIDTH_LIMIT` 拒绝不合理计划，不会通过放宽阈值或静默缩放伪造可执行结果。
 - Honor Magic4 的 v0.6 实体完整链路验收仍由用户完成；自动化、静态样本和 MuJoCo 结果不得描述为实体手机或实体机器人实测。
 - USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
 - 尚未接入真实机械臂、外参标定、在线碰撞场景重建或物理执行闭环；当前 SUCCESS 仅表示 Simulation Validation。

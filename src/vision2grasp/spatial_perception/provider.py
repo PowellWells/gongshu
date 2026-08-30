@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
+import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from vision2grasp.contracts import CameraIntrinsics
 from vision2grasp.target_perception import TargetSceneSnapshot
 
 from .contracts import (
     CalibrationState,
+    DepthFrame,
     DepthMode,
     DepthSource,
+    SpatialGeometryDiagnostics,
     SpatialObservation,
     TargetDepth,
 )
@@ -26,6 +31,8 @@ class MaskSpatialPerceptionConfig:
     maximum_points: int = 4096
     outlier_mad_scale: float = 3.5
     minimum_depth_band: float = 0.02
+    diagnostic_extent_lower_quantile: float = 0.02
+    diagnostic_extent_upper_quantile: float = 0.98
 
     def __post_init__(self) -> None:
         if not 0.0 < self.minimum_valid_depth_ratio <= 1.0:
@@ -36,6 +43,13 @@ class MaskSpatialPerceptionConfig:
             raise ValueError("maximum_points must be at least minimum_points")
         if self.outlier_mad_scale <= 0.0 or self.minimum_depth_band <= 0.0:
             raise ValueError("depth filtering parameters must be positive")
+        if not (
+            0.0
+            <= self.diagnostic_extent_lower_quantile
+            < self.diagnostic_extent_upper_quantile
+            <= 1.0
+        ):
+            raise ValueError("diagnostic extent quantiles must be ordered inside [0, 1]")
 
 
 class MaskSpatialPerceptionProvider:
@@ -124,6 +138,14 @@ class MaskSpatialPerceptionProvider:
             valid_pixel_count=valid_count,
             inlier_pixel_count=inlier_count,
         )
+        diagnostics = self._geometry_diagnostics(
+            snapshot=snapshot,
+            depth_frame=depth_frame,
+            intrinsics=intrinsics,
+            mask=mask,
+            target_depth_median=target_depth.value,
+            all_points=all_points,
+        )
         return SpatialObservation(
             snapshot_id=snapshot.snapshot_id,
             source_frame_id=frame.frame_id,
@@ -137,6 +159,57 @@ class MaskSpatialPerceptionProvider:
             depth_source=depth_frame.source,
             depth_mode=result_mode,
             inference_time_s=depth_frame.inference_time_s,
+            geometry_diagnostics=diagnostics,
+        )
+
+    def _geometry_diagnostics(
+        self,
+        *,
+        snapshot: TargetSceneSnapshot,
+        depth_frame: DepthFrame,
+        intrinsics: CameraIntrinsics,
+        mask: NDArray[np.bool_],
+        target_depth_median: float,
+        all_points: NDArray[np.float64],
+    ) -> SpatialGeometryDiagnostics:
+        frame_height, frame_width = snapshot.frame.rgb.shape[:2]
+        depth_height, depth_width = depth_frame.values.shape
+        mask_height, mask_width = mask.shape
+        hfov = math.degrees(2.0 * math.atan(frame_width / (2.0 * intrinsics.fx)))
+        vfov = math.degrees(2.0 * math.atan(frame_height / (2.0 * intrinsics.fy)))
+        x1, y1, x2, y2 = snapshot.target.bbox_xyxy
+        bbox_area = max((x2 - x1) * (y2 - y1), 1.0)
+        mask_pixel_count = int(np.count_nonzero(mask))
+        component_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(
+            mask.astype(np.uint8),
+            connectivity=8,
+        )
+        foreground_areas = stats[1:, cv2.CC_STAT_AREA]
+        largest_component = int(foreground_areas.max()) if foreground_areas.size else 0
+        lower = self._config.diagnostic_extent_lower_quantile
+        upper = self._config.diagnostic_extent_upper_quantile
+        bounds = np.quantile(all_points, [lower, upper], axis=0)
+        extent = np.maximum(bounds[1] - bounds[0], 0.0)
+        return SpatialGeometryDiagnostics(
+            snapshot_size=(frame_width, frame_height),
+            depth_size=(depth_width, depth_height),
+            mask_size=(mask_width, mask_height),
+            nominal_hfov_deg=float(hfov),
+            nominal_vfov_deg=float(vfov),
+            target_bbox_pixels=tuple(float(value) for value in snapshot.target.bbox_xyxy),
+            target_mask_pixel_count=mask_pixel_count,
+            target_mask_bbox_fill_ratio=float(mask_pixel_count / bbox_area),
+            target_mask_component_count=int(component_count - 1),
+            target_mask_largest_component_ratio=float(largest_component / mask_pixel_count),
+            target_depth_median=float(target_depth_median),
+            point_cloud_extent_xyz=np.asarray(extent, dtype=np.float64),
+            extent_quantiles=(lower, upper),
+            geometry_aligned=(
+                (frame_width, frame_height)
+                == (depth_width, depth_height)
+                == (mask_width, mask_height)
+                == (intrinsics.width, intrinsics.height)
+            ),
         )
 
     @staticmethod

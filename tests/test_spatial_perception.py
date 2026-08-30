@@ -7,6 +7,7 @@ from pathlib import Path
 import threading
 import tomllib
 import unittest
+from types import SimpleNamespace
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -153,6 +154,65 @@ class SpatialPerceptionProviderTests(unittest.TestCase):
         self.assertEqual(metadata["camera_frame"], "OPENCV_CAMERA_X_RIGHT_Y_DOWN_Z_FORWARD")
         self.assertEqual(metadata["calibration_state"], "UNCALIBRATED")
         self.assertEqual(metadata["intrinsics_source"], "NOMINAL_FOV")
+        self.assertEqual(metadata["scale_mode"], "DIRECT")
+        diagnostics = metadata["geometry_diagnostics"]
+        self.assertEqual(diagnostics["snapshot_size"], {"width": 64, "height": 48})
+        self.assertEqual(diagnostics["depth_size"], {"width": 64, "height": 48})
+        self.assertEqual(diagnostics["mask_size"], {"width": 64, "height": 48})
+        self.assertTrue(diagnostics["geometry_aligned"])
+        self.assertFalse(diagnostics["crop_applied"])
+        self.assertFalse(diagnostics["rotation_applied"])
+        self.assertEqual(diagnostics["target_bbox_pixels"]["width"], 32.0)
+        self.assertAlmostEqual(diagnostics["target_depth_median"], 1.5)
+        self.assertEqual(len(diagnostics["point_cloud_extent_xyz"]), 3)
+
+    def test_portrait_270x480_and_540x960_share_one_geometry_coordinate_system(self) -> None:
+        def analyze(width: int, height: int):
+            rgb = np.zeros((height, width, 3), dtype=np.uint8)
+            mask = np.zeros((height, width), dtype=np.bool_)
+            x1, x2 = width // 4, 3 * width // 4
+            y1, y2 = height // 4, 3 * height // 4
+            mask[y1:y2, x1:x2] = True
+            frame = RGBFrame(width, 10.0 + width, "phone-portrait", rgb)
+            snapshot = TargetSceneSnapshot(
+                snapshot_id=f"snapshot-{width}x{height}",
+                frame=frame,
+                target=TargetInstance(
+                    instance_id=f"target-{width}x{height}",
+                    mask=mask,
+                    bbox_xyxy=(float(x1), float(y1), float(x2), float(y2)),
+                    centroid_2d=((x1 + x2 - 1) / 2.0, (y1 + y2 - 1) / 2.0),
+                    source_frame_id=frame.frame_id,
+                    source_timestamp_s=frame.timestamp_s,
+                ),
+            )
+            return MaskSpatialPerceptionProvider(
+                _DepthProvider(np.full((height, width), 0.30, dtype=np.float32)),
+                NominalFOVCameraIntrinsicsProvider(),
+            ).analyze(snapshot)
+
+        low = analyze(270, 480)
+        high = analyze(540, 960)
+        low_diag = low.geometry_diagnostics
+        high_diag = high.geometry_diagnostics
+        self.assertIsNotNone(low_diag)
+        self.assertIsNotNone(high_diag)
+        assert low_diag is not None and high_diag is not None
+        self.assertEqual(low_diag.snapshot_size, low_diag.depth_size)
+        self.assertEqual(low_diag.snapshot_size, low_diag.mask_size)
+        self.assertEqual(high_diag.snapshot_size, high_diag.depth_size)
+        self.assertEqual(high_diag.snapshot_size, high_diag.mask_size)
+        self.assertTrue(low_diag.geometry_aligned)
+        self.assertTrue(high_diag.geometry_aligned)
+        self.assertAlmostEqual(low_diag.nominal_hfov_deg, high_diag.nominal_hfov_deg, places=10)
+        self.assertAlmostEqual(low_diag.nominal_vfov_deg, high_diag.nominal_vfov_deg, places=10)
+        np.testing.assert_allclose(
+            low_diag.point_cloud_extent_xyz,
+            high_diag.point_cloud_extent_xyz,
+            rtol=0.01,
+            atol=5e-4,
+        )
+        np.testing.assert_allclose(low.centroid_xyz, high.centroid_xyz, atol=5e-4)
 
     def test_relative_backend_stays_relative_despite_nominal_intrinsics(self) -> None:
         snapshot = make_snapshot()
@@ -292,6 +352,38 @@ class SpatialPerceptionServiceTests(unittest.TestCase):
 
 
 class MonocularDepthAdapterTests(unittest.TestCase):
+    def test_infer_uses_processor_official_postprocess_at_snapshot_size(self) -> None:
+        import torch
+
+        class _Processor:
+            def __init__(self) -> None:
+                self.target_sizes = None
+
+            def __call__(self, *, images, return_tensors):
+                self.input_shape = images.shape
+                self.return_tensors = return_tensors
+                return {}
+
+            def post_process_depth_estimation(self, outputs, *, target_sizes):
+                self.outputs = outputs
+                self.target_sizes = target_sizes
+                return [{"predicted_depth": torch.full(target_sizes[0], 0.42)}]
+
+        class _Model:
+            def __call__(self, **_inputs):
+                return SimpleNamespace(predicted_depth=torch.ones((1, 4, 4)))
+
+        processor = _Processor()
+        provider = MonocularDepthProvider()
+        provider._processor = processor
+        provider._model = _Model()
+        provider._torch = torch
+        frame = make_snapshot().frame
+        result = provider.infer(frame)
+        self.assertEqual(processor.target_sizes, [frame.rgb.shape[:2]])
+        self.assertEqual(result.values.shape, frame.rgb.shape[:2])
+        np.testing.assert_allclose(result.values, 0.42)
+
     def test_missing_verified_files_fail_before_transformers_load_when_download_disabled(self) -> None:
         directory = PROJECT_ROOT / "tmp" / "missing-depth-model"
         provider = MonocularDepthProvider(

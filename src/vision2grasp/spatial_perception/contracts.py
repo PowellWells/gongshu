@@ -107,6 +107,97 @@ class TargetDepth:
 
 
 @dataclass(frozen=True, slots=True)
+class SpatialGeometryDiagnostics:
+    """Auditable geometry facts for one frozen SpatialResult.
+
+    These values describe the real tensors and transforms used by the provider;
+    they are intentionally API diagnostics rather than prominent Workspace UI.
+    """
+
+    snapshot_size: tuple[int, int]
+    depth_size: tuple[int, int]
+    mask_size: tuple[int, int]
+    nominal_hfov_deg: float
+    nominal_vfov_deg: float
+    target_bbox_pixels: tuple[float, float, float, float]
+    target_mask_pixel_count: int
+    target_mask_bbox_fill_ratio: float
+    target_mask_component_count: int
+    target_mask_largest_component_ratio: float
+    target_depth_median: float
+    point_cloud_extent_xyz: NDArray[np.float64]
+    extent_quantiles: tuple[float, float]
+    geometry_aligned: bool
+    crop_applied: bool = False
+    rotation_applied: bool = False
+
+    def __post_init__(self) -> None:
+        for name, size in (
+            ("snapshot_size", self.snapshot_size),
+            ("depth_size", self.depth_size),
+            ("mask_size", self.mask_size),
+        ):
+            if len(size) != 2 or any(int(value) <= 0 for value in size):
+                raise ValueError(f"{name} must contain positive width and height")
+        if not all(np.isfinite(value) for value in self.target_bbox_pixels):
+            raise ValueError("target_bbox_pixels must contain finite values")
+        if self.target_mask_pixel_count <= 0 or self.target_mask_component_count <= 0:
+            raise ValueError("target mask diagnostics must be positive")
+        for value in (
+            self.nominal_hfov_deg,
+            self.nominal_vfov_deg,
+            self.target_mask_bbox_fill_ratio,
+            self.target_mask_largest_component_ratio,
+            self.target_depth_median,
+        ):
+            if not np.isfinite(value):
+                raise ValueError("spatial geometry diagnostics must be finite")
+        if not 0.0 < self.nominal_hfov_deg < 179.0:
+            raise ValueError("nominal_hfov_deg must be in (0, 179)")
+        if not 0.0 < self.nominal_vfov_deg < 179.0:
+            raise ValueError("nominal_vfov_deg must be in (0, 179)")
+        if not 0.0 < self.target_mask_bbox_fill_ratio <= 1.0:
+            raise ValueError("target_mask_bbox_fill_ratio must be in (0, 1]")
+        if not 0.0 < self.target_mask_largest_component_ratio <= 1.0:
+            raise ValueError("target_mask_largest_component_ratio must be in (0, 1]")
+        lower, upper = self.extent_quantiles
+        if not 0.0 <= lower < upper <= 1.0:
+            raise ValueError("extent_quantiles must be ordered inside [0, 1]")
+        extent = np.asarray(self.point_cloud_extent_xyz, dtype=np.float64)
+        if extent.shape != (3,) or not np.all(np.isfinite(extent)) or np.any(extent < 0.0):
+            raise ValueError("point_cloud_extent_xyz must be a finite non-negative 3-vector")
+        immutable_extent = np.ascontiguousarray(extent.copy())
+        immutable_extent.setflags(write=False)
+        object.__setattr__(self, "point_cloud_extent_xyz", immutable_extent)
+
+    def public_metadata(self) -> dict[str, object]:
+        x1, y1, x2, y2 = self.target_bbox_pixels
+        return {
+            "snapshot_size": {"width": self.snapshot_size[0], "height": self.snapshot_size[1]},
+            "depth_size": {"width": self.depth_size[0], "height": self.depth_size[1]},
+            "mask_size": {"width": self.mask_size[0], "height": self.mask_size[1]},
+            "nominal_hfov_deg": self.nominal_hfov_deg,
+            "nominal_vfov_deg": self.nominal_vfov_deg,
+            "target_bbox_pixels": {
+                "xyxy": [x1, y1, x2, y2],
+                "width": x2 - x1,
+                "height": y2 - y1,
+            },
+            "target_mask_pixel_count": self.target_mask_pixel_count,
+            "target_mask_bbox_fill_ratio": self.target_mask_bbox_fill_ratio,
+            "target_mask_component_count": self.target_mask_component_count,
+            "target_mask_largest_component_ratio": self.target_mask_largest_component_ratio,
+            "target_depth_median": self.target_depth_median,
+            "point_cloud_extent_xyz": self.point_cloud_extent_xyz.tolist(),
+            "point_cloud_extent_quantiles": list(self.extent_quantiles),
+            "geometry_aligned": self.geometry_aligned,
+            "resize_policy": "DEPTH_POSTPROCESSED_TO_SNAPSHOT",
+            "crop_applied": self.crop_applied,
+            "rotation_applied": self.rotation_applied,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SpatialObservation:
     """Backend-independent target geometry in the OpenCV camera frame.
 
@@ -126,6 +217,7 @@ class SpatialObservation:
     depth_source: DepthSource
     depth_mode: DepthMode
     inference_time_s: float
+    geometry_diagnostics: SpatialGeometryDiagnostics | None = None
 
     def __post_init__(self) -> None:
         if not self.snapshot_id.strip() or not self.target_instance_id.strip():
@@ -172,6 +264,11 @@ class SpatialObservation:
             "intrinsics_source": self.camera_intrinsics.source.value,
             "calibration_state": self.camera_intrinsics.calibration_state.value,
             "depth_calibration_mode": self.camera_intrinsics.depth_calibration_mode.value,
+            "scale_mode": (
+                "DIRECT"
+                if self.camera_intrinsics.depth_calibration_mode is DepthCalibrationMode.NONE
+                else "ASSISTED"
+            ),
             "nominal_fov_deg": self.camera_intrinsics.nominal_fov_deg,
             "camera_intrinsics": {
                 "width": intrinsics.width,
@@ -188,4 +285,9 @@ class SpatialObservation:
                 "inlier_pixel_count": self.target_depth.inlier_pixel_count,
             },
             "inference_time_s": self.inference_time_s,
+            "geometry_diagnostics": (
+                None
+                if self.geometry_diagnostics is None
+                else self.geometry_diagnostics.public_metadata()
+            ),
         }
