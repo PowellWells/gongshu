@@ -7,12 +7,32 @@ from .fastsam_adapter import (
     FastSAMTargetSegmenterConfig,
 )
 from .interfaces import TargetInstanceSegmenter
+from .model_resolver import (
+    FASTSAM_CACHE_ENV,
+    FastSAMChecksumError,
+    FastSAMDownloadError,
+    FastSAMModelError,
+    FastSAMModelLoadError,
+    FastSAMModelLocation,
+    FastSAMModelNotFoundError,
+    FastSAMModelResolver,
+    ResolvedFastSAMModel,
+)
 from .service import TARGET_PERCEPTION_SCHEMA_VERSION, TargetPerceptionService
 
 __all__ = [
     "FastSAMTargetSegmenter",
     "FastSAMTargetSegmenterConfig",
     "FASTSAM_MODEL_ASSET",
+    "FASTSAM_CACHE_ENV",
+    "FastSAMChecksumError",
+    "FastSAMDownloadError",
+    "FastSAMModelError",
+    "FastSAMModelLoadError",
+    "FastSAMModelLocation",
+    "FastSAMModelNotFoundError",
+    "FastSAMModelResolver",
+    "ResolvedFastSAMModel",
     "TARGET_PERCEPTION_SCHEMA_VERSION",
     "TargetInstance",
     "TargetSceneSnapshot",

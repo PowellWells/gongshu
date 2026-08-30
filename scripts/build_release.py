@@ -14,7 +14,7 @@ import zipfile
 
 from vision2grasp.model_assets import ModelAsset, ModelAssetResolver, sha256_file
 from vision2grasp.spatial_perception import DEPTH_MODEL_ASSET
-from vision2grasp.target_perception import FASTSAM_MODEL_ASSET
+from vision2grasp.target_perception import FASTSAM_MODEL_ASSET, FastSAMModelResolver
 
 
 REQUIRED_MODELS = (FASTSAM_MODEL_ASSET, DEPTH_MODEL_ASSET)
@@ -40,10 +40,15 @@ def resolve_required_models(
     resolver: ModelAssetResolver,
     *,
     allow_download: bool,
+    fastsam_resolver: FastSAMModelResolver | None = None,
 ) -> tuple[tuple[ModelAsset, Path, str], ...]:
     resolved = []
     for asset in REQUIRED_MODELS:
-        result = resolver.resolve(asset, allow_download=allow_download)
+        if asset == FASTSAM_MODEL_ASSET:
+            target_resolver = fastsam_resolver or FastSAMModelResolver()
+            result = target_resolver.resolve(asset, allow_download=allow_download)
+        else:
+            result = resolver.resolve(asset, allow_download=allow_download)
         resolved.append((asset, result.path, result.location.value))
     return tuple(resolved)
 
@@ -54,7 +59,19 @@ def model_manifest(
     return {
         "schema_version": "vision2grasp.release-models/v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "lookup_priority": ["RELEASE_BUNDLE", "USER_CACHE", "NETWORK_DOWNLOAD"],
+        "lookup_priority": {
+            FASTSAM_MODEL_ASSET.key: [
+                "RELEASE_BUNDLE",
+                "PROJECT_COMPATIBLE",
+                "USER_CACHE",
+                "NETWORK_DOWNLOAD",
+            ],
+            DEPTH_MODEL_ASSET.key: [
+                "RELEASE_BUNDLE",
+                "USER_CACHE",
+                "NETWORK_DOWNLOAD",
+            ],
+        },
         "models": [
             {
                 **{
@@ -85,12 +102,17 @@ def build_release_zip(
     prepared_app: Path,
     output_zip: Path,
     resolver: ModelAssetResolver,
+    fastsam_resolver: FastSAMModelResolver | None = None,
     allow_download: bool = True,
 ) -> Path:
     prepared_app = prepared_app.resolve()
     output_zip = output_zip.resolve()
     _validate_prepared_app(prepared_app)
-    models = resolve_required_models(resolver, allow_download=allow_download)
+    models = resolve_required_models(
+        resolver,
+        allow_download=allow_download,
+        fastsam_resolver=fastsam_resolver,
+    )
     output_zip.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="vision2grasp-release-") as temporary:
@@ -136,7 +158,12 @@ def main() -> int:
     if missing:
         raise RuntimeError(f"release dependency check failed: {', '.join(missing)}")
     resolver = ModelAssetResolver()
-    models = resolve_required_models(resolver, allow_download=not args.offline)
+    fastsam_resolver = FastSAMModelResolver()
+    models = resolve_required_models(
+        resolver,
+        allow_download=not args.offline,
+        fastsam_resolver=fastsam_resolver,
+    )
     print(json.dumps(model_manifest(models), ensure_ascii=False, indent=2))
     if args.verify_only:
         return 0
@@ -146,6 +173,7 @@ def main() -> int:
         prepared_app=args.prepared_app,
         output_zip=args.output,
         resolver=resolver,
+        fastsam_resolver=fastsam_resolver,
         allow_download=not args.offline,
     )
     print(f"Windows release ZIP: {output}")

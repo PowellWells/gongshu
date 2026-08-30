@@ -25,6 +25,7 @@ class TargetPerceptionService:
         self._analysis_guard = threading.Lock()
         self._status = "IDLE"
         self._message = "等待目标分析 WAITING"
+        self._error_code: str | None = None
         self._revision = 0
         self._frame: RGBFrame | None = None
         self._instances: tuple[TargetInstance, ...] = ()
@@ -45,6 +46,7 @@ class TargetPerceptionService:
             with self._lock:
                 self._status = "ANALYZING"
                 self._message = "正在分析目标 Target Perception"
+                self._error_code = None
                 self._frame = frozen_frame
                 self._instances = ()
                 self._selected_target_id = None
@@ -72,6 +74,7 @@ class TargetPerceptionService:
                     if instances
                     else "未发现有效目标候选 NO CANDIDATES"
                 )
+                self._error_code = None
                 self._overlay_jpeg = encode_jpeg(overlay)
                 self._revision += 1
                 return self.snapshot()
@@ -79,6 +82,7 @@ class TargetPerceptionService:
             with self._lock:
                 self._status = "ERROR"
                 self._message = str(error)
+                self._error_code = getattr(error, "code", "TARGET_PERCEPTION_FAILED")
                 self._instances = ()
                 self._selected_target_id = None
                 self._overlay_jpeg = None
@@ -157,6 +161,7 @@ class TargetPerceptionService:
                 raise RuntimeError("cannot reset while target analysis is running")
             self._status = "IDLE"
             self._message = "等待目标分析 WAITING"
+            self._error_code = None
             self._frame = None
             self._instances = ()
             self._selected_target_id = None
@@ -173,6 +178,7 @@ class TargetPerceptionService:
                 "schema_version": TARGET_PERCEPTION_SCHEMA_VERSION,
                 "status": self._status,
                 "message": self._message,
+                "error_code": self._error_code,
                 "revision": self._revision,
                 "frame": (
                     None

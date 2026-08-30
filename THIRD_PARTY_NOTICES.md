@@ -21,11 +21,12 @@ restore absolute scale.
 ## FastSAM Small
 
 - Official project: <https://github.com/CASIA-IVA-Lab/FastSAM>
-- Release: `v0.1`
+- Verified download mirror: <https://github.com/ultralytics/assets/releases/tag/v8.4.0>
+- Asset release: `v8.4.0`
 - Checkpoint: `FastSAM-s.pt`
 - Size: `23,851,578` bytes
 - SHA-256: `c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844`
-- Upstream project license: Apache-2.0.
+- Current upstream project and Ultralytics asset repository license: AGPL-3.0.
 
 FastSAM is currently executed through Ultralytics. The pinned Ultralytics
 runtime in this repository uses the AGPL-3.0 license family; formal product

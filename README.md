@@ -66,7 +66,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-模型权重不随 Git 源码仓库发布。运行时查找顺序固定为 `Release Bundle → 用户级 Cache → 联网下载`；默认用户缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 `VISION2GRASP_MODEL_CACHE` 覆盖。FastSAM-s 与 Depth Anything V2 `.pth` 都会在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 `depth_anything_v2_metric_hypersim_vits.pth`（模型 revision `3bc65d4e…`，SHA-256 `b782898d…`），固定 CPU、`518` 输入尺寸和 lazy load；失败只返回 `DEPTH_UNAVAILABLE`，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
+模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 保持独立的 `Release Bundle → 用户级 Cache → 联网下载` resolver，并继续使用 `VISION2GRASP_MODEL_CACHE`。两类权重都会在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 `depth_anything_v2_metric_hypersim_vits.pth`（模型 revision `3bc65d4e…`，SHA-256 `b782898d…`），固定 CPU、`518` 输入尺寸和 lazy load；失败只返回 `DEPTH_UNAVAILABLE`，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 ## 启动
 
@@ -151,7 +151,7 @@ Vision2Grasp/
 本仓库目前**尚未选择项目级开源许可证**。公开源代码不等于自动授予复制、修改或分发权；正式发布前应由项目所有者选择并添加合适的 `LICENSE`。
 
 - PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 第三方组件。未来分发 EXE 时需完成动态链接、许可证文本和第三方声明审计。
-- v0.4 通过 Ultralytics 运行 FastSAM-s；当前 Ultralytics 软件采用 AGPL-3.0 系列许可。FastSAM 上游仓库声明 Apache-2.0，但闭源、内部商业或产品化使用前仍应分别确认运行时、权重及上游代码的适用许可。
+- v0.4 通过 Ultralytics 运行 FastSAM-s；当前 FastSAM 上游仓库、Ultralytics 运行时与 Ultralytics assets 仓库均声明 AGPL-3.0 系列许可。闭源、内部商业或产品化使用前仍应分别确认运行时、权重及上游代码的适用许可。
 - v0.5 使用 Apache-2.0 的 Depth Anything V2 Small 系列官方 indoor metric `.pth` 权重及固定 commit 的官方 metric runtime；正式分发前仍需保留模型卡、许可证与依赖声明，并评估模型训练数据和用途边界。
 - Camera v1 直接使用 aiortc、aiohttp、PyAV、cryptography 和 qrcode；发布二进制或安装包前应保留相应许可证和传递依赖声明。
 - MuJoCo、robosuite、PyTorch、torchvision、OpenCV、NumPy 等算法依赖也需要在正式分发前形成完整的第三方清单。

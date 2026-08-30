@@ -543,7 +543,14 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as error:
-            self._send_json({"status": "error", "message": str(error)}, status=400)
+            self._send_json(
+                {
+                    "status": "error",
+                    "error_code": getattr(error, "code", None),
+                    "message": str(error),
+                },
+                status=400,
+            )
 
     def _set_source(self, body: dict[str, Any]) -> None:
         kind = str(body.get("kind", ""))

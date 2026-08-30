@@ -4,9 +4,11 @@ from functools import partial
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
+import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 from urllib.request import Request, urlopen
 
 import cv2
@@ -17,6 +19,10 @@ from vision2grasp.target_perception import (
     UNKNOWN_TARGET_LABEL,
     FastSAMTargetSegmenter,
     FastSAMTargetSegmenterConfig,
+    FastSAMDownloadError,
+    FastSAMModelLoadError,
+    FastSAMModelNotFoundError,
+    FastSAMModelLocation,
     TargetInstance,
     TargetPerceptionService,
 )
@@ -138,11 +144,39 @@ class FastSAMAdapterTests(unittest.TestCase):
         segmenter = FastSAMTargetSegmenter(
             FastSAMTargetSegmenterConfig(weights_path=missing, weights_sha256=None)
         )
-        with self.assertRaises(FileNotFoundError):
+        with self.assertRaisesRegex(FastSAMModelNotFoundError, "MODEL_NOT_FOUND"):
             segmenter.predict(make_frame())
+
+    def test_model_constructor_failure_is_reported_as_model_load_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch(
+            "vision2grasp.target_perception.fastsam_adapter._load_fastsam_model",
+            side_effect=RuntimeError("incompatible checkpoint"),
+        ):
+            weights = Path(temporary) / "FastSAM-s.pt"
+            weights.write_bytes(b"fixture")
+            segmenter = FastSAMTargetSegmenter(
+                FastSAMTargetSegmenterConfig(
+                    weights_path=weights,
+                    weights_sha256=None,
+                )
+            )
+            with self.assertRaisesRegex(FastSAMModelLoadError, "MODEL_LOAD_FAILED"):
+                segmenter.predict(make_frame())
 
 
 class TargetPerceptionServiceTests(unittest.TestCase):
+    def test_model_error_code_remains_available_after_failed_analysis(self) -> None:
+        class _FailedSegmenter:
+            def predict(self, _frame: RGBFrame) -> tuple[TargetInstance, ...]:
+                raise FastSAMDownloadError("fixture 404")
+
+        service = TargetPerceptionService(_FailedSegmenter())
+        with self.assertRaisesRegex(FastSAMDownloadError, "DOWNLOAD_FAILED"):
+            service.analyze(make_frame())
+        state = service.snapshot()
+        self.assertEqual(state["status"], "ERROR")
+        self.assertEqual(state["error_code"], "DOWNLOAD_FAILED")
+
     def test_no_candidates_cannot_enter_target_locked_state(self) -> None:
         frame = make_frame()
         service = TargetPerceptionService(_EmptySegmenter())
@@ -271,21 +305,36 @@ class TargetPerceptionHTTPTests(unittest.TestCase):
     "official FastSAM-s checkpoint is not installed",
 )
 class FastSAMIntegrationTests(unittest.TestCase):
-    def test_official_checkpoint_generates_selectable_unknown_instances(self) -> None:
+    def test_default_project_checkpoint_reaches_manual_target_locked(self) -> None:
         bgr = cv2.imread(str(PROJECT_ROOT / "artifacts" / "perception" / "bottle_cc0.jpg"))
         self.assertIsNotNone(bgr)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         frame = RGBFrame(41, 8.0, "integration-image", rgb)
-        instances = FastSAMTargetSegmenter(
-            FastSAMTargetSegmenterConfig(
-                weights_path=PROJECT_ROOT / "artifacts" / "models" / "FastSAM-s.pt"
-            )
-        ).predict(frame)
-        self.assertGreater(len(instances), 0)
-        self.assertLessEqual(len(instances), 12)
-        self.assertTrue(all(instance.selectable for instance in instances))
-        self.assertTrue(all(instance.class_name == UNKNOWN_TARGET_LABEL for instance in instances))
-        self.assertTrue(all(instance.source_frame_id == frame.frame_id for instance in instances))
+        segmenter = FastSAMTargetSegmenter(
+            FastSAMTargetSegmenterConfig(allow_download=False)
+        )
+        service = TargetPerceptionService(segmenter)
+        analyzed = service.analyze(frame)
+        candidates = analyzed["candidates"]
+        self.assertGreater(len(candidates), 0)
+        self.assertLessEqual(len(candidates), 12)
+        self.assertTrue(all(candidate["selectable"] for candidate in candidates))
+        self.assertTrue(
+            all(candidate["class_name"] == UNKNOWN_TARGET_LABEL for candidate in candidates)
+        )
+        self.assertTrue(
+            all(candidate["source_frame_id"] == frame.frame_id for candidate in candidates)
+        )
+        self.assertEqual(segmenter.model_location, FastSAMModelLocation.PROJECT_COMPATIBLE)
+        self.assertEqual(
+            segmenter.model_path,
+            (PROJECT_ROOT / "artifacts" / "models" / "FastSAM-s.pt").resolve(),
+        )
+        selected = service.select(
+            str(analyzed["candidates"][0]["id"]),
+            source_frame_id=frame.frame_id,
+        )
+        self.assertEqual(selected["status"], "TARGET_LOCKED")
 
 
 if __name__ == "__main__":
