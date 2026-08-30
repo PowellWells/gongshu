@@ -276,7 +276,11 @@ class FastSAMIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(bgr)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         frame = RGBFrame(41, 8.0, "integration-image", rgb)
-        instances = FastSAMTargetSegmenter().predict(frame)
+        instances = FastSAMTargetSegmenter(
+            FastSAMTargetSegmenterConfig(
+                weights_path=PROJECT_ROOT / "artifacts" / "models" / "FastSAM-s.pt"
+            )
+        ).predict(frame)
         self.assertGreater(len(instances), 0)
         self.assertLessEqual(len(instances), 12)
         self.assertTrue(all(instance.selectable for instance in instances))

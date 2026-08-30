@@ -116,6 +116,8 @@
     return spatialState?.status === "READY"
       && Boolean(snapshot?.available && observation)
       && observation.snapshot_id === snapshot.snapshot_id
+      && Boolean(snapshot.geometry_chain_id)
+      && observation.geometry_chain_id === snapshot.geometry_chain_id
       && observation.source_frame_id === snapshot.source_frame_id
       && observation.target_instance_id === snapshot.target_id
       && observation.source_timestamp_s === snapshot.source_timestamp_s;

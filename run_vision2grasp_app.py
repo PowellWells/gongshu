@@ -34,13 +34,16 @@ from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
 from vision2grasp.sources import OpenCVCameraConfig, OpenCVCameraSource, RGBArraySource
 from vision2grasp.spatial_perception import (
+    CalibratedCameraIntrinsicsProvider,
     MaskSpatialPerceptionProvider,
     MaskSpatialPerceptionConfig,
     MODEL_REVISION,
+    UPSTREAM_CODE_REVISION,
     MonocularDepthConfig,
     MonocularDepthProvider,
     NominalFOVCameraIntrinsicsProvider,
     NominalFOVIntrinsicsConfig,
+    PriorityCameraIntrinsicsProvider,
     SpatialPerceptionProvider,
     SpatialPerceptionService,
 )
@@ -66,17 +69,25 @@ def build_spatial_perception_provider() -> SpatialPerceptionProvider:
         raise ValueError("unsupported spatial perception backend")
     if str(config["model_revision"]) != MODEL_REVISION:
         raise ValueError("spatial perception model revision does not match frozen backend")
-    model_directory = PROJECT_ROOT / str(config["model_directory"])
+    if str(config["upstream_code_revision"]) != UPSTREAM_CODE_REVISION:
+        raise ValueError("spatial perception upstream code revision does not match frozen backend")
     return MaskSpatialPerceptionProvider(
         MonocularDepthProvider(
             MonocularDepthConfig(
-                model_directory=model_directory,
                 device=str(config["device"]),
+                input_size=int(config["input_size"]),
             )
         ),
-        NominalFOVCameraIntrinsicsProvider(
-            NominalFOVIntrinsicsConfig(
-                nominal_diagonal_fov_deg=float(config["nominal_diagonal_fov_deg"])
+        PriorityCameraIntrinsicsProvider(
+            (
+                CalibratedCameraIntrinsicsProvider.from_user_config(),
+                NominalFOVCameraIntrinsicsProvider(
+                    NominalFOVIntrinsicsConfig(
+                        nominal_diagonal_fov_deg=float(
+                            config["nominal_diagonal_fov_deg"]
+                        )
+                    )
+                ),
             )
         ),
         MaskSpatialPerceptionConfig(

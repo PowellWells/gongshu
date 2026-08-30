@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import time
 
 import cv2
 import numpy as np
@@ -17,11 +18,15 @@ from .contracts import (
     DepthFrame,
     DepthMode,
     DepthSource,
+    GeometrySanity,
+    GeometrySanityStatus,
+    IntrinsicsSource,
     SpatialGeometryDiagnostics,
     SpatialObservation,
+    SpatialStage,
     TargetDepth,
 )
-from .interfaces import CameraIntrinsicsProvider, DepthProvider
+from .interfaces import CameraIntrinsicsProvider, DepthProvider, SpatialProgressCallback
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,11 +70,16 @@ class MaskSpatialPerceptionProvider:
         self._intrinsics_provider = intrinsics_provider
         self._config = config or MaskSpatialPerceptionConfig()
 
-    def analyze(self, snapshot: TargetSceneSnapshot) -> SpatialObservation:
+    def analyze(
+        self,
+        snapshot: TargetSceneSnapshot,
+        progress: SpatialProgressCallback | None = None,
+    ) -> SpatialObservation:
+        self._emit(progress, SpatialStage.SCENE_PREPARING)
         frame = snapshot.frame
         target = snapshot.target
         self._validate_snapshot(snapshot)
-        depth_frame = self._depth_provider.infer(frame)
+        depth_frame = self._depth_provider.infer(frame, progress)
         if depth_frame.source_frame_id != frame.frame_id:
             raise ValueError("depth source_frame_id does not match Scene Snapshot")
         if depth_frame.source_timestamp_s != frame.timestamp_s:
@@ -86,6 +96,16 @@ class MaskSpatialPerceptionProvider:
         ):
             raise ValueError("camera intrinsics do not match Scene Snapshot dimensions")
 
+        self._emit(
+            progress,
+            SpatialStage.POINT_CLOUD_BUILDING,
+            {
+                "model_load_s": depth_frame.model_load_time_s,
+                "depth_inference_s": depth_frame.inference_time_s,
+                "model_was_ready": depth_frame.model_was_ready,
+            },
+        )
+        point_cloud_started = time.perf_counter()
         mask = np.asarray(target.mask, dtype=np.bool_)
         mask_pixel_count = int(np.count_nonzero(mask))
         if mask_pixel_count == 0:
@@ -125,6 +145,7 @@ class MaskSpatialPerceptionProvider:
         centroid = np.mean(all_points, axis=0)
         selected = self._sample_indices(all_points.shape[0])
         points = np.asarray(all_points[selected], dtype=np.float32)
+        point_cloud_time_s = time.perf_counter() - point_cloud_started
 
         result_mode = self._result_depth_mode(
             source=depth_frame.source,
@@ -138,16 +159,36 @@ class MaskSpatialPerceptionProvider:
             valid_pixel_count=valid_count,
             inlier_pixel_count=inlier_count,
         )
+        self._emit(
+            progress,
+            SpatialStage.SPATIAL_COMPUTING,
+            {
+                "model_load_s": depth_frame.model_load_time_s,
+                "depth_inference_s": depth_frame.inference_time_s,
+                "point_cloud_s": point_cloud_time_s,
+                "model_was_ready": depth_frame.model_was_ready,
+            },
+        )
         diagnostics = self._geometry_diagnostics(
             snapshot=snapshot,
             depth_frame=depth_frame,
             intrinsics=intrinsics,
+            intrinsics_source=intrinsics_observation.source,
+            calibration_state=intrinsics_observation.calibration_state,
+            depth_mode=result_mode,
             mask=mask,
-            target_depth_median=target_depth.value,
+            target_depth=target_depth,
             all_points=all_points,
+            centroid=centroid,
+        )
+        sanity = self._geometry_sanity(
+            diagnostics=diagnostics,
+            centroid=centroid,
+            points=points,
         )
         return SpatialObservation(
             snapshot_id=snapshot.snapshot_id,
+            geometry_chain_id=snapshot.geometry_chain_id,
             source_frame_id=frame.frame_id,
             target_instance_id=target.instance_id,
             source_timestamp_s=frame.timestamp_s,
@@ -159,6 +200,7 @@ class MaskSpatialPerceptionProvider:
             depth_source=depth_frame.source,
             depth_mode=result_mode,
             inference_time_s=depth_frame.inference_time_s,
+            geometry_sanity=sanity,
             geometry_diagnostics=diagnostics,
         )
 
@@ -168,9 +210,13 @@ class MaskSpatialPerceptionProvider:
         snapshot: TargetSceneSnapshot,
         depth_frame: DepthFrame,
         intrinsics: CameraIntrinsics,
+        intrinsics_source: IntrinsicsSource,
+        calibration_state: CalibrationState,
+        depth_mode: DepthMode,
         mask: NDArray[np.bool_],
-        target_depth_median: float,
+        target_depth: TargetDepth,
         all_points: NDArray[np.float64],
+        centroid: NDArray[np.float64],
     ) -> SpatialGeometryDiagnostics:
         frame_height, frame_width = snapshot.frame.rgb.shape[:2]
         depth_height, depth_width = depth_frame.values.shape
@@ -194,6 +240,15 @@ class MaskSpatialPerceptionProvider:
             snapshot_size=(frame_width, frame_height),
             depth_size=(depth_width, depth_height),
             mask_size=(mask_width, mask_height),
+            model_input_size=depth_frame.model_input_size,
+            geometry_chain_id=snapshot.geometry_chain_id,
+            fx=float(intrinsics.fx),
+            fy=float(intrinsics.fy),
+            cx=float(intrinsics.cx),
+            cy=float(intrinsics.cy),
+            intrinsics_source=intrinsics_source,
+            calibration_state=calibration_state,
+            depth_mode=depth_mode,
             nominal_hfov_deg=float(hfov),
             nominal_vfov_deg=float(vfov),
             target_bbox_pixels=tuple(float(value) for value in snapshot.target.bbox_xyxy),
@@ -201,14 +256,43 @@ class MaskSpatialPerceptionProvider:
             target_mask_bbox_fill_ratio=float(mask_pixel_count / bbox_area),
             target_mask_component_count=int(component_count - 1),
             target_mask_largest_component_ratio=float(largest_component / mask_pixel_count),
-            target_depth_median=float(target_depth_median),
+            target_depth_median=float(target_depth.value),
+            valid_depth_ratio=float(target_depth.valid_ratio),
             point_cloud_extent_xyz=np.asarray(extent, dtype=np.float64),
+            target_centroid_xyz=np.asarray(centroid, dtype=np.float64),
             extent_quantiles=(lower, upper),
             geometry_aligned=(
                 (frame_width, frame_height)
                 == (depth_width, depth_height)
                 == (mask_width, mask_height)
                 == (intrinsics.width, intrinsics.height)
+            ),
+            depth_resize_policy=depth_frame.resize_policy,
+        )
+
+    @staticmethod
+    def _geometry_sanity(
+        *,
+        diagnostics: SpatialGeometryDiagnostics,
+        centroid: NDArray[np.float64],
+        points: NDArray[np.float32],
+    ) -> GeometrySanity:
+        if not diagnostics.geometry_aligned:
+            raise ValueError("geometry sanity rejected mismatched coordinate systems")
+        if not np.all(np.isfinite(points)) or points.shape[0] == 0:
+            raise ValueError("geometry sanity rejected invalid point cloud")
+        if not np.all(np.isfinite(centroid)) or centroid[2] <= 0.0:
+            raise ValueError("geometry sanity rejected invalid target centroid")
+        if diagnostics.target_depth_median <= 0.0:
+            raise ValueError("geometry sanity rejected non-positive target depth")
+        return GeometrySanity(
+            status=GeometrySanityStatus.PASS,
+            checks=(
+                "SAME_SNAPSHOT_COORDINATES",
+                "FINITE_POSITIVE_DEPTH",
+                "VALID_CAMERA_INTRINSICS",
+                "FINITE_TARGET_POINT_CLOUD",
+                "POSITIVE_FORWARD_CENTROID",
             ),
         )
 
@@ -271,3 +355,12 @@ class MaskSpatialPerceptionProvider:
         ):
             return DepthMode.METRIC
         return DepthMode.APPROX_METRIC
+
+    @staticmethod
+    def _emit(
+        progress: SpatialProgressCallback | None,
+        stage: SpatialStage,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        if progress is not None:
+            progress(stage, details)

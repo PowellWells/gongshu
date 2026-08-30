@@ -30,6 +30,8 @@ from vision2grasp.spatial_perception import (
     DepthFrame,
     DepthMode,
     DepthSource,
+    GeometrySanity,
+    GeometrySanityStatus,
     IntrinsicsObservation,
     IntrinsicsSource,
     SpatialObservation,
@@ -59,6 +61,7 @@ def make_observation(
     depth = np.full((48, 64), 0.735, dtype=np.float32)
     return SpatialObservation(
         snapshot_id="snapshot-42",
+        geometry_chain_id="geometry-test-42",
         source_frame_id=42,
         target_instance_id="target-42-01",
         source_timestamp_s=12.5,
@@ -87,6 +90,10 @@ def make_observation(
         depth_source=DepthSource.MONOCULAR,
         depth_mode=DepthMode.APPROX_METRIC,
         inference_time_s=0.1,
+        geometry_sanity=GeometrySanity(
+            GeometrySanityStatus.PASS,
+            ("SAME_SNAPSHOT_COORDINATES",),
+        ),
     )
 
 

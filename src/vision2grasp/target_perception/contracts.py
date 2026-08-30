@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 
 import numpy as np
 from numpy.typing import NDArray
@@ -119,10 +120,30 @@ class TargetSceneSnapshot:
             raise ValueError("target mask does not match snapshot frame")
 
     def public_metadata(self) -> dict[str, object]:
+        height, width = self.frame.rgb.shape[:2]
         return {
             "available": True,
             "snapshot_id": self.snapshot_id,
+            "geometry_chain_id": self.geometry_chain_id,
             "source_frame_id": self.frame.frame_id,
             "source_timestamp_s": self.frame.timestamp_s,
             "target_id": self.target.instance_id,
+            "snapshot_size": {"width": width, "height": height},
+            "mask_size": {"width": self.target.mask.shape[1], "height": self.target.mask.shape[0]},
         }
+
+    @property
+    def geometry_chain_id(self) -> str:
+        """Stable identity for RGB, mask, depth, intrinsics, and derived XYZ."""
+
+        height, width = self.frame.rgb.shape[:2]
+        payload = "|".join(
+            (
+                self.snapshot_id,
+                str(self.frame.frame_id),
+                repr(self.frame.timestamp_s),
+                self.target.instance_id,
+                f"{width}x{height}",
+            )
+        ).encode("utf-8")
+        return f"geometry-{hashlib.sha256(payload).hexdigest()[:24]}"

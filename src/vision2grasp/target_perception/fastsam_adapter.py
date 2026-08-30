@@ -12,21 +12,31 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from vision2grasp.contracts import RGBFrame
+from vision2grasp.model_assets import ModelAsset, ModelAssetResolver
 
 from .contracts import TargetInstance
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_WEIGHTS = _PROJECT_ROOT / "artifacts" / "models" / "FastSAM-s.pt"
 _DEFAULT_CONFIG_DIR = _PROJECT_ROOT / "artifacts" / "ultralytics" / "config"
 _FASTSAM_S_SHA256 = "c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844"
+FASTSAM_MODEL_ASSET = ModelAsset(
+    key="fastsam-small",
+    relative_path=Path("fastsam") / "FastSAM-s.pt",
+    url="https://github.com/CASIA-IVA-Lab/FastSAM/releases/download/v0.1/FastSAM-s.pt",
+    size_bytes=23_851_578,
+    sha256=_FASTSAM_S_SHA256,
+    source="https://github.com/CASIA-IVA-Lab/FastSAM",
+    revision="v0.1",
+    license="Apache-2.0",
+)
 
 
 @dataclass(frozen=True, slots=True)
 class FastSAMTargetSegmenterConfig:
     """Deterministic CPU configuration for object-agnostic candidate masks."""
 
-    weights_path: Path = _DEFAULT_WEIGHTS
+    weights_path: Path | None = None
     weights_sha256: str | None = _FASTSAM_S_SHA256
     confidence_threshold: float = 0.40
     mask_threshold: float = 0.50
@@ -40,7 +50,8 @@ class FastSAMTargetSegmenterConfig:
     ultralytics_config_dir: Path = _DEFAULT_CONFIG_DIR
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "weights_path", Path(self.weights_path))
+        if self.weights_path is not None:
+            object.__setattr__(self, "weights_path", Path(self.weights_path))
         object.__setattr__(self, "ultralytics_config_dir", Path(self.ultralytics_config_dir))
         for name, value in (
             ("confidence_threshold", self.confidence_threshold),
@@ -89,7 +100,10 @@ def _as_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _load_fastsam_model(config: FastSAMTargetSegmenterConfig) -> _FastSAMModel:
+def _load_fastsam_model(
+    config: FastSAMTargetSegmenterConfig,
+    weights_path: Path,
+) -> _FastSAMModel:
     config_dir = config.ultralytics_config_dir.resolve()
     config_dir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("YOLO_CONFIG_DIR", str(config_dir))
@@ -97,7 +111,7 @@ def _load_fastsam_model(config: FastSAMTargetSegmenterConfig) -> _FastSAMModel:
     from ultralytics.utils import SETTINGS
 
     SETTINGS.update({"sync": False})
-    return cast(_FastSAMModel, FastSAM(str(config.weights_path)))
+    return cast(_FastSAMModel, FastSAM(str(weights_path)))
 
 
 class FastSAMTargetSegmenter:
@@ -108,13 +122,19 @@ class FastSAMTargetSegmenter:
         config: FastSAMTargetSegmenterConfig | None = None,
         *,
         model: _FastSAMModel | None = None,
+        asset_resolver: ModelAssetResolver | None = None,
     ) -> None:
         self._config = config or FastSAMTargetSegmenterConfig()
         self._model = model
+        self._asset_resolver = asset_resolver or ModelAssetResolver()
 
     @property
     def backend_name(self) -> str:
-        return self._config.weights_path.stem
+        return (
+            self._config.weights_path.stem
+            if self._config.weights_path is not None
+            else Path(FASTSAM_MODEL_ASSET.relative_path).stem
+        )
 
     def predict(self, frame: RGBFrame) -> tuple[TargetInstance, ...]:
         model = self._ensure_model()
@@ -137,6 +157,8 @@ class FastSAMTargetSegmenter:
         if self._model is not None:
             return self._model
         weights_path = self._config.weights_path
+        if weights_path is None:
+            weights_path = self._asset_resolver.resolve(FASTSAM_MODEL_ASSET).path
         if not weights_path.is_file():
             raise FileNotFoundError(
                 f"Target perception weights not found at {weights_path}. "
@@ -149,7 +171,7 @@ class FastSAMTargetSegmenter:
                     "Target perception weights SHA-256 mismatch: "
                     f"expected {self._config.weights_sha256}, got {actual_digest}"
                 )
-        self._model = _load_fastsam_model(self._config)
+        self._model = _load_fastsam_model(self._config, weights_path)
         return self._model
 
     def _convert_result(self, result: Any, frame: RGBFrame) -> tuple[TargetInstance, ...]:

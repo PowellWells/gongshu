@@ -4,10 +4,11 @@ from functools import partial
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
+import tempfile
 import threading
+import time
 import tomllib
 import unittest
-from types import SimpleNamespace
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -15,13 +16,22 @@ import numpy as np
 from run_vision2grasp_app import AppRequestHandler
 from vision2grasp.contracts import RGBFrame
 from vision2grasp.contracts import CameraIntrinsics
+from vision2grasp.model_assets import (
+    ModelAssetResolver,
+    default_user_model_cache,
+    verify_model_file,
+)
 from vision2grasp.spatial_perception import (
+    CalibratedCameraIntrinsicsProvider,
     CalibrationState,
+    DEPTH_MODEL_ASSET,
     DepthFrame,
     DepthCalibrationMode,
     DepthMode,
     DepthSource,
     DepthUnavailableError,
+    GeometrySanityStatus,
+    INTRINSICS_SOURCE_PRIORITY,
     IntrinsicsSource,
     IntrinsicsObservation,
     MaskSpatialPerceptionConfig,
@@ -31,8 +41,11 @@ from vision2grasp.spatial_perception import (
     MODEL_FILES,
     MODEL_LICENSE,
     MODEL_REVISION,
+    MODEL_SHA256,
     NominalFOVCameraIntrinsicsProvider,
+    PriorityCameraIntrinsicsProvider,
     SpatialPerceptionService,
+    SpatialStage,
 )
 from vision2grasp.target_perception import TargetInstance, TargetSceneSnapshot
 
@@ -67,7 +80,7 @@ class _DepthProvider:
         self.mode = mode
         self.frames: list[int] = []
 
-    def infer(self, frame: RGBFrame) -> DepthFrame:
+    def infer(self, frame: RGBFrame, progress=None) -> DepthFrame:
         self.frames.append(frame.frame_id)
         return DepthFrame(
             source_frame_id=frame.frame_id,
@@ -80,7 +93,7 @@ class _DepthProvider:
 
 
 class _UnavailableDepthProvider:
-    def infer(self, frame: RGBFrame) -> DepthFrame:
+    def infer(self, frame: RGBFrame, progress=None) -> DepthFrame:
         raise DepthUnavailableError("depth weights unavailable")
 
 
@@ -108,14 +121,19 @@ class SpatialPerceptionProviderTests(unittest.TestCase):
         self.assertEqual(config["device"], "cpu")
         self.assertEqual(config["backend"], "depth_anything_v2_metric_indoor_small")
         self.assertEqual(config["model_revision"], MODEL_REVISION)
+        self.assertEqual(config["input_size"], 518)
+        self.assertEqual(
+            tuple(source.upper() for source in config["intrinsics_priority"]),
+            tuple(source.value for source in INTRINSICS_SOURCE_PRIORITY),
+        )
         self.assertEqual(config["nominal_diagonal_fov_deg"], 75.0)
         self.assertEqual(MODEL_LICENSE, "Apache-2.0")
         self.assertEqual(
-            MODEL_FILES["model.safetensors"][1],
-            "e990eb82fbf11b05b7813261196a2b841bdcf5a05f64396724a8987fa90504a3",
+            MODEL_FILES[DEPTH_MODEL_ASSET.relative_path.name][1],
+            MODEL_SHA256,
         )
         project = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('"transformers==4.57.6"', project)
+        self.assertNotIn("transformers", project)
 
     def test_nominal_fov_intrinsics_are_uncalibrated_and_orientation_safe(self) -> None:
         snapshot = make_snapshot()
@@ -127,6 +145,63 @@ class SpatialPerceptionProviderTests(unittest.TestCase):
         self.assertEqual(observation.intrinsics.height, 48)
         self.assertAlmostEqual(observation.intrinsics.fx, observation.intrinsics.fy)
         self.assertEqual(observation.nominal_fov_deg, 75.0)
+
+    def test_device_agnostic_intrinsics_priority_uses_calibration_then_nominal_fov(self) -> None:
+        snapshot = make_snapshot()
+        calibrated = CameraIntrinsics(64, 48, 60.0, 61.0, 31.5, 23.5)
+        resolver = PriorityCameraIntrinsicsProvider(
+            (
+                CalibratedCameraIntrinsicsProvider({"phone-frozen": calibrated}),
+                NominalFOVCameraIntrinsicsProvider(),
+            )
+        )
+        observation = resolver.resolve(snapshot.frame)
+        self.assertEqual(observation.source, IntrinsicsSource.CALIBRATED)
+        self.assertEqual(observation.calibration_state, CalibrationState.CALIBRATED)
+
+        fallback = PriorityCameraIntrinsicsProvider(
+            (
+                CalibratedCameraIntrinsicsProvider(),
+                NominalFOVCameraIntrinsicsProvider(),
+            )
+        ).resolve(snapshot.frame)
+        self.assertEqual(fallback.source, IntrinsicsSource.NOMINAL_FOV)
+        self.assertEqual(fallback.calibration_state, CalibrationState.UNCALIBRATED)
+        with self.assertRaisesRegex(ValueError, "priority order"):
+            PriorityCameraIntrinsicsProvider(
+                (
+                    NominalFOVCameraIntrinsicsProvider(),
+                    CalibratedCameraIntrinsicsProvider(),
+                )
+            )
+
+    def test_calibrated_intrinsics_can_be_loaded_without_phone_model_hardcoding(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "camera-intrinsics.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vision2grasp.camera-intrinsics/v1",
+                        "cameras": {
+                            "phone-frozen": {
+                                "width": 64,
+                                "height": 48,
+                                "fx": 60.0,
+                                "fy": 61.0,
+                                "cx": 31.5,
+                                "cy": 23.5,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            observation = CalibratedCameraIntrinsicsProvider.from_user_config(path).resolve_candidate(
+                make_snapshot().frame
+            )
+        self.assertIsNotNone(observation)
+        assert observation is not None
+        self.assertEqual(observation.source, IntrinsicsSource.CALIBRATED)
 
     def test_metric_scaled_monocular_depth_with_nominal_intrinsics_is_only_approx_metric(self) -> None:
         snapshot = make_snapshot()
@@ -155,6 +230,8 @@ class SpatialPerceptionProviderTests(unittest.TestCase):
         self.assertEqual(metadata["calibration_state"], "UNCALIBRATED")
         self.assertEqual(metadata["intrinsics_source"], "NOMINAL_FOV")
         self.assertEqual(metadata["scale_mode"], "DIRECT")
+        self.assertEqual(metadata["geometry_chain_id"], snapshot.geometry_chain_id)
+        self.assertEqual(metadata["geometry_sanity"]["status"], GeometrySanityStatus.PASS.value)
         diagnostics = metadata["geometry_diagnostics"]
         self.assertEqual(diagnostics["snapshot_size"], {"width": 64, "height": 48})
         self.assertEqual(diagnostics["depth_size"], {"width": 64, "height": 48})
@@ -162,6 +239,15 @@ class SpatialPerceptionProviderTests(unittest.TestCase):
         self.assertTrue(diagnostics["geometry_aligned"])
         self.assertFalse(diagnostics["crop_applied"])
         self.assertFalse(diagnostics["rotation_applied"])
+        self.assertFalse(diagnostics["letterbox_applied"])
+        self.assertEqual(diagnostics["display_object_fit"], "contain")
+        self.assertEqual(diagnostics["intrinsics_source"], "NOMINAL_FOV")
+        self.assertEqual(diagnostics["calibration_state"], "UNCALIBRATED")
+        self.assertEqual(diagnostics["depth_mode"], "APPROX_METRIC")
+        self.assertEqual(diagnostics["geometry_chain_id"], snapshot.geometry_chain_id)
+        self.assertAlmostEqual(diagnostics["fx"], result.camera_intrinsics.intrinsics.fx)
+        self.assertAlmostEqual(diagnostics["valid_depth_ratio"], result.target_depth.valid_ratio)
+        np.testing.assert_allclose(diagnostics["target_centroid_xyz"], result.centroid_xyz)
         self.assertEqual(diagnostics["target_bbox_pixels"]["width"], 32.0)
         self.assertAlmostEqual(diagnostics["target_depth_median"], 1.5)
         self.assertEqual(len(diagnostics["point_cloud_extent_xyz"]), 3)
@@ -346,55 +432,87 @@ class SpatialPerceptionServiceTests(unittest.TestCase):
             expected_source_timestamp_s=snapshot.frame.timestamp_s,
         )
         self.assertEqual(ready["status"], "READY")
+        self.assertEqual(ready["stage"], "READY")
+        self.assertGreaterEqual(ready["timing"]["total_s"], 0.0)
         self.assertTrue(ready["media"]["overview_available"])
         self.assertGreater(len(service.overview_jpeg() or b""), 1000)
-        self.assertNotIn("model", json.dumps(ready).lower())
+        self.assertNotIn("depth-anything", json.dumps(ready).lower())
+
+    def test_backend_stage_and_elapsed_time_are_visible_while_request_is_running(self) -> None:
+        snapshot = make_snapshot()
+        entered = threading.Event()
+        release = threading.Event()
+
+        class _StagedDepthProvider(_DepthProvider):
+            def infer(self, frame: RGBFrame, progress=None) -> DepthFrame:
+                if progress is not None:
+                    progress(SpatialStage.MODEL_LOADING, None)
+                entered.set()
+                release.wait(timeout=3)
+                return super().infer(frame, progress)
+
+        service = SpatialPerceptionService(
+            MaskSpatialPerceptionProvider(
+                _StagedDepthProvider(np.full((48, 64), 1.2, dtype=np.float32)),
+                NominalFOVCameraIntrinsicsProvider(),
+            )
+        )
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            result.update(self._analyze(service, snapshot))
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        self.assertTrue(entered.wait(timeout=2))
+        time.sleep(0.02)
+        running = service.snapshot()
+        self.assertEqual(running["status"], "ANALYZING")
+        self.assertEqual(running["stage"], "MODEL_LOADING")
+        self.assertGreater(running["timing"]["elapsed_s"], 0.0)
+        release.set()
+        thread.join(timeout=3)
+        self.assertEqual(result["status"], "READY")
 
 
 class MonocularDepthAdapterTests(unittest.TestCase):
-    def test_infer_uses_processor_official_postprocess_at_snapshot_size(self) -> None:
+    def test_infer_uses_official_resize_and_postprocesses_to_snapshot_size(self) -> None:
         import torch
 
-        class _Processor:
-            def __init__(self) -> None:
-                self.target_sizes = None
-
-            def __call__(self, *, images, return_tensors):
-                self.input_shape = images.shape
-                self.return_tensors = return_tensors
-                return {}
-
-            def post_process_depth_estimation(self, outputs, *, target_sizes):
-                self.outputs = outputs
-                self.target_sizes = target_sizes
-                return [{"predicted_depth": torch.full(target_sizes[0], 0.42)}]
-
         class _Model:
-            def __call__(self, **_inputs):
-                return SimpleNamespace(predicted_depth=torch.ones((1, 4, 4)))
+            def __call__(self, tensor):
+                self.input_shape = tuple(tensor.shape)
+                return torch.full((1, 4, 4), 0.42)
 
-        processor = _Processor()
         provider = MonocularDepthProvider()
-        provider._processor = processor
-        provider._model = _Model()
+        model = _Model()
+        provider._model = model
         provider._torch = torch
         frame = make_snapshot().frame
         result = provider.infer(frame)
-        self.assertEqual(processor.target_sizes, [frame.rgb.shape[:2]])
+        self.assertEqual(model.input_shape, (1, 3, 518, 686))
+        self.assertEqual(result.model_input_size, (686, 518))
         self.assertEqual(result.values.shape, frame.rgb.shape[:2])
-        np.testing.assert_allclose(result.values, 0.42)
+        np.testing.assert_allclose(result.values, 0.42, atol=1e-6)
 
-    def test_missing_verified_files_fail_before_transformers_load_when_download_disabled(self) -> None:
+    def test_missing_verified_pth_fails_before_model_load_when_download_disabled(self) -> None:
         directory = PROJECT_ROOT / "tmp" / "missing-depth-model"
         provider = MonocularDepthProvider(
-            MonocularDepthConfig(model_directory=directory, allow_download=False)
+            MonocularDepthConfig(allow_download=False),
+            asset_resolver=ModelAssetResolver(
+                release_model_roots=(),
+                user_cache=directory,
+            ),
         )
         with self.assertRaisesRegex(DepthUnavailableError, "unavailable"):
             provider.infer(make_snapshot().frame)
 
 
 @unittest.skipUnless(
-    (PROJECT_ROOT / "artifacts" / "models" / "depth-anything-v2-metric-indoor-small-hf" / "model.safetensors").is_file(),
+    verify_model_file(
+        default_user_model_cache() / DEPTH_MODEL_ASSET.relative_path,
+        DEPTH_MODEL_ASSET,
+    ),
     "verified metric monocular depth checkpoint is not installed",
 )
 class MonocularDepthIntegrationTests(unittest.TestCase):

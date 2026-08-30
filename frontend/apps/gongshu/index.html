@@ -124,14 +124,26 @@
               <span>深度图 <b>Depth Map</b></span>
               <span>目标点云 <b>Target Point Cloud</b></span>
             </div>
+            <div id="spatialTimingSummary" class="spatial-timing-summary" hidden>
+              <strong id="spatialReadyTiming">READY</strong>
+              <dl>
+                <div><dt>Model Load</dt><dd id="spatialModelLoadTiming">—</dd></div>
+                <div><dt>Depth Inference</dt><dd id="spatialDepthTiming">—</dd></div>
+                <div><dt>Point Cloud</dt><dd id="spatialPointCloudTiming">—</dd></div>
+                <div><dt>Total</dt><dd id="spatialTotalTiming">—</dd></div>
+              </dl>
+            </div>
             <div id="spatialEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="m8 30 16-18 16 18-16 8z"/><path d="M8 30v6l16 8 16-8v-6M24 12v26"/></svg>
               <strong>等待空间分析 WAITING</strong>
               <span>等待已锁定目标与场景快照 Scene Snapshot</span>
             </div>
             <div id="spatialPendingOverlay" class="pending-overlay" hidden>
+              <span id="spatialLoadingIndicator" class="stage-loading-indicator" aria-hidden="true"></span>
               <strong id="spatialProgressTitle">空间分析 Spatial Analysis</strong>
               <span id="spatialProgressDetail">等待计算 WAITING</span>
+              <span id="spatialElapsed" class="spatial-elapsed">Processing</span>
+              <span id="spatialModelState" class="spatial-model-state">Model Pending</span>
               <div id="spatialErrorActions" class="pending-actions" hidden>
                 <button id="retrySpatialButton" type="button">重新分析 Analyze Again</button>
                 <button id="newSceneButton" type="button">重新采集 New Scene</button>

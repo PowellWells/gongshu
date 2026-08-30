@@ -95,9 +95,10 @@ metric_depth_available = false
 [spatial_perception]
 backend = "depth_anything_v2_metric_indoor_small"
 device = "cpu"
-model_directory = "artifacts/models/depth-anything-v2-metric-indoor-small-hf"
-model_revision = "8078d68a9c75a972131914f6afd0c1723be0da7f"
-intrinsics_source = "nominal_fov"
+input_size = 518
+model_revision = "3bc65d4e14a6786a61acec16453c50e12bf5f338"
+upstream_code_revision = "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf"
+intrinsics_priority = ["calibrated", "sensor_metadata", "model_predicted", "nominal_fov"]
 nominal_diagonal_fov_deg = 75.0
 minimum_valid_depth_ratio = 0.50
 minimum_points = 30

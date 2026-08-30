@@ -26,7 +26,7 @@
     TARGET_SELECTED: "已接收真实目标选择",
     SCENE_CAPTURED: "已获取真实 RGB 场景快照",
     SPATIAL_ANALYSIS: "正在从冻结场景快照计算空间结构",
-    SPATIAL_READY: "空间感知完成，正在准备抓取规划",
+    SPATIAL_READY: "空间感知完成，三维空间链条已就绪",
     GRASP_PLANNING: "真实空间结果已进入抓取规划",
     SCENE_SYNC: "正在映射至规范化仿真场景 · SIMULATION ONLY",
     SIMULATION: "真实连续 MuJoCo Physics 仿真验证进行中",
@@ -89,6 +89,15 @@
     spatialPendingOverlay: byId("spatialPendingOverlay"),
     spatialProgressTitle: byId("spatialProgressTitle"),
     spatialProgressDetail: byId("spatialProgressDetail"),
+    spatialLoadingIndicator: byId("spatialLoadingIndicator"),
+    spatialElapsed: byId("spatialElapsed"),
+    spatialModelState: byId("spatialModelState"),
+    spatialTimingSummary: byId("spatialTimingSummary"),
+    spatialReadyTiming: byId("spatialReadyTiming"),
+    spatialModelLoadTiming: byId("spatialModelLoadTiming"),
+    spatialDepthTiming: byId("spatialDepthTiming"),
+    spatialPointCloudTiming: byId("spatialPointCloudTiming"),
+    spatialTotalTiming: byId("spatialTotalTiming"),
     spatialErrorActions: byId("spatialErrorActions"),
     retrySpatialButton: byId("retrySpatialButton"),
     newSceneButton: byId("newSceneButton"),
@@ -185,6 +194,7 @@
   let graspPlanningState = null;
   let validationState = null;
   let spatialAnalysisRunning = false;
+  let spatialAnalysisPollTimer = 0;
   let graspPlanningRunning = false;
   let validationRunning = false;
   let validationTimer = 0;
@@ -400,7 +410,15 @@
     const state = event?.state || pipeline.state;
     els.pipelineBadge.textContent = state;
     els.pipelineMessage.textContent = PIPELINE_MESSAGES[state];
-    els.systemStatus.textContent = state === "LIVE" ? "READY" : state;
+    if (state === "SPATIAL_READY" && spatialPerceptionState?.status === "READY") {
+      const total = timingSeconds(spatialPerceptionState.timing?.total_s);
+      els.systemStatus.textContent = total === "—" ? "READY" : `READY · ${total}`;
+    } else if (state === "SPATIAL_ANALYSIS" && spatialPerceptionState?.status === "ANALYZING") {
+      const elapsed = timingSeconds(spatialPerceptionState.timing?.elapsed_s);
+      els.systemStatus.textContent = elapsed === "—" ? "PROCESSING" : `PROCESSING · ${elapsed}`;
+    } else {
+      els.systemStatus.textContent = state === "LIVE" ? "READY" : state;
+    }
     [els.spatialState, els.graspState, els.simulationState].forEach((element) => element.classList.remove("is-active"));
     if (["SPATIAL_ANALYSIS", "SPATIAL_READY"].includes(state)) els.spatialState.classList.add("is-active");
     if (["GRASP_PLANNING", "SCENE_SYNC"].includes(state)) els.graspState.classList.add("is-active");
@@ -437,6 +455,10 @@
     els.spatialPendingOverlay.classList.remove("is-error");
     els.spatialProgressTitle.textContent = "空间分析 Spatial Analysis";
     els.spatialProgressDetail.textContent = "等待计算 WAITING";
+    els.spatialLoadingIndicator.hidden = false;
+    els.spatialElapsed.textContent = "Processing";
+    els.spatialModelState.textContent = "Model Pending";
+    els.spatialTimingSummary.hidden = true;
     els.spatialErrorActions.hidden = true;
     els.spatialState.textContent = "WAITING";
     els.graspState.textContent = "WAITING";
@@ -482,6 +504,8 @@
     graspPlanningState = null;
     validationState = null;
     spatialAnalysisRunning = false;
+    window.clearInterval(spatialAnalysisPollTimer);
+    spatialAnalysisPollTimer = 0;
     graspPlanningRunning = false;
     validationRunning = false;
     simulationStreamStarted = false;
@@ -832,6 +856,25 @@
     return "NOT AVAILABLE";
   }
 
+  function timingSeconds(value) {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) && seconds >= 0 ? `${seconds.toFixed(1)} s` : "—";
+  }
+
+  function renderSpatialTimingSummary(state) {
+    const timing = state?.timing || {};
+    const total = Number(timing.total_s);
+    const totalLabel = timingSeconds(total);
+    els.spatialReadyTiming.textContent = Number.isFinite(total) ? `READY · ${totalLabel}` : "READY";
+    els.spatialModelLoadTiming.textContent = timing.model_was_ready
+      ? "Model Ready"
+      : timingSeconds(timing.model_load_s);
+    els.spatialDepthTiming.textContent = timingSeconds(timing.depth_inference_s);
+    els.spatialPointCloudTiming.textContent = timingSeconds(timing.point_cloud_s);
+    els.spatialTotalTiming.textContent = totalLabel;
+    els.spatialTimingSummary.hidden = false;
+  }
+
   function renderSpatialPerception(state) {
     if (!state || state.schema_version !== SPATIAL_PERCEPTION_SCHEMA_VERSION) {
       throw new Error("Spatial Perception API 版本不匹配");
@@ -849,11 +892,13 @@
       els.spatialMediaLabels.hidden = false;
       els.spatialEmpty.hidden = true;
       els.spatialPendingOverlay.hidden = true;
+      renderSpatialTimingSummary(state);
       els.spatialPendingOverlay.classList.remove("is-error");
       els.spatialErrorActions.hidden = true;
-      els.spatialState.textContent = "READY";
+      const totalLabel = timingSeconds(state.timing?.total_s);
+      els.spatialState.textContent = totalLabel === "—" ? "READY" : `READY · ${totalLabel}`;
       els.spatialState.classList.add("has-data");
-      els.spatialInspectorStatus.textContent = "READY";
+      els.spatialInspectorStatus.textContent = els.spatialState.textContent;
       els.spatialDepthValue.textContent = `${Number(observation.target_depth).toFixed(3)} ${unit}`;
       els.spatialValue.textContent = `X ${Number(xyz[0]).toFixed(3)} · Y ${Number(xyz[1]).toFixed(3)} · Z ${Number(xyz[2]).toFixed(3)} ${unit}`;
       els.spatialSourceValue.textContent = observation.depth_source === "RGBD" ? "RGB-D 相机 RGB-D" : "单目 Monocular";
@@ -866,6 +911,7 @@
       const qualityText = Number.isFinite(validRatio) ? `${(validRatio * 100).toFixed(1)}% 有效深度` : "有效深度已验证";
       els.spatialDetail.textContent = `相机坐标系 Camera Frame · ${observation.point_count} 个真实目标点 · ${qualityText}`;
       els.spatialFooter.textContent = `FRAME ${observation.source_frame_id} · ${observation.target_instance_id}`;
+      els.systemStatus.textContent = els.spatialState.textContent;
       return;
     }
 
@@ -883,28 +929,56 @@
       els.spatialFooter.textContent = state.error_code || "SPATIAL ERROR";
       els.spatialPendingOverlay.hidden = false;
       els.spatialPendingOverlay.classList.add("is-error");
-      els.spatialProgressTitle.textContent = "空间分析失败 SPATIAL ERROR";
-      els.spatialProgressDetail.textContent = errorLabel;
+      els.spatialLoadingIndicator.hidden = true;
+      const loadFailed = state.error_code === "DEPTH_UNAVAILABLE" && state.failed_stage === "MODEL_LOADING";
+      els.spatialProgressTitle.textContent = loadFailed
+        ? "DEPTH UNAVAILABLE"
+        : "空间分析失败 SPATIAL ERROR";
+      els.spatialProgressDetail.textContent = loadFailed
+        ? `Model Loading Failed · ${state.message || errorLabel}`
+        : `${errorLabel} · ${state.message || "No spatial output generated"}`;
+      els.spatialElapsed.textContent = `Elapsed · ${timingSeconds(state.timing?.elapsed_s)}`;
+      els.spatialModelState.textContent = loadFailed ? "Model Loading Failed" : "No READY output";
+      els.spatialTimingSummary.hidden = true;
       els.spatialErrorActions.hidden = false;
+      els.systemStatus.textContent = state.error_code || "SPATIAL ERROR";
+      return;
     }
+
+    if (state.status === "ANALYZING") showSpatialAnalyzing(state);
   }
 
-  function showSpatialAnalyzing() {
+  function showSpatialAnalyzing(state = null) {
     els.spatialMediaLabels.hidden = true;
+    els.spatialTimingSummary.hidden = true;
     els.spatialPendingOverlay.hidden = false;
     els.spatialPendingOverlay.classList.remove("is-error");
+    els.spatialLoadingIndicator.hidden = false;
     els.spatialProgressTitle.textContent = "空间分析 Spatial Analysis";
-    els.spatialProgressDetail.textContent = "深度估计与三维反投影正在计算 PROCESSING";
+    els.spatialProgressDetail.textContent = state?.stage_message || "正在准备场景 Scene Preparing...";
+    const elapsed = timingSeconds(state?.timing?.elapsed_s);
+    els.spatialElapsed.textContent = elapsed === "—" ? "Processing" : `Processing · ${elapsed}`;
+    els.spatialModelState.textContent = state?.model_state === "READY"
+      ? "Model Ready"
+      : state?.stage === "MODEL_LOADING" ? "Model Loading" : "Model Pending";
     els.spatialErrorActions.hidden = true;
-    els.spatialState.textContent = "ANALYZING";
+    els.spatialState.textContent = elapsed === "—" ? "ANALYZING" : `PROCESSING · ${elapsed}`;
     els.spatialState.classList.remove("has-data");
-    els.spatialInspectorStatus.textContent = "ANALYZING";
+    els.spatialInspectorStatus.textContent = els.spatialState.textContent;
     els.spatialDepthValue.textContent = "正在计算 PROCESSING";
     els.spatialValue.textContent = "NOT AVAILABLE";
     els.spatialSourceValue.textContent = "单目 Monocular";
     els.spatialModeValue.textContent = "正在确认 CHECKING";
     els.spatialProjectionValue.textContent = "相机投影模型 Camera Projection Model";
     els.spatialDetail.textContent = "仅处理已冻结且与目标锁定关联的 Scene Snapshot。";
+    els.systemStatus.textContent = els.spatialState.textContent;
+  }
+
+  async function pollSpatialAnalysisState() {
+    try {
+      const state = await apiGet(`/api/spatial-perception/state?t=${Date.now()}`);
+      if (spatialAnalysisRunning && state.status === "ANALYZING") renderSpatialPerception(state);
+    } catch { /* the in-flight POST remains the authoritative final result */ }
   }
 
   async function runSpatialAnalysis() {
@@ -912,6 +986,8 @@
     if (spatialAnalysisRunning || !snapshot?.available || pipeline.state !== "SPATIAL_ANALYSIS") return;
     spatialAnalysisRunning = true;
     showSpatialAnalyzing();
+    window.clearInterval(spatialAnalysisPollTimer);
+    spatialAnalysisPollTimer = window.setInterval(pollSpatialAnalysisState, 180);
     updateActionButtons();
     try {
       const state = await apiPost("/api/spatial-perception/analyze", {
@@ -930,8 +1006,7 @@
           targetId: snapshot.target_id,
           sourceFrameId: snapshot.source_frame_id,
         });
-        showNotice("空间感知完成：真实 Depth、Target Point Cloud 与 Camera Frame XYZ 已生成。", "success");
-        await runGraspPlanning();
+        showNotice("空间感知完成：同一 Scene Snapshot 的 Depth、Target Point Cloud 与 Camera Frame XYZ 已生成；流程停在 SPATIAL_READY。", "success");
       } else {
         showNotice(SPATIAL_ERROR_MESSAGES[state.error_code] || "空间分析失败 SPATIAL ERROR", "error");
       }
@@ -944,6 +1019,8 @@
       });
       showNotice(`空间分析未完成：${error.message}`, "error");
     } finally {
+      window.clearInterval(spatialAnalysisPollTimer);
+      spatialAnalysisPollTimer = 0;
       spatialAnalysisRunning = false;
       updateActionButtons();
     }

@@ -524,6 +524,70 @@
   font-size: .88em;
 }
 
+.stage-loading-indicator {
+  width: 18px;
+  height: 18px;
+  margin: 0 auto 4px;
+  border: 2px solid rgba(184, 225, 241, .26);
+  border-top-color: #73e5ed;
+  border-radius: 50%;
+  animation: spatial-stage-spin 850ms linear infinite;
+}
+
+.spatial-elapsed {
+  color: #fff !important;
+  font: 700 9px/1.35 "Cascadia Mono", Consolas, monospace;
+}
+
+.spatial-model-state {
+  color: #8ddde4 !important;
+  font-weight: 700;
+}
+
+.spatial-timing-summary {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  bottom: 12px;
+  min-width: 230px;
+  padding: 8px 10px;
+  border: 1px solid rgba(123, 198, 232, .28);
+  border-radius: 6px;
+  background: rgba(4, 20, 32, .82);
+  color: #e9f7ff;
+  backdrop-filter: blur(6px);
+}
+
+.spatial-timing-summary > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #75eef1;
+  font: 800 9px/1.2 "Cascadia Mono", Consolas, monospace;
+}
+
+.spatial-timing-summary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.spatial-timing-summary dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 7px;
+}
+
+.spatial-timing-summary dt { color: #91bcd7; }
+.spatial-timing-summary dd { margin: 0; font-family: "Cascadia Mono", Consolas, monospace; }
+
+@keyframes spatial-stage-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-loading-indicator { animation-duration: 1800ms; }
+}
+
 .workspace-empty {
   display: grid;
   justify-items: center;

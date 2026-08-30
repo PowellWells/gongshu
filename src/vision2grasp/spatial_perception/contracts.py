@@ -25,8 +25,10 @@ class DepthSource(str, Enum):
 
 
 class IntrinsicsSource(str, Enum):
-    NOMINAL_FOV = "NOMINAL_FOV"
     CALIBRATED = "CALIBRATED"
+    SENSOR_METADATA = "SENSOR_METADATA"
+    MODEL_PREDICTED = "MODEL_PREDICTED"
+    NOMINAL_FOV = "NOMINAL_FOV"
     RGBD_NATIVE = "RGBD_NATIVE"
 
 
@@ -40,6 +42,21 @@ class DepthCalibrationMode(str, Enum):
     REFERENCE = "REFERENCE"
     MARKER = "MARKER"
     PLANE_ASSISTANCE = "PLANE_ASSISTANCE"
+
+
+class SpatialStage(str, Enum):
+    SCENE_PREPARING = "SCENE_PREPARING"
+    MODEL_LOADING = "MODEL_LOADING"
+    DEPTH_ESTIMATING = "DEPTH_ESTIMATING"
+    POINT_CLOUD_BUILDING = "POINT_CLOUD_BUILDING"
+    SPATIAL_COMPUTING = "SPATIAL_COMPUTING"
+    READY = "READY"
+    ERROR = "ERROR"
+
+
+class GeometrySanityStatus(str, Enum):
+    PASS = "PASS"
+    REJECTED = "REJECTED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,14 +86,28 @@ class DepthFrame:
     source: DepthSource
     native_mode: DepthMode
     inference_time_s: float = 0.0
+    model_load_time_s: float = 0.0
+    model_was_ready: bool = False
+    model_input_size: tuple[int, int] | None = None
+    model_location: str | None = None
+    resize_policy: str = "MODEL_RESIZE_THEN_DEPTH_TO_SNAPSHOT"
 
     def __post_init__(self) -> None:
         if self.source_frame_id < 0:
             raise ValueError("source_frame_id must be non-negative")
         if not np.isfinite(self.source_timestamp_s):
             raise ValueError("source_timestamp_s must be finite")
-        if not np.isfinite(self.inference_time_s) or self.inference_time_s < 0.0:
-            raise ValueError("inference_time_s must be finite and non-negative")
+        for name, value in (
+            ("inference_time_s", self.inference_time_s),
+            ("model_load_time_s", self.model_load_time_s),
+        ):
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if self.model_input_size is not None:
+            if len(self.model_input_size) != 2 or any(
+                int(value) <= 0 for value in self.model_input_size
+            ):
+                raise ValueError("model_input_size must contain positive width and height")
         depth = np.asarray(self.values, dtype=np.float32)
         if depth.ndim != 2 or depth.size == 0:
             raise ValueError("depth values must be a non-empty 2D array")
@@ -107,6 +138,20 @@ class TargetDepth:
 
 
 @dataclass(frozen=True, slots=True)
+class GeometrySanity:
+    status: GeometrySanityStatus
+    checks: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.checks or any(not check.strip() for check in self.checks):
+            raise ValueError("geometry sanity checks must not be empty")
+        object.__setattr__(self, "checks", tuple(dict.fromkeys(self.checks)))
+
+    def public_metadata(self) -> dict[str, object]:
+        return {"status": self.status.value, "checks": list(self.checks)}
+
+
+@dataclass(frozen=True, slots=True)
 class SpatialGeometryDiagnostics:
     """Auditable geometry facts for one frozen SpatialResult.
 
@@ -117,6 +162,15 @@ class SpatialGeometryDiagnostics:
     snapshot_size: tuple[int, int]
     depth_size: tuple[int, int]
     mask_size: tuple[int, int]
+    model_input_size: tuple[int, int] | None
+    geometry_chain_id: str
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    intrinsics_source: IntrinsicsSource
+    calibration_state: CalibrationState
+    depth_mode: DepthMode
     nominal_hfov_deg: float
     nominal_vfov_deg: float
     target_bbox_pixels: tuple[float, float, float, float]
@@ -125,11 +179,16 @@ class SpatialGeometryDiagnostics:
     target_mask_component_count: int
     target_mask_largest_component_ratio: float
     target_depth_median: float
+    valid_depth_ratio: float
     point_cloud_extent_xyz: NDArray[np.float64]
+    target_centroid_xyz: NDArray[np.float64]
     extent_quantiles: tuple[float, float]
     geometry_aligned: bool
     crop_applied: bool = False
     rotation_applied: bool = False
+    letterbox_applied: bool = False
+    display_object_fit: str = "contain"
+    depth_resize_policy: str = "MODEL_RESIZE_THEN_DEPTH_TO_SNAPSHOT"
 
     def __post_init__(self) -> None:
         for name, size in (
@@ -139,6 +198,13 @@ class SpatialGeometryDiagnostics:
         ):
             if len(size) != 2 or any(int(value) <= 0 for value in size):
                 raise ValueError(f"{name} must contain positive width and height")
+        if self.model_input_size is not None and (
+            len(self.model_input_size) != 2
+            or any(int(value) <= 0 for value in self.model_input_size)
+        ):
+            raise ValueError("model_input_size must contain positive width and height")
+        if not self.geometry_chain_id.strip():
+            raise ValueError("geometry_chain_id must not be empty")
         if not all(np.isfinite(value) for value in self.target_bbox_pixels):
             raise ValueError("target_bbox_pixels must contain finite values")
         if self.target_mask_pixel_count <= 0 or self.target_mask_component_count <= 0:
@@ -149,6 +215,10 @@ class SpatialGeometryDiagnostics:
             self.target_mask_bbox_fill_ratio,
             self.target_mask_largest_component_ratio,
             self.target_depth_median,
+            self.fx,
+            self.fy,
+            self.cx,
+            self.cy,
         ):
             if not np.isfinite(value):
                 raise ValueError("spatial geometry diagnostics must be finite")
@@ -160,6 +230,10 @@ class SpatialGeometryDiagnostics:
             raise ValueError("target_mask_bbox_fill_ratio must be in (0, 1]")
         if not 0.0 < self.target_mask_largest_component_ratio <= 1.0:
             raise ValueError("target_mask_largest_component_ratio must be in (0, 1]")
+        if not 0.0 <= self.valid_depth_ratio <= 1.0:
+            raise ValueError("valid_depth_ratio must be in [0, 1]")
+        if self.fx <= 0.0 or self.fy <= 0.0:
+            raise ValueError("diagnostic focal lengths must be positive")
         lower, upper = self.extent_quantiles
         if not 0.0 <= lower < upper <= 1.0:
             raise ValueError("extent_quantiles must be ordered inside [0, 1]")
@@ -169,6 +243,12 @@ class SpatialGeometryDiagnostics:
         immutable_extent = np.ascontiguousarray(extent.copy())
         immutable_extent.setflags(write=False)
         object.__setattr__(self, "point_cloud_extent_xyz", immutable_extent)
+        centroid = np.asarray(self.target_centroid_xyz, dtype=np.float64)
+        if centroid.shape != (3,) or not np.all(np.isfinite(centroid)):
+            raise ValueError("target_centroid_xyz must be a finite 3-vector")
+        immutable_centroid = np.ascontiguousarray(centroid.copy())
+        immutable_centroid.setflags(write=False)
+        object.__setattr__(self, "target_centroid_xyz", immutable_centroid)
 
     def public_metadata(self) -> dict[str, object]:
         x1, y1, x2, y2 = self.target_bbox_pixels
@@ -176,6 +256,19 @@ class SpatialGeometryDiagnostics:
             "snapshot_size": {"width": self.snapshot_size[0], "height": self.snapshot_size[1]},
             "depth_size": {"width": self.depth_size[0], "height": self.depth_size[1]},
             "mask_size": {"width": self.mask_size[0], "height": self.mask_size[1]},
+            "model_input_size": (
+                None
+                if self.model_input_size is None
+                else {"width": self.model_input_size[0], "height": self.model_input_size[1]}
+            ),
+            "geometry_chain_id": self.geometry_chain_id,
+            "fx": self.fx,
+            "fy": self.fy,
+            "cx": self.cx,
+            "cy": self.cy,
+            "intrinsics_source": self.intrinsics_source.value,
+            "calibration_state": self.calibration_state.value,
+            "depth_mode": self.depth_mode.value,
             "nominal_hfov_deg": self.nominal_hfov_deg,
             "nominal_vfov_deg": self.nominal_vfov_deg,
             "target_bbox_pixels": {
@@ -188,12 +281,19 @@ class SpatialGeometryDiagnostics:
             "target_mask_component_count": self.target_mask_component_count,
             "target_mask_largest_component_ratio": self.target_mask_largest_component_ratio,
             "target_depth_median": self.target_depth_median,
+            "valid_depth_ratio": self.valid_depth_ratio,
             "point_cloud_extent_xyz": self.point_cloud_extent_xyz.tolist(),
+            "target_centroid_xyz": self.target_centroid_xyz.tolist(),
             "point_cloud_extent_quantiles": list(self.extent_quantiles),
             "geometry_aligned": self.geometry_aligned,
-            "resize_policy": "DEPTH_POSTPROCESSED_TO_SNAPSHOT",
+            "resize_policy": self.depth_resize_policy,
             "crop_applied": self.crop_applied,
             "rotation_applied": self.rotation_applied,
+            "letterbox_applied": self.letterbox_applied,
+            "display_object_fit": self.display_object_fit,
+            "mask_transform": "IDENTITY_IN_SNAPSHOT_PIXELS",
+            "intrinsics_coordinate_system": "SNAPSHOT_PIXELS",
+            "back_projection": "PERSPECTIVE_CAMERA_FRAME",
         }
 
 
@@ -206,6 +306,7 @@ class SpatialObservation:
     """
 
     snapshot_id: str
+    geometry_chain_id: str
     source_frame_id: int
     target_instance_id: str
     source_timestamp_s: float
@@ -217,10 +318,15 @@ class SpatialObservation:
     depth_source: DepthSource
     depth_mode: DepthMode
     inference_time_s: float
+    geometry_sanity: GeometrySanity
     geometry_diagnostics: SpatialGeometryDiagnostics | None = None
 
     def __post_init__(self) -> None:
-        if not self.snapshot_id.strip() or not self.target_instance_id.strip():
+        if (
+            not self.snapshot_id.strip()
+            or not self.geometry_chain_id.strip()
+            or not self.target_instance_id.strip()
+        ):
             raise ValueError("snapshot and target identifiers must not be empty")
         if self.source_frame_id != self.depth_frame.source_frame_id:
             raise ValueError("depth frame does not match SpatialObservation frame")
@@ -251,6 +357,7 @@ class SpatialObservation:
         intrinsics = self.camera_intrinsics.intrinsics
         return {
             "snapshot_id": self.snapshot_id,
+            "geometry_chain_id": self.geometry_chain_id,
             "source_frame_id": self.source_frame_id,
             "target_instance_id": self.target_instance_id,
             "source_timestamp_s": self.source_timestamp_s,
@@ -285,6 +392,13 @@ class SpatialObservation:
                 "inlier_pixel_count": self.target_depth.inlier_pixel_count,
             },
             "inference_time_s": self.inference_time_s,
+            "model_timing": {
+                "model_load_s": self.depth_frame.model_load_time_s,
+                "depth_inference_s": self.depth_frame.inference_time_s,
+                "model_was_ready": self.depth_frame.model_was_ready,
+                "model_location": self.depth_frame.model_location,
+            },
+            "geometry_sanity": self.geometry_sanity.public_metadata(),
             "geometry_diagnostics": (
                 None
                 if self.geometry_diagnostics is None

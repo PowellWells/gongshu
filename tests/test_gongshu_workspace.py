@@ -63,6 +63,13 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "spatialSourceValue",
             "spatialModeValue",
             "spatialProjectionValue",
+            "spatialElapsed",
+            "spatialModelState",
+            "spatialTimingSummary",
+            "spatialModelLoadTiming",
+            "spatialDepthTiming",
+            "spatialPointCloudTiming",
+            "spatialTotalTiming",
             "retrySpatialButton",
             "newSceneButton",
             "graspInspectorStatus",
@@ -151,6 +158,11 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertNotIn("targetOverlay.hidden = false", self.controller)
         self.assertNotIn("captureLiveFrame", self.controller)
         self.assertNotIn("canvas.toBlob", self.controller)
+        self.assertIn("state?.stage_message", self.controller)
+        self.assertIn("state?.timing?.elapsed_s", self.controller)
+        self.assertIn("window.setInterval(pollSpatialAnalysisState, 180)", self.controller)
+        self.assertNotIn("await runGraspPlanning();", self.controller)
+        self.assertNotIn("0–100", self.html)
         self.assertIn("请选择目标", self.html)
 
     def test_pipeline_declares_all_states_and_stage_driven_views(self) -> None:
@@ -244,6 +256,7 @@ const target = {
   scene_snapshot: {
     available: true,
     snapshot_id: "snapshot-42",
+    geometry_chain_id: "geometry-42",
     target_id: "target-42-01",
     source_frame_id: 42,
     source_timestamp_s: 12.5,
@@ -253,6 +266,7 @@ const ready = {
   status: "READY",
   observation: {
     snapshot_id: "snapshot-42",
+    geometry_chain_id: "geometry-42",
     target_instance_id: "target-42-01",
     source_frame_id: 42,
     source_timestamp_s: 12.5,
