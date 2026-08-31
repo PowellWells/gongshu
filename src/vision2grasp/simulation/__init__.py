@@ -10,20 +10,28 @@ from .validation_contracts import (
     ValidationSceneTransform,
 )
 from .validation_service import MuJoCoValidationService, VALIDATION_SCHEMA_VERSION
+from .recording import (
+    PlaybackSession,
+    SimulationRecording,
+    ValidationRun,
+)
 
 __all__ = [
     "CameraDirector",
     "CameraMode",
     "MuJoCoValidationService",
+    "PlaybackSession",
     "NativePandaValidation",
     "NativePandaValidationConfig",
     "RGBDSimulator",
     "RobosuiteRGBDSimulator",
     "RobosuiteSimulationConfig",
     "SimulationState",
+    "SimulationRecording",
     "VALIDATION_SCHEMA_VERSION",
     "ValidationRequest",
     "ValidationResult",
+    "ValidationRun",
     "ValidationScenario",
     "ValidationSceneTransform",
 ]

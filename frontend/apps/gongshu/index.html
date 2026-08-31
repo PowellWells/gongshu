@@ -223,9 +223,10 @@
               <strong id="simulationResult" class="simulation-result">SIMULATION ONLY</strong>
             </div>
             <div class="simulation-camera-controls" aria-label="MuJoCo 虚拟相机控制">
-              <button type="button" data-sim-camera="CINEMATIC" class="is-active">电影镜头 Cinematic</button>
-              <button type="button" data-sim-camera="AUTO_FOLLOW">自动跟随 Auto Follow</button>
-              <button type="button" data-sim-camera="MANUAL">手动 Manual</button>
+              <button type="button" data-sim-camera="AUTO_CINEMATIC" class="is-active">自动电影 Auto Cinematic</button>
+              <button type="button" data-sim-camera="TECHNICAL">技术视图 Technical</button>
+              <button type="button" data-sim-camera="TARGET_FOLLOW">目标跟随 Target Follow</button>
+              <button type="button" data-sim-camera="FREE_CAMERA">自由相机 Free</button>
             </div>
             <label class="simulation-scenario-control">
               <span>物理场景 Physics Scenario</span>
@@ -237,6 +238,32 @@
             <button id="startValidationButton" class="start-validation-button" type="button" disabled>
               开始仿真验证 <b>Start Validation</b>
             </button>
+            <section id="simulationPlaybackControls" class="simulation-playback-controls" hidden>
+              <div class="recording-status-row">
+                <strong id="recordingAvailability">Replay Available</strong>
+                <span id="recordingSaveState">Unsaved</span>
+                <button id="saveRecordingButton" type="button">保存记录 Save Recording</button>
+                <button id="exportVideoButton" type="button">导出视频 Export Video</button>
+              </div>
+              <div class="playback-transport">
+                <button type="button" data-playback-action="STEP_BACKWARD" aria-label="后退一帧">◀│</button>
+                <button type="button" data-playback-action="REPLAY">↺ Replay</button>
+                <button id="playPauseButton" type="button" data-playback-action="PLAY">▶ Play</button>
+                <button type="button" data-playback-action="STEP_FORWARD" aria-label="前进一帧">│▶</button>
+                <span id="playbackCurrentTime">0.000</span>
+                <input id="playbackTimeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Recording 时间轴" />
+                <span id="playbackDuration">0.000 s</span>
+              </div>
+              <div class="playback-options">
+                <div aria-label="播放速度">
+                  <button type="button" data-playback-speed="0.25">0.25×</button>
+                  <button type="button" data-playback-speed="0.5">0.5×</button>
+                  <button type="button" data-playback-speed="1" class="is-active">1×</button>
+                  <button type="button" data-playback-speed="2">2×</button>
+                </div>
+                <label><input id="technicalOverlayToggle" type="checkbox" /> Technical Overlay</label>
+              </div>
+            </section>
           </div>
           <footer class="workspace-view-footer"><span>输入接口 ValidationRequest</span><strong id="simulationFooter">NOT AVAILABLE</strong></footer>
         </article>
@@ -351,6 +378,14 @@
           <input id="snapshotInput" type="file" webkitdirectory directory multiple hidden />
         </div>
         <div class="legacy-status"><span>最近运行 Latest Run</span><strong id="legacyRunStatus">尚未载入 NOT LOADED</strong></div>
+        <section class="recording-history-section">
+          <header><strong>会话历史 Session History</strong><span>未保存项目在退出应用后丢弃</span></header>
+          <div id="sessionHistoryList" class="recording-history-list"><p>当前会话暂无 Recording。</p></div>
+        </section>
+        <section class="recording-history-section">
+          <header><strong>已保存运行 Saved Runs</strong><span>仅包含用户明确保存的记录</span></header>
+          <div id="savedRunsList" class="recording-history-list"><p>暂无已保存 Recording。</p></div>
+        </section>
       </div>
     </dialog>
 

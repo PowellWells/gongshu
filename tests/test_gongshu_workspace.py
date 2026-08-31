@@ -155,6 +155,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/mujoco-validation/start",
             "/api/mujoco-validation/live.mjpeg",
             "/api/mujoco-validation/state",
+            "/api/mujoco-validation/playback",
+            "/api/mujoco-validation/recording/save",
+            "/api/mujoco-validation/export-video",
+            "/api/mujoco-validation/history",
         ):
             self.assertIn(endpoint, self.controller)
         self.assertIn('pipeline.transition("TARGET_SELECTED"', self.controller)
@@ -180,6 +184,21 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertNotIn("setInterval(pollSpatialAnalysisState", self.controller)
         self.assertNotIn("0–100", self.html)
         self.assertIn("请选择目标", self.html)
+
+    def test_recording_playback_is_explicit_session_first_ui(self) -> None:
+        for element_id in (
+            "simulationPlaybackControls", "playbackTimeline", "playPauseButton",
+            "saveRecordingButton", "exportVideoButton", "technicalOverlayToggle",
+            "sessionHistoryList", "savedRunsList",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for camera in ("AUTO_CINEMATIC", "TECHNICAL", "TARGET_FOLLOW", "FREE_CAMERA"):
+            self.assertIn(f'data-sim-camera="{camera}"', self.html)
+        for speed in ("0.25", "0.5", "1", "2"):
+            self.assertIn(f'data-playback-speed="{speed}"', self.html)
+        self.assertIn("Replay Available", self.html)
+        self.assertIn("Unsaved", self.html)
+        self.assertIn("未保存项目在退出应用后丢弃", self.html)
 
     def test_pipeline_declares_all_states_and_stage_driven_views(self) -> None:
         for state in (

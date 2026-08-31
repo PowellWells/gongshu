@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Final
+from typing import Callable, Final
 from uuid import uuid4
 
 from vision2grasp.spatial_perception import SpatialObservation
@@ -40,6 +40,13 @@ class GraspPlanningService:
         self._views: dict[str, bytes] = {}
         self._thread: threading.Thread | None = None
         self._mode = PlanningMode.RESEARCH
+        self._completion_callback: Callable[[dict[str, object], bytes | None], None] | None = None
+
+    def set_completion_callback(
+        self, callback: Callable[[dict[str, object], bytes | None], None] | None
+    ) -> None:
+        with self._lock:
+            self._completion_callback = callback
 
     def plan(
         self,
@@ -233,6 +240,10 @@ class GraspPlanningService:
                     self._error_code = outcome.rejection_reason or "NO_VALID_CANDIDATE"
                     self._message = f"规划拒绝 PLANNING_REJECTED · {self._error_code}"
                 self._revision += 1
+                completion_callback = self._completion_callback if not outcome.ready else None
+                completion_preview = self._views.get("candidates")
+            if completion_callback is not None:
+                completion_callback(self.snapshot(), completion_preview)
         except Exception as error:
             with self._lock:
                 if not self._is_current(generation, job_id):

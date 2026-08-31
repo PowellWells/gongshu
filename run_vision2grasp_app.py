@@ -185,6 +185,7 @@ def build_mujoco_validation_service() -> MuJoCoValidationService:
                 width=int(config["render_width"]),
                 height=int(config["render_height"]),
                 render_fps=int(config["render_fps"]),
+                recording_hz=float(config["recording_hz"]),
                 lift_height_m=float(config["lift_height_m"]),
                 stable_window_s=float(config["stable_window_s"]),
             ),
@@ -195,6 +196,7 @@ def build_mujoco_validation_service() -> MuJoCoValidationService:
         failure_target_offset_m=tuple(
             float(value) for value in config["failure_target_offset_m"]
         ),
+        max_session_recordings=int(config["max_session_recordings"]),
     )
 
 
@@ -226,6 +228,9 @@ class Vision2GraspApp:
         )
         self.grasp_planning = GraspPlanningService(grasp_planner or build_grasp_planner())
         self.mujoco_validation = build_mujoco_validation_service()
+        self.grasp_planning.set_completion_callback(
+            self.mujoco_validation.record_planning_rejection
+        )
 
     @property
     def real_scene(self) -> RealSceneProcessor:
@@ -244,7 +249,7 @@ class Vision2GraspApp:
             return self._real_scene
 
     def stop(self) -> None:
-        self.mujoco_validation.reset()
+        self.mujoco_validation.close()
         self.spatial_perception.close()
         self.camera.stop()
         if self._real_scene is not None:
@@ -438,6 +443,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "grasp-plan/v1",
                         "mujoco-validation.normalized-scene/v1",
                         "mujoco-validation.cinematic-stream/v1",
+                        "mujoco-validation.session-recording/v1",
+                        "mujoco-validation.state-playback/v1",
+                        "mujoco-validation.explicit-save/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }
@@ -510,6 +518,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/mujoco-validation/state":
             self._send_json(self.app.mujoco_validation.snapshot())
+            return
+        if path == "/api/mujoco-validation/history":
+            self._send_json(self.app.mujoco_validation.session_history())
             return
         if path == "/api/mujoco-validation/live.mjpeg":
             self._send_validation_mjpeg()
@@ -620,6 +631,22 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             if path == "/api/mujoco-validation/camera-manual":
                 self._send_json(self.app.mujoco_validation.manual_camera(body))
+                return
+            if path == "/api/mujoco-validation/playback":
+                self._send_json(self.app.mujoco_validation.playback_control(body))
+                return
+            if path == "/api/mujoco-validation/recording/open":
+                self._send_json(
+                    self.app.mujoco_validation.open_recording(
+                        str(body["recording_id"]), saved=bool(body.get("saved", False))
+                    )
+                )
+                return
+            if path == "/api/mujoco-validation/recording/save":
+                self._send_json(self.app.mujoco_validation.save_current_recording())
+                return
+            if path == "/api/mujoco-validation/export-video":
+                self._send_json(self.app.mujoco_validation.export_video())
                 return
             if path == "/api/real-scene/source":
                 self._set_source(body)

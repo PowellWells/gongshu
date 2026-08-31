@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import math
 import threading
 import time
 from typing import Callable
+import uuid
 from xml.etree import ElementTree as ET
 
 import cv2
@@ -21,6 +23,7 @@ from .validation_contracts import (
     ValidationRequest,
     ValidationResult,
 )
+from .recording import ContactState, RecordingEvent, SimulationRecording, utc_timestamp
 
 
 FrameCallback = Callable[[SimulationState, bytes, dict[str, object]], None]
@@ -31,6 +34,7 @@ class NativePandaValidationConfig:
     width: int = 960
     height: int = 540
     render_fps: int = 24
+    recording_hz: float = 60.0
     lift_height_m: float = 0.08
     stable_window_s: float = 0.45
     realtime_playback: bool = True
@@ -52,7 +56,7 @@ class CameraDirector:
         SimulationState.FAILED: (96.0, -10.0, 0.88),
     }
 
-    def __init__(self, mode: CameraMode = CameraMode.CINEMATIC) -> None:
+    def __init__(self, mode: CameraMode = CameraMode.AUTO_CINEMATIC) -> None:
         self._lock = threading.RLock()
         self.mode = mode
         self.azimuth = 138.0
@@ -66,7 +70,7 @@ class CameraDirector:
 
     def manual_delta(self, *, rotate_x: float, rotate_y: float, pan_x: float, pan_y: float, zoom: float) -> None:
         with self._lock:
-            self.mode = CameraMode.MANUAL
+            self.mode = CameraMode.FREE_CAMERA
             self.azimuth += float(rotate_x) * 0.35
             self.elevation = float(np.clip(self.elevation + float(rotate_y) * 0.25, -80.0, 20.0))
             self.lookat[0] += float(pan_x) * 0.0015 * self.distance
@@ -75,21 +79,22 @@ class CameraDirector:
 
     def camera(self, state: SimulationState, target: np.ndarray, eef: np.ndarray) -> mujoco.MjvCamera:
         with self._lock:
-            if self.mode is CameraMode.CINEMATIC:
-                desired = self._PRESETS.get(state, self._PRESETS[SimulationState.HOME])
-                alpha = 0.075 if state not in {SimulationState.CLOSE, SimulationState.SUCCESS} else 0.11
-                self.azimuth += (desired[0] - self.azimuth) * alpha
-                self.elevation += (desired[1] - self.elevation) * alpha
-                self.distance += (desired[2] - self.distance) * alpha
-                focus = target if state in {SimulationState.ALIGN, SimulationState.CLOSE, SimulationState.FAILED} else (target + eef) / 2.0
-                if state in {SimulationState.SUCCESS, SimulationState.VERIFY}:
-                    focus = target
-                self.lookat += (focus - self.lookat) * 0.10
-            elif self.mode is CameraMode.AUTO_FOLLOW:
-                self.lookat += (((target + eef) / 2.0) - self.lookat) * 0.12
-                self.distance += (1.28 - self.distance) * 0.08
-                self.azimuth += (138.0 - self.azimuth) * 0.06
-                self.elevation += (-24.0 - self.elevation) * 0.06
+            if self.mode is CameraMode.AUTO_CINEMATIC:
+                self.azimuth, self.elevation, self.distance = self._PRESETS.get(
+                    state, self._PRESETS[SimulationState.HOME]
+                )
+                self.lookat = (
+                    target.copy()
+                    if state in {SimulationState.ALIGN, SimulationState.CLOSE, SimulationState.LIFT,
+                                 SimulationState.VERIFY, SimulationState.SUCCESS, SimulationState.FAILED}
+                    else (target + eef) / 2.0
+                )
+            elif self.mode is CameraMode.TECHNICAL:
+                self.azimuth, self.elevation, self.distance = 135.0, -28.0, 1.55
+                self.lookat = np.array([0.0, 0.0, 0.91], dtype=np.float64)
+            elif self.mode is CameraMode.TARGET_FOLLOW:
+                self.azimuth, self.elevation, self.distance = 132.0, -18.0, 1.05
+                self.lookat = target.copy()
             camera = mujoco.MjvCamera()
             mujoco.mjv_defaultCamera(camera)
             camera.type = mujoco.mjtCamera.mjCAMERA_FREE
@@ -98,6 +103,124 @@ class CameraDirector:
             camera.distance = self.distance
             camera.lookat[:] = self.lookat
             return camera
+
+
+class RecordingPlaybackRenderer:
+    """Restore recorded MuJoCo states for rendering without advancing physics."""
+
+    def __init__(
+        self,
+        recording: SimulationRecording,
+        camera_director: CameraDirector,
+        *,
+        width: int = 960,
+        height: int = 540,
+    ) -> None:
+        self.recording = recording
+        self.camera_director = camera_director
+        self.width = width
+        self.height = height
+        self.model = mujoco.MjModel.from_xml_string(recording.model_xml)
+        if self.model.nq != recording.qpos.shape[1] or self.model.nv != recording.qvel.shape[1]:
+            raise RuntimeError("recording is incompatible with its MuJoCo model")
+        self.data = mujoco.MjData(self.model)
+        self.renderer = mujoco.Renderer(self.model, height=height, width=width)
+        self._target_body = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "bottle_main"
+        )
+        self._eef_site = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_SITE, "gripper0_right_grip_site"
+        )
+        self._render_option = mujoco.MjvOption()
+        mujoco.mjv_defaultOption(self._render_option)
+        self._render_option.geomgroup[0] = 0
+        self._render_option.geomgroup[1] = 1
+
+    def close(self) -> None:
+        self.renderer.close()
+
+    def render_at(self, timestamp_s: float, *, technical_overlay: bool = True) -> tuple[bytes, dict[str, object]]:
+        index = self.recording.index_at(timestamp_s)
+        self.data.qpos[:] = self.recording.qpos[index]
+        self.data.qvel[:] = self.recording.qvel[index]
+        self.data.time = float(self.recording.timestamps[index])
+        # mj_forward recomputes derived poses/contacts for rendering only. It
+        # does not integrate the state and therefore cannot change the result.
+        mujoco.mj_forward(self.model, self.data)
+        state = SimulationState(self.recording.validation_states[index])
+        target = self.data.xpos[self._target_body].copy()
+        eef = self.data.site_xpos[self._eef_site].copy()
+        camera = self.camera_director.camera(state, target, eef)
+        self.renderer.update_scene(self.data, camera=camera, scene_option=self._render_option)
+        if technical_overlay:
+            self._add_contact_geometries(self.recording.contacts[index])
+        rgb = self.renderer.render()
+        rgb = self._decorate(rgb, index, state, technical_overlay)
+        ok, encoded = cv2.imencode(
+            ".jpg", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+            [cv2.IMWRITE_JPEG_QUALITY, 88],
+        )
+        if not ok:
+            raise RuntimeError("MuJoCo playback frame encoding failed")
+        telemetry = {
+            "robot_state": state.value,
+            "grasp_state": state.value,
+            "target_id": self.recording.request_metadata.get("grasp_plan", {}).get("target_id"),
+            "collision": bool(self.recording.collision_states[index]),
+            "target_position_world": self.recording.target_poses[index, :3].tolist(),
+            "target_velocity": self.recording.target_velocities[index].tolist(),
+            "eef_position_world": self.recording.eef_positions[index].tolist(),
+            "lift_height_m": float(self.recording.lift_heights[index]),
+            "contact_count": len(self.recording.contacts[index]),
+            "recording_timestamp_s": float(self.recording.timestamps[index]),
+            "recording_index": index,
+            "playback_source": "RECORDED_MUJOCO_STATE",
+        }
+        return encoded.tobytes(), telemetry
+
+    def _add_contact_geometries(self, contacts: tuple[ContactState, ...]) -> None:
+        scene = self.renderer.scene
+        for contact in contacts[:24]:
+            if scene.ngeom >= scene.maxgeom:
+                break
+            mujoco.mjv_initGeom(
+                scene.geoms[scene.ngeom],
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([0.008, 0.008, 0.008], dtype=np.float64),
+                np.asarray(contact.position_world, dtype=np.float64),
+                np.eye(3, dtype=np.float64).reshape(-1),
+                np.array([1.0, 0.22, 0.12, 0.94], dtype=np.float32),
+            )
+            scene.ngeom += 1
+
+    def _decorate(
+        self,
+        rgb: np.ndarray,
+        index: int,
+        state: SimulationState,
+        technical_overlay: bool,
+    ) -> np.ndarray:
+        overlay = rgb.copy()
+        cv2.rectangle(overlay, (12, 12), (min(rgb.shape[1] - 12, 510), 94), (3, 13, 23), -1)
+        rgb = cv2.addWeighted(overlay, 0.74, rgb, 0.26, 0.0)
+        cv2.putText(rgb, f"RECORDING PLAYBACK  {state.value}", (26, 38),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (185, 232, 250), 1, cv2.LINE_AA)
+        cv2.putText(
+            rgb,
+            f"t={self.recording.timestamps[index]:.3f}s  lift={self.recording.lift_heights[index]:.3f}m  "
+            f"contacts={len(self.recording.contacts[index])}",
+            (26, 61), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (120, 185, 214), 1, cv2.LINE_AA,
+        )
+        cv2.putText(
+            rgb,
+            "TECHNICAL OVERLAY · RECORDED STATE" if technical_overlay else "CINEMATIC · RECORDED STATE",
+            (26, 82), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (110, 235, 202), 1, cv2.LINE_AA,
+        )
+        if state is SimulationState.SUCCESS:
+            cv2.rectangle(rgb, (3, 3), (rgb.shape[1] - 4, rgb.shape[0] - 4), (80, 245, 180), 5)
+        elif state is SimulationState.FAILED:
+            cv2.rectangle(rgb, (3, 3), (rgb.shape[1] - 4, rgb.shape[0] - 4), (244, 92, 88), 5)
+        return rgb
 
 
 class NativePandaValidation:
@@ -114,11 +237,12 @@ class NativePandaValidation:
         self.request = request
         self.camera_director = camera_director
         self.config = config or NativePandaValidationConfig()
-        self.model = self._build_model(
+        self.model_xml = self._build_model_xml(
             request,
             offscreen_width=self.config.width,
             offscreen_height=self.config.height,
         )
+        self.model = mujoco.MjModel.from_xml_string(self.model_xml)
         self.data = mujoco.MjData(self.model)
         self._arm_joint_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{i}") for i in range(1, 8)]
         self._arm_qpos = np.array([self.model.jnt_qposadr[j] for j in self._arm_joint_ids], dtype=np.int32)
@@ -135,6 +259,25 @@ class NativePandaValidation:
         self._render_option.geomgroup[0] = 0
         self._render_option.geomgroup[1] = 1
         self._initialize_data()
+        self.recording: SimulationRecording | None = None
+        self._recording_initial_z = float(self.data.xpos[self._target_body, 2])
+        if self.config.recording_hz <= 0.0:
+            raise ValueError("recording_hz must be positive")
+        self._recording_period = 1.0 / self.config.recording_hz
+        self._next_record_time = 0.0
+        self._sample_step = 0
+        self._sample_timestamps: list[float] = []
+        self._sample_qpos: list[np.ndarray] = []
+        self._sample_qvel: list[np.ndarray] = []
+        self._sample_gripper: list[np.ndarray] = []
+        self._sample_target_pose: list[np.ndarray] = []
+        self._sample_target_velocity: list[np.ndarray] = []
+        self._sample_eef: list[np.ndarray] = []
+        self._sample_collision: list[bool] = []
+        self._sample_lift: list[float] = []
+        self._sample_states: list[str] = []
+        self._sample_contacts: list[tuple[ContactState, ...]] = []
+        self._events: list[RecordingEvent] = []
 
     def run(self, callback: FrameCallback, stop_event: threading.Event) -> ValidationResult:
         renderer: mujoco.Renderer | None = None
@@ -143,6 +286,7 @@ class NativePandaValidation:
         close_executed = False
         lift_samples: list[float] = []
         completed = False
+        result: ValidationResult | None = None
         try:
             renderer = mujoco.Renderer(self.model, height=self.config.height, width=self.config.width)
             pre_position = self.request.scene_transform.grasp_position_world - self.request.scene_transform.approach_world * 0.18
@@ -164,9 +308,12 @@ class NativePandaValidation:
                 (SimulationState.LIFT, grasp_q, lift_q, 1.55, 0.0),
                 (SimulationState.VERIFY, lift_q, lift_q, max(0.75, self.config.stable_window_s), 0.0),
             )
+            self._events.append(RecordingEvent(float(self.data.time), "SIMULATION_STARTED", SimulationState.HOME.value))
+            self._record_sample(SimulationState.HOME, force=True)
             for state, start_q, end_q, duration, gripper in phases:
                 if stop_event.is_set():
                     raise RuntimeError("validation stopped")
+                self._events.append(RecordingEvent(float(self.data.time), "PHASE_STARTED", state.value))
                 if state is SimulationState.CLOSE:
                     close_executed = True
                 phase_collision, samples = self._run_phase(
@@ -201,7 +348,10 @@ class NativePandaValidation:
                 lift_height_m=lift_height,
                 stable_window_passed=stable,
             )
+            self._events.append(RecordingEvent(float(self.data.time), "VALIDATION_RESULT", final_state.value))
             self._hold_final(final_state, renderer, callback, stop_event, result.public_metadata())
+            self._record_sample(final_state, force=True)
+            self._finalize_recording(result)
             return result
         except Exception as error:
             lift_height = float(self.data.xpos[self._target_body, 2] - initial_target_z)
@@ -214,8 +364,11 @@ class NativePandaValidation:
                 lift_height_m=lift_height,
                 stable_window_passed=False,
             )
+            self._events.append(RecordingEvent(float(self.data.time), "VALIDATION_RESULT", SimulationState.FAILED.value))
             if renderer is not None:
                 self._hold_final(SimulationState.FAILED, renderer, callback, stop_event, result.public_metadata())
+            self._record_sample(SimulationState.FAILED, force=True)
+            self._finalize_recording(result)
             return result
         finally:
             if renderer is not None:
@@ -250,6 +403,8 @@ class NativePandaValidation:
             # creating a persistent tracking offset during slow showcase moves.
             self.data.qfrc_applied[self._arm_dofs] = self.data.qfrc_bias[self._arm_dofs]
             mujoco.mj_step(self.model, self.data)
+            self._sample_step += 1
+            self._record_sample(state)
             invalid_collision = invalid_collision or self._has_invalid_table_collision()
             if state is SimulationState.VERIFY:
                 target_samples.append(float(self.data.xpos[self._target_body, 2]))
@@ -279,6 +434,8 @@ class NativePandaValidation:
             for _ in range(steps_per_frame):
                 self.data.qfrc_applied[self._arm_dofs] = self.data.qfrc_bias[self._arm_dofs]
                 mujoco.mj_step(self.model, self.data)
+                self._sample_step += 1
+                self._record_sample(state)
             callback(
                 state,
                 self._render(renderer, state, result=result),
@@ -367,6 +524,92 @@ class NativePandaValidation:
             "eef_position_world": self.data.site_xpos[self._eef_site].tolist(),
         }
 
+    def _record_sample(self, state: SimulationState, *, force: bool = False) -> None:
+        if not force and float(self.data.time) + 1e-12 < self._next_record_time:
+            return
+        timestamp = float(self.data.time)
+        if self._sample_timestamps and np.isclose(timestamp, self._sample_timestamps[-1], atol=1e-12):
+            if not force:
+                return
+            # Preserve one state per timestamp while allowing the terminal
+            # validation label to replace the last physical sample.
+            self._sample_states[-1] = state.value
+            self._sample_collision[-1] = self._has_invalid_table_collision()
+            self._sample_contacts[-1] = self._contact_states()
+            return
+        target_quat = self.data.xquat[self._target_body].copy()
+        self._sample_timestamps.append(timestamp)
+        self._sample_qpos.append(self.data.qpos.copy())
+        self._sample_qvel.append(self.data.qvel.copy())
+        self._sample_gripper.append(
+            np.asarray(
+                [self.data.qpos[self.model.jnt_qposadr[joint]] for joint in self._finger_joints],
+                dtype=np.float64,
+            )
+        )
+        self._sample_target_pose.append(
+            np.concatenate((self.data.xpos[self._target_body].copy(), target_quat))
+        )
+        self._sample_target_velocity.append(self.data.cvel[self._target_body].copy())
+        self._sample_eef.append(self.data.site_xpos[self._eef_site].copy())
+        self._sample_collision.append(self._has_invalid_table_collision())
+        self._sample_lift.append(float(self.data.xpos[self._target_body, 2] - self._recording_initial_z))
+        self._sample_states.append(state.value)
+        self._sample_contacts.append(self._contact_states())
+        while self._next_record_time <= timestamp + 1e-12:
+            self._next_record_time += self._recording_period
+
+    def _contact_states(self) -> tuple[ContactState, ...]:
+        contacts: list[ContactState] = []
+        for index in range(self.data.ncon):
+            contact = self.data.contact[index]
+            first = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, contact.geom1) or ""
+            second = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, contact.geom2) or ""
+            frame = np.asarray(contact.frame, dtype=np.float64).reshape(3, 3)
+            contacts.append(
+                ContactState(
+                    tuple(float(value) for value in contact.pos),
+                    tuple(float(value) for value in frame[0]),
+                    first,
+                    second,
+                    float(contact.dist),
+                )
+            )
+        return tuple(contacts)
+
+    def _finalize_recording(self, result: ValidationResult) -> None:
+        if self.recording is not None:
+            return
+        recording_id = f"rec-{uuid.uuid4().hex[:16]}"
+        run_id = f"run-{uuid.uuid4().hex[:16]}"
+        self.recording = SimulationRecording(
+            recording_id=recording_id,
+            run_id=run_id,
+            created_at=utc_timestamp(),
+            sample_hz=float(self.config.recording_hz),
+            timestamps=np.asarray(self._sample_timestamps, dtype=np.float64),
+            qpos=np.asarray(self._sample_qpos, dtype=np.float64),
+            qvel=np.asarray(self._sample_qvel, dtype=np.float64),
+            gripper_states=np.asarray(self._sample_gripper, dtype=np.float64),
+            target_poses=np.asarray(self._sample_target_pose, dtype=np.float64),
+            target_velocities=np.asarray(self._sample_target_velocity, dtype=np.float64),
+            eef_positions=np.asarray(self._sample_eef, dtype=np.float64),
+            collision_states=np.asarray(self._sample_collision, dtype=np.bool_),
+            lift_heights=np.asarray(self._sample_lift, dtype=np.float64),
+            validation_states=tuple(self._sample_states),
+            contacts=tuple(self._sample_contacts),
+            events=tuple(self._events),
+            result=result,
+            request_metadata=self.request.public_metadata(),
+            compatibility={
+                "mujoco_version": mujoco.__version__,
+                "model_sha256": hashlib.sha256(self.model_xml.encode("utf-8")).hexdigest(),
+                "nq": int(self.model.nq),
+                "nv": int(self.model.nv),
+            },
+            model_xml=self.model_xml,
+        )
+
     def _solve_ik(self, target_position: np.ndarray, target_rotation: np.ndarray, seed_q: np.ndarray) -> np.ndarray:
         ik_data = mujoco.MjData(self.model)
         ik_data.qpos[:] = self.data.qpos
@@ -446,13 +689,13 @@ class NativePandaValidation:
         return value * value * (3.0 - 2.0 * value)
 
     @classmethod
-    def _build_model(
+    def _build_model_xml(
         cls,
         request: ValidationRequest,
         *,
         offscreen_width: int,
         offscreen_height: int,
-    ) -> mujoco.MjModel:
+    ) -> str:
         environment = BottleLift(
             robots="Panda",
             has_renderer=False,
@@ -544,7 +787,7 @@ class NativePandaValidation:
             if texture.attrib.get("type") == "skybox":
                 texture.attrib["rgb1"] = "0.015 0.025 0.045"
                 texture.attrib["rgb2"] = "0.07 0.10 0.14"
-        return mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
+        return ET.tostring(root, encoding="unicode")
 
     @staticmethod
     def _add_showcase_geometry(worldbody: ET.Element, request: ValidationRequest) -> None:

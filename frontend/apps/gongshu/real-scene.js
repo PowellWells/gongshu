@@ -5,7 +5,7 @@
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
   const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning-job/v2";
-  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v2";
+  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v3";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
@@ -140,6 +140,16 @@
     simulationLift: byId("simulationLift"),
     simulationTarget: byId("simulationTarget"),
     simulationResult: byId("simulationResult"),
+    simulationPlaybackControls: byId("simulationPlaybackControls"),
+    recordingAvailability: byId("recordingAvailability"),
+    recordingSaveState: byId("recordingSaveState"),
+    saveRecordingButton: byId("saveRecordingButton"),
+    exportVideoButton: byId("exportVideoButton"),
+    playPauseButton: byId("playPauseButton"),
+    playbackTimeline: byId("playbackTimeline"),
+    playbackCurrentTime: byId("playbackCurrentTime"),
+    playbackDuration: byId("playbackDuration"),
+    technicalOverlayToggle: byId("technicalOverlayToggle"),
     validationScenarioSelect: byId("validationScenarioSelect"),
     startValidationButton: byId("startValidationButton"),
     targetStatus: byId("targetStatus"),
@@ -195,6 +205,8 @@
     runSimulationButton: byId("runSimulationButton"),
     snapshotInput: byId("snapshotInput"),
     legacyRunStatus: byId("legacyRunStatus"),
+    sessionHistoryList: byId("sessionHistoryList"),
+    savedRunsList: byId("savedRunsList"),
   };
 
   const viewPanels = new Map(
@@ -222,6 +234,7 @@
   let graspLayer = "candidates";
   let validationRunning = false;
   let validationTimer = 0;
+  let playbackSeekTimer = 0;
   let simulationStreamStarted = false;
   let analysisFrozen = false;
   let targetAnalysisRunning = false;
@@ -521,6 +534,7 @@
     els.graspElapsed.textContent = "Elapsed —";
     els.graspEta.textContent = "ETA Estimating...";
     els.simulationHud.hidden = true;
+    els.simulationPlaybackControls.hidden = true;
     els.simulationHudState.textContent = "WAITING";
     els.simulationCollision.textContent = "CLEAR";
     els.simulationLift.textContent = "0.000 m";
@@ -542,6 +556,7 @@
     validationRunning = false;
     simulationStreamStarted = false;
     window.clearInterval(validationTimer);
+    window.clearTimeout(playbackSeekTimer);
     validationTimer = 0;
     analysisFrozen = false;
     targetAnalysisRunning = false;
@@ -1356,9 +1371,12 @@
     if (!state || state.schema_version !== MUJOCO_VALIDATION_SCHEMA_VERSION) {
       throw new Error("MuJoCo Validation API 版本不匹配");
     }
+    const previousStatus = validationState?.status;
     validationState = state;
     const telemetry = state.telemetry || {};
     const result = state.result;
+    const recording = state.recording;
+    const playback = state.playback;
     els.simulationState.textContent = state.status;
     els.simulationState.classList.toggle("has-data", Boolean(state.media?.stream_available));
     els.simulationHud.hidden = !state.media?.stream_available;
@@ -1369,15 +1387,42 @@
     const initialZ = Number(state.request?.scene_transform?.target_position_world?.[2]);
     const currentZ = Number(telemetry.target_position_world?.[2]);
     const liveLift = Number.isFinite(initialZ) && Number.isFinite(currentZ) ? Math.max(0, currentZ - initialZ) : 0;
-    els.simulationLift.textContent = `${Number(result?.lift_height_m ?? liveLift).toFixed(3)} m`;
+    els.simulationLift.textContent = `${Number(telemetry.lift_height_m ?? result?.lift_height_m ?? liveLift).toFixed(3)} m`;
     els.simulationFooter.textContent = `${state.scenario || "NOMINAL"} · ${state.camera_mode} · ${state.status}`;
     document.querySelectorAll("[data-sim-camera]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.simCamera === state.camera_mode);
     });
+    const replayAvailable = Boolean(state.media?.replay_available && recording && playback);
+    const visualizationAvailable = Boolean(state.media?.visualization_available && recording);
+    const recordAvailable = replayAvailable || visualizationAvailable;
+    els.simulationPlaybackControls.hidden = !recordAvailable;
+    if (recordAvailable) {
+      const currentTime = Number(playback?.current_time || 0);
+      const duration = Number(playback?.duration_s || recording.duration_s || 0);
+      els.recordingAvailability.textContent = replayAvailable ? "Replay Available" : "Visualization Available";
+      els.recordingSaveState.textContent = state.media.recording_saved ? "Saved" : "Unsaved";
+      els.recordingSaveState.classList.toggle("is-saved", Boolean(state.media.recording_saved));
+      els.saveRecordingButton.disabled = Boolean(state.media.recording_saved);
+      els.saveRecordingButton.textContent = state.media.recording_saved ? "已保存 Saved" : "保存记录 Save Recording";
+      els.playbackTimeline.max = String(Math.max(duration, 0.001));
+      if (document.activeElement !== els.playbackTimeline) els.playbackTimeline.value = String(currentTime);
+      els.playbackCurrentTime.textContent = currentTime.toFixed(3);
+      els.playbackDuration.textContent = `${duration.toFixed(3)} s`;
+      els.playPauseButton.dataset.playbackAction = playback?.paused !== false ? "PLAY" : "PAUSE";
+      els.playPauseButton.textContent = playback?.paused !== false ? "▶ Play" : "Ⅱ Pause";
+      document.querySelectorAll("[data-playback-speed]").forEach((button) => {
+        button.classList.toggle("is-active", Number(button.dataset.playbackSpeed) === Number(playback?.playback_speed));
+      });
+      els.technicalOverlayToggle.checked = playback?.overlay_mode === "TECHNICAL";
+      document.querySelectorAll("[data-playback-action], [data-playback-speed]").forEach((button) => {
+        button.disabled = !replayAvailable;
+      });
+      els.playbackTimeline.disabled = !replayAvailable;
+      els.technicalOverlayToggle.disabled = !replayAvailable;
+      els.exportVideoButton.disabled = !replayAvailable;
+    }
     if (["SUCCESS", "FAILED"].includes(state.status)) {
       validationRunning = false;
-      window.clearInterval(validationTimer);
-      validationTimer = 0;
       els.simulationResult.textContent = state.status === "SUCCESS"
         ? "仿真验证成功 Simulation Validation SUCCESS"
         : `仿真验证失败 Simulation Validation FAILED · ${state.reason || "State Error"}`;
@@ -1385,12 +1430,22 @@
       if (pipeline.state === "SIMULATION") {
         pipeline.transition("VERIFIED", { result: state.status, reason: state.reason || null });
       }
-      showNotice(els.simulationResult.textContent, state.status === "SUCCESS" ? "success" : "error");
+      if (previousStatus && previousStatus !== state.status) {
+        showNotice(`${els.simulationResult.textContent} · Replay Available · Unsaved`, state.status === "SUCCESS" ? "success" : "error");
+      }
+      if (playback?.paused && validationTimer) {
+        window.clearInterval(validationTimer);
+        validationTimer = 0;
+      }
     } else {
       els.simulationResult.textContent = "真实连续物理 REAL-TIME PHYSICS · SIMULATION ONLY";
       els.simulationResult.className = "simulation-result";
     }
     updateActionButtons();
+  }
+
+  function ensureValidationPolling() {
+    if (!validationTimer) validationTimer = window.setInterval(pollValidationState, 120);
   }
 
   async function pollValidationState() {
@@ -1431,7 +1486,7 @@
       };
       pipeline.transition("SIMULATION", { controller: "MUJOCO_POSITION_DLS_IK" });
       await pollValidationState();
-      validationTimer = window.setInterval(pollValidationState, 160);
+      ensureValidationPolling();
     } catch (error) {
       validationRunning = false;
       els.simulationState.textContent = "FAILED";
@@ -1652,6 +1707,63 @@
     });
   }
 
+  async function controlPlayback(action, extra = {}) {
+    const state = await apiPost("/api/mujoco-validation/playback", { action, ...extra });
+    renderValidation(state);
+    if (!state.playback?.paused) ensureValidationPolling();
+    return state;
+  }
+
+  function renderRecordingHistoryList(container, runs, saved) {
+    container.replaceChildren();
+    if (!runs.length) {
+      const empty = document.createElement("p");
+      empty.textContent = saved ? "暂无已保存 Recording。" : "当前会话暂无 Recording。";
+      container.append(empty);
+      return;
+    }
+    runs.forEach((run) => {
+      const item = document.createElement("div");
+      item.className = "recording-history-item";
+      const title = document.createElement("strong");
+      title.textContent = `${run.run_id || "Run"} · ${run.result?.state || "UNKNOWN"}`;
+      const details = document.createElement("span");
+      details.textContent = `${Number(run.duration_s || 0).toFixed(2)} s · ${saved ? "Saved" : (run.storage === "SAVED" ? "Saved" : "Unsaved")}`;
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = "打开回放 Open";
+      open.addEventListener("click", async () => {
+        try {
+          const state = await apiPost("/api/mujoco-validation/recording/open", {
+            recording_id: run.recording_id,
+            saved,
+          });
+          renderValidation(state);
+          els.simulationMedia.src = `/api/mujoco-validation/live.mjpeg?recording=${encodeURIComponent(run.recording_id)}&opened=${Date.now()}`;
+          els.simulationMedia.hidden = false;
+          els.simulationEmpty.hidden = true;
+          closeDialog(els.legacyDialog);
+          pinView("simulation");
+          showNotice(`已打开 ${saved ? "Saved Run" : "Session Recording"}，未重新执行原始 Pipeline。`);
+        } catch (error) {
+          showNotice(`无法打开 Recording：${error.message}`, "error");
+        }
+      });
+      item.append(title, details, open);
+      container.append(item);
+    });
+  }
+
+  async function loadRecordingHistory() {
+    const history = await apiGet(`/api/mujoco-validation/history?t=${Date.now()}`);
+    renderRecordingHistoryList(
+      els.sessionHistoryList,
+      [...(history.session_history || []), ...(history.visualization_history || [])],
+      false,
+    );
+    renderRecordingHistoryList(els.savedRunsList, history.saved_runs || [], true);
+  }
+
   document.querySelectorAll("[data-pin-view]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1709,7 +1821,7 @@
   document.querySelectorAll("[data-sim-camera]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopPropagation();
-      if (!validationState?.request) return;
+      if (!validationState?.request && !validationState?.media?.replay_available) return;
       try {
         renderValidation(await apiPost("/api/mujoco-validation/camera-mode", { mode: button.dataset.simCamera }));
       } catch (error) {
@@ -1720,7 +1832,7 @@
   const simulationStage = els.simulationMedia.closest(".simulation-stage");
   let simulationPointer = null;
   simulationStage.addEventListener("pointerdown", (event) => {
-    if (!validationState?.request || event.target.closest("button")) return;
+    if ((!validationState?.request && !validationState?.media?.replay_available) || event.target.closest("button, input, label")) return;
     simulationPointer = { x: event.clientX, y: event.clientY, pan: event.shiftKey || event.button === 1 };
     simulationStage.setPointerCapture(event.pointerId);
     simulationStage.classList.add("is-dragging");
@@ -1743,16 +1855,81 @@
   simulationStage.addEventListener("pointerup", releaseSimulationPointer);
   simulationStage.addEventListener("pointercancel", releaseSimulationPointer);
   simulationStage.addEventListener("wheel", (event) => {
-    if (!validationState?.request) return;
+    if (!validationState?.request && !validationState?.media?.replay_available) return;
     event.preventDefault();
     apiPost("/api/mujoco-validation/camera-manual", { zoom: event.deltaY }).then(renderValidation).catch(() => {});
   }, { passive: false });
+  document.querySelectorAll("[data-playback-action]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      try {
+        await controlPlayback(button.dataset.playbackAction);
+      } catch (error) {
+        showNotice(`回放控制失败：${error.message}`, "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-playback-speed]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      try {
+        await controlPlayback("SPEED", { speed: Number(button.dataset.playbackSpeed) });
+      } catch (error) {
+        showNotice(`播放速度切换失败：${error.message}`, "error");
+      }
+    });
+  });
+  els.playbackTimeline.addEventListener("input", (event) => {
+    event.stopPropagation();
+    const value = Number(els.playbackTimeline.value);
+    els.playbackCurrentTime.textContent = value.toFixed(3);
+    window.clearTimeout(playbackSeekTimer);
+    playbackSeekTimer = window.setTimeout(() => {
+      controlPlayback("SEEK", { time_s: value }).catch((error) => {
+        showNotice(`时间轴定位失败：${error.message}`, "error");
+      });
+    }, 35);
+  });
+  els.technicalOverlayToggle.addEventListener("change", () => {
+    controlPlayback("OVERLAY", { enabled: els.technicalOverlayToggle.checked }).catch((error) => {
+      showNotice(`Technical Overlay 切换失败：${error.message}`, "error");
+    });
+  });
+  els.saveRecordingButton.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    els.saveRecordingButton.disabled = true;
+    try {
+      renderValidation(await apiPost("/api/mujoco-validation/recording/save"));
+      showNotice("Recording 已保存到玄枢用户数据目录；未写入 Git 项目。", "success");
+    } catch (error) {
+      els.saveRecordingButton.disabled = false;
+      showNotice(`保存 Recording 失败：${error.message}`, "error");
+    }
+  });
+  els.exportVideoButton.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    els.exportVideoButton.disabled = true;
+    els.exportVideoButton.textContent = "正在导出 Exporting…";
+    try {
+      const exported = await apiPost("/api/mujoco-validation/export-video");
+      showNotice(`视频已按当前镜头/速度/Overlay 导出：${exported.path}`, "success");
+    } catch (error) {
+      showNotice(`导出视频失败：${error.message}`, "error");
+    } finally {
+      els.exportVideoButton.disabled = false;
+      els.exportVideoButton.textContent = "导出视频 Export Video";
+    }
+  });
   els.cameraSetupButton.addEventListener("click", () => openDialog(els.cameraSetupDialog));
   document.querySelector("[data-close-camera-setup]").addEventListener("click", () => closeDialog(els.cameraSetupDialog));
   els.cameraSetupDialog.addEventListener("click", (event) => {
     if (event.target === els.cameraSetupDialog) closeDialog(els.cameraSetupDialog);
   });
-  els.legacyButton.addEventListener("click", () => openDialog(els.legacyDialog));
+  els.legacyButton.addEventListener("click", async () => {
+    openDialog(els.legacyDialog);
+    try { await loadRecordingHistory(); }
+    catch (error) { showNotice(`无法读取 Recording History：${error.message}`, "error"); }
+  });
   document.querySelector("[data-close-legacy]").addEventListener("click", () => closeDialog(els.legacyDialog));
   els.legacyDialog.addEventListener("click", (event) => {
     if (event.target === els.legacyDialog) closeDialog(els.legacyDialog);

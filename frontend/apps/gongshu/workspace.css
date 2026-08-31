@@ -812,7 +812,7 @@
 .simulation-camera-controls {
   position: absolute;
   right: 14px;
-  bottom: 14px;
+  bottom: 96px;
   z-index: 5;
   display: flex;
   gap: 5px;
@@ -841,7 +841,7 @@
 .simulation-scenario-control {
   position: absolute;
   left: 14px;
-  bottom: 50px;
+  bottom: 132px;
   z-index: 5;
   display: grid;
   gap: 3px;
@@ -864,7 +864,7 @@
 .start-validation-button {
   position: absolute;
   left: 14px;
-  bottom: 14px;
+  bottom: 96px;
   z-index: 5;
   padding: 8px 13px;
   border-color: rgba(255, 194, 75, .58);
@@ -890,9 +890,81 @@
 .workspace-view:not(.is-primary) .simulation-hud-metrics,
 .workspace-view:not(.is-primary) .simulation-camera-controls,
 .workspace-view:not(.is-primary) .simulation-scenario-control,
-.workspace-view:not(.is-primary) .start-validation-button {
+.workspace-view:not(.is-primary) .start-validation-button,
+.workspace-view:not(.is-primary) .simulation-playback-controls {
   display: none;
 }
+
+.simulation-playback-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  left: 14px;
+  z-index: 6;
+  display: grid;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid rgba(71, 221, 255, .34);
+  border-radius: 9px;
+  background: rgba(3, 14, 23, .86);
+  color: #aac6d5;
+  font-size: 7px;
+  backdrop-filter: blur(10px);
+}
+
+.simulation-playback-controls[hidden] { display: none !important; }
+
+.recording-status-row,
+.playback-transport,
+.playback-options,
+.playback-options > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.recording-status-row strong { color: #79efc1; letter-spacing: .05em; }
+.recording-status-row span { color: #ffd174; }
+.recording-status-row span.is-saved { color: #79efc1; }
+.recording-status-row button:first-of-type { margin-left: auto; }
+
+.simulation-playback-controls button {
+  padding: 4px 7px;
+  border: 1px solid rgba(116, 184, 216, .32);
+  border-radius: 5px;
+  background: rgba(8, 29, 43, .86);
+  color: #c7deea;
+  font: inherit;
+  cursor: pointer;
+}
+
+.simulation-playback-controls button:hover,
+.simulation-playback-controls button.is-active {
+  border-color: rgba(71, 221, 255, .72);
+  color: #8cecff;
+}
+
+.simulation-playback-controls button:disabled { opacity: .45; cursor: wait; }
+.playback-transport span { min-width: 42px; color: #eaf8ff; font-variant-numeric: tabular-nums; }
+.playback-transport input { flex: 1; min-width: 70px; accent-color: #42d7f3; }
+.playback-options { justify-content: space-between; }
+.playback-options label { display: flex; align-items: center; gap: 4px; color: #8ec7dc; }
+
+.recording-history-section {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(119, 158, 180, .22);
+  border-radius: 8px;
+}
+
+.recording-history-section > header { display: flex; justify-content: space-between; gap: 12px; }
+.recording-history-section > header span { color: var(--muted); font-size: 9px; }
+.recording-history-list { display: grid; gap: 5px; }
+.recording-history-item { display: flex; align-items: center; gap: 8px; padding: 7px; background: rgba(25, 55, 74, .05); }
+.recording-history-item strong { min-width: 96px; }
+.recording-history-item span { flex: 1; color: var(--muted); }
+.recording-history-item button { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; cursor: pointer; }
 
 .grasp-summary dd { max-width: 55%; }
 

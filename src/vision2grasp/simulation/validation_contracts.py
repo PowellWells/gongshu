@@ -16,9 +16,22 @@ VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v2"
 
 
 class CameraMode(str, Enum):
-    CINEMATIC = "CINEMATIC"
-    AUTO_FOLLOW = "AUTO_FOLLOW"
-    MANUAL = "MANUAL"
+    AUTO_CINEMATIC = "AUTO_CINEMATIC"
+    TECHNICAL = "TECHNICAL"
+    TARGET_FOLLOW = "TARGET_FOLLOW"
+    FREE_CAMERA = "FREE_CAMERA"
+
+    @classmethod
+    def parse(cls, value: str | "CameraMode") -> "CameraMode":
+        if isinstance(value, cls):
+            return value
+        aliases = {
+            "CINEMATIC": cls.AUTO_CINEMATIC,
+            "AUTO_FOLLOW": cls.TARGET_FOLLOW,
+            "MANUAL": cls.FREE_CAMERA,
+        }
+        normalized = str(value).upper()
+        return aliases.get(normalized, cls(normalized))
 
 
 class ValidationScenario(str, Enum):

@@ -64,6 +64,9 @@ captures/
 camera_captures/
 uploads/
 screenshots/
+recordings/
+exports/
+*.recording
 
 # Model weights, datasets, experiment output, and large generated media
 *.pt

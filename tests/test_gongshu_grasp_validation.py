@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 import time
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -27,6 +29,9 @@ from vision2grasp.simulation import (
     ValidationResult,
     ValidationScenario,
 )
+from vision2grasp.simulation.native_panda_validation import RecordingPlaybackRenderer
+from vision2grasp.simulation.recording import load_recording, save_recording
+from vision2grasp.simulation.recording import RecordingEvent, SimulationRecording, utc_timestamp
 from vision2grasp.spatial_perception import (
     CalibrationState,
     DepthFrame,
@@ -183,6 +188,34 @@ class _FakeValidationBackend:
         return ValidationResult(SimulationState.SUCCESS, None, True, False, True, 0.12, True)
 
 
+def make_minimal_recording(result: ValidationResult) -> SimulationRecording:
+    model_xml = """<mujoco model='recording-test'><visual><global offwidth='160' offheight='90'/></visual><worldbody><body name='bottle_main' pos='0 0 0.8'><freejoint/><geom type='box' size='.03 .03 .06'/><site name='gripper0_right_grip_site' pos='0 0 .15' size='.01'/></body></worldbody></mujoco>"""
+    target_poses = np.array([[0, 0, .8, 1, 0, 0, 0], [0, 0, .9, 1, 0, 0, 0]], dtype=np.float64)
+    return SimulationRecording(
+        recording_id="rec-test-session", run_id="run-test-session", created_at=utc_timestamp(),
+        sample_hz=60.0, timestamps=np.array([0.0, 1.0]),
+        qpos=target_poses.copy(), qvel=np.zeros((2, 6)), gripper_states=np.zeros((2, 2)),
+        target_poses=target_poses, target_velocities=np.zeros((2, 6)),
+        eef_positions=np.array([[0, 0, .95], [0, 0, 1.05]]),
+        collision_states=np.array([False, result.invalid_table_collision]),
+        lift_heights=np.array([0.0, result.lift_height_m]),
+        validation_states=("HOME", result.state.value), contacts=((), ()),
+        events=(RecordingEvent(0.0, "SIMULATION_STARTED", "HOME"),
+                RecordingEvent(1.0, "VALIDATION_RESULT", result.state.value)),
+        result=result,
+        request_metadata={"grasp_plan": {"target_id": "target-42-01", "plan_id": "plan-test", "source_frame_id": 42}},
+        compatibility={"mujoco_version": "3.9.0", "model_sha256": hashlib.sha256(model_xml.encode()).hexdigest(), "nq": 7, "nv": 6},
+        model_xml=model_xml,
+    )
+
+
+class _RecordedFakeValidationBackend(_FakeValidationBackend):
+    def run(self, callback, stop_event: threading.Event) -> ValidationResult:
+        result = super().run(callback, stop_event)
+        self.recording = make_minimal_recording(result)
+        return result
+
+
 class MuJoCoValidationStateTests(unittest.TestCase):
     @staticmethod
     def _ready_plan():
@@ -254,6 +287,75 @@ class MuJoCoValidationStateTests(unittest.TestCase):
         self.assertEqual(finished["state_history"][0]["state"], "INITIALIZING")
         self.assertEqual(finished["state_history"][-1]["state"], "SUCCESS")
 
+    def test_recording_is_session_only_until_explicit_save_and_replay_controls_do_not_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = __import__("pathlib").Path(directory) / "recordings"
+            service = MuJoCoValidationService(
+                lambda request, director: _RecordedFakeValidationBackend(request, director),
+                recordings_root=root,
+            )
+            try:
+                service.start(self._ready_plan())
+                finished = self._wait(service)
+                deadline = time.monotonic() + 2.0
+                while not finished["media"]["replay_available"] and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                    finished = service.snapshot()
+                self.assertTrue(finished["media"]["replay_available"])
+                self.assertFalse(finished["media"]["recording_saved"])
+                self.assertFalse(root.exists())
+                self.assertEqual(len(service.session_history()["session_history"]), 1)
+                service.playback_control({"action": "SEEK", "time_s": 0.5})
+                service.playback_control({"action": "STEP_FORWARD"})
+                service.playback_control({"action": "SPEED", "speed": 0.25})
+                state = service.set_camera_mode("TECHNICAL")
+                self.assertEqual(state["camera_mode"], "TECHNICAL")
+                self.assertEqual(state["playback"]["overlay_mode"], "TECHNICAL")
+                saved = service.save_current_recording()
+                self.assertTrue(saved["media"]["recording_saved"])
+                self.assertTrue((root / "rec-test-session" / "states.npz").is_file())
+            finally:
+                service.close()
+
+    def test_planning_rejection_creates_non_physics_session_visualization(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = __import__("pathlib").Path(directory) / "recordings"
+            service = MuJoCoValidationService(recordings_root=root)
+            try:
+                summary = service.record_planning_rejection(
+                    {
+                        "job_id": "grasp-rejected-width-test",
+                        "status": "PLANNING_REJECTED",
+                        "error_code": "WIDTH_LIMIT",
+                        "visualization_request": {
+                            "required_grasp_width_m": 0.095,
+                            "maximum_gripper_width_m": 0.08,
+                            "workspace_boundary": "PANDA_CONFIG",
+                        },
+                    },
+                    b"jpeg-preview",
+                )
+                self.assertEqual(summary["kind"], "PLANNING_REJECTED_VISUALIZATION")
+                self.assertFalse(root.exists())
+                history = service.session_history()
+                self.assertEqual(len(history["visualization_history"]), 1)
+                opened = service.open_recording(summary["recording_id"])
+                self.assertTrue(opened["media"]["visualization_available"])
+                self.assertFalse(opened["media"]["replay_available"])
+                self.assertIsNone(opened["playback"])
+                saved = service.save_current_recording()
+                self.assertTrue(saved["media"]["recording_saved"])
+                self.assertTrue((root / summary["recording_id"] / "preview.jpg").is_file())
+                restored_service = MuJoCoValidationService(recordings_root=root)
+                try:
+                    restored = restored_service.open_recording(summary["recording_id"], saved=True)
+                    self.assertTrue(restored["media"]["visualization_available"])
+                    self.assertEqual(restored["recording"]["rejection_reason"], "WIDTH_LIMIT")
+                finally:
+                    restored_service.close()
+            finally:
+                service.close()
+
 
 class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
     def test_dynamic_contact_lifts_target_without_pose_binding(self) -> None:
@@ -279,6 +381,41 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(result.lift_height_m, 0.08)
         self.assertFalse(result.invalid_table_collision)
         self.assertTrue(result.stable_window_passed)
+        recording = backend.recording
+        self.assertIsNotNone(recording)
+        assert recording is not None
+        self.assertIsNone(recording.saved_path)
+        self.assertGreater(len(recording.timestamps), 300)
+        self.assertAlmostEqual(recording.sample_hz, 60.0)
+        self.assertEqual(recording.qpos.shape[0], len(recording.timestamps))
+        self.assertEqual(recording.qvel.shape[0], len(recording.timestamps))
+        self.assertEqual(recording.target_velocities.shape[1], 6)
+        self.assertIn("PHASE_STARTED", {event.name for event in recording.events})
+        with tempfile.TemporaryDirectory() as directory:
+            root = __import__("pathlib").Path(directory)
+            self.assertEqual(list(root.iterdir()), [])
+            save_recording(recording, root)
+            self.assertTrue((root / recording.recording_id / "manifest.json").is_file())
+            restored = load_recording(recording.recording_id, root)
+            np.testing.assert_allclose(restored.qpos, recording.qpos)
+            self.assertEqual(restored.result.state, SimulationState.SUCCESS)
+
+        # State restoration and camera changes must not advance physics.
+        playback = RecordingPlaybackRenderer(recording, CameraDirector(), width=320, height=180)
+        original_step = __import__("mujoco").mj_step
+        try:
+            __import__("mujoco").mj_step = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("playback called mj_step")
+            )
+            first, first_telemetry = playback.render_at(0.0)
+            last, last_telemetry = playback.render_at(recording.duration_s)
+        finally:
+            __import__("mujoco").mj_step = original_step
+            playback.close()
+        self.assertGreater(len(first), 100)
+        self.assertGreater(len(last), 100)
+        self.assertEqual(first_telemetry["playback_source"], "RECORDED_MUJOCO_STATE")
+        self.assertEqual(last_telemetry["robot_state"], "SUCCESS")
 
     def test_target_offset_stress_animates_physical_failure(self) -> None:
         request = ValidationRequest.from_grasp_plan(
@@ -306,6 +443,9 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertIn(result.reason, {"Lift Failed", "Collision", "Stability Failed"})
         self.assertIn("LIFT", states)
         self.assertEqual(states[-1], "FAILED")
+        self.assertIsNotNone(backend.recording)
+        self.assertEqual(backend.recording.result.state, SimulationState.FAILED)
+        self.assertEqual(backend.recording.validation_states[-1], "FAILED")
         self.assertGreater(len(frames[-1]), 100)
         decoded = cv2.imdecode(np.frombuffer(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
         self.assertIsNotNone(decoded)
