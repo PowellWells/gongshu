@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 import sys
 import threading
@@ -13,6 +14,8 @@ from types import ModuleType
 
 import cv2
 import numpy as np
+from skimage.filters import gaussian
+from skimage.transform import resize
 import torch
 
 from vision2grasp._vendor.grconvnet import GenerativeResnet, GraspModel, ResidualBlock
@@ -21,6 +24,9 @@ from vision2grasp.spatial_perception import SpatialObservation
 from vision2grasp.target_perception import TargetSceneSnapshot
 
 from .contracts import GraspMaps, GraspStage
+
+
+logger = logging.getLogger(__name__)
 
 
 UPSTREAM_CODE_REVISION = "183c6f68c44c1c7ff0f07707e2db6fcfd6840d2d"
@@ -122,14 +128,32 @@ class GRConvNetDetector:
             if self._device.type == "cuda":
                 torch.cuda.synchronize(self._device)
             inference_time = time.perf_counter() - started
-            quality = position.detach().float().cpu().numpy().squeeze()
-            angle = (
+            raw_quality = position.detach().float().cpu().numpy().squeeze()
+            raw_angle = (
                 torch.atan2(sine, cosine).mul(0.5).detach().float().cpu().numpy().squeeze()
             )
-            width_px = width.detach().float().cpu().numpy().squeeze() * 150.0
-            quality = cv2.GaussianBlur(quality, (0, 0), 2.0)
-            angle = cv2.GaussianBlur(angle, (0, 0), 2.0)
-            width_px = cv2.GaussianBlur(width_px, (0, 0), 1.0)
+            raw_width = width.detach().float().cpu().numpy().squeeze()
+            # Keep the pinned upstream inference convention. Training labels
+            # are divided by 112 for a 224px input, while the official
+            # postprocessor deliberately restores with the historical x150.
+            model_width_px = raw_width * 150.0
+            quality = gaussian(raw_quality, 2.0, preserve_range=True).astype(np.float32)
+            angle = gaussian(raw_angle, 2.0, preserve_range=True).astype(np.float32)
+            width_px = gaussian(model_width_px, 1.0, preserve_range=True).astype(np.float32)
+            logger.debug(
+                "GRConvNet output diagnostics %s",
+                {
+                    "raw_quality_range": _finite_range(raw_quality),
+                    "postprocessed_quality_range": _finite_range(quality),
+                    "raw_width_head_range": _finite_range(raw_width),
+                    "official_width_scale": 150.0,
+                    "training_label_inverse_scale": self.config.input_size / 2.0,
+                    "model_space_width_px_range": _finite_range(width_px),
+                    "raw_angle_range_rad": _finite_range(raw_angle),
+                    "postprocessed_angle_range_rad": _finite_range(angle),
+                    "crop_restore_scale": (crop[2] - crop[0]) / float(self.config.input_size),
+                },
+            )
             return self._restore_maps(
                 snapshot,
                 crop,
@@ -217,16 +241,41 @@ class GRConvNetDetector:
         depth_canvas[invalid_depth] = target_depth
 
         size = self.config.input_size
-        rgb = cv2.resize(rgb_canvas, (size, size), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
-        depth = cv2.resize(depth_canvas, (size, size), interpolation=cv2.INTER_LINEAR).astype(np.float32)
-        mask = cv2.resize(mask_canvas, (size, size), interpolation=cv2.INTER_NEAREST).astype(bool)
-        # Suppress neighbouring objects while retaining the checkpoint's
-        # original RGB-D normalization convention.
-        rgb[~mask] = 0.0
-        depth[~mask] = target_depth
+        # Pinned JacquardDataset ordering at upstream commit 183c6f68:
+        # depth is zero-centred/clipped before resize; RGB is resized before
+        # /255 and global zero-centring. The target mask is not an input
+        # channel and must not suppress the RGB-D context seen in training.
+        depth_normalized = np.clip(
+            depth_canvas - float(np.mean(depth_canvas)), -1.0, 1.0
+        ).astype(np.float32)
+        depth = resize(
+            depth_normalized,
+            (size, size),
+            preserve_range=True,
+        ).astype(np.float32)
+        rgb = resize(
+            rgb_canvas,
+            (size, size, 3),
+            preserve_range=True,
+        ).astype(np.uint8)
+        rgb = rgb.astype(np.float32) / 255.0
         rgb -= float(np.mean(rgb))
-        depth = np.clip(depth - float(np.mean(depth)), -1.0, 1.0)
         channels = np.concatenate((depth[None, ...], np.moveaxis(rgb, 2, 0)), axis=0)
+        logger.debug(
+            "GRConvNet input diagnostics %s",
+            {
+                "rgb_crop": _array_stats(rgb_canvas),
+                "depth_crop": _array_stats(depth_canvas),
+                "target_mask_fraction": float(np.mean(mask_canvas.astype(bool))),
+                "invalid_depth_fill_m": target_depth,
+                "normalized_rgb": _array_stats(rgb),
+                "normalized_depth": _array_stats(depth),
+                "model_input_shape": [1, 4, size, size],
+                "model_input_channel_order": ["depth", "red", "green", "blue"],
+                "tensor_dtype": "float32",
+                "preprocessing": "PINNED_UPSTREAM_JACQUARD_SAME_TARGET_CROP",
+            },
+        )
         return torch.from_numpy(channels[None, ...].astype(np.float32)), crop
 
     def _restore_maps(
@@ -336,3 +385,24 @@ class GRConvNetDetector:
                     sys.modules.pop(name, None)
                 else:
                     sys.modules[name] = module
+
+
+def _finite_range(values: np.ndarray) -> list[float]:
+    finite = np.asarray(values)[np.isfinite(values)]
+    if finite.size == 0:
+        return []
+    return [float(np.min(finite)), float(np.max(finite))]
+
+
+def _array_stats(values: np.ndarray) -> dict[str, object]:
+    finite = np.asarray(values)[np.isfinite(values)]
+    if finite.size == 0:
+        return {"shape": list(values.shape), "dtype": str(values.dtype), "finite": 0}
+    return {
+        "shape": list(values.shape),
+        "dtype": str(values.dtype),
+        "min": float(np.min(finite)),
+        "max": float(np.max(finite)),
+        "mean": float(np.mean(finite)),
+        "finite": int(finite.size),
+    }

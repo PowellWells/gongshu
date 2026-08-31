@@ -70,6 +70,21 @@
     SPATIAL_ANALYSIS_FAILED: "空间分析失败 SPATIAL ERROR",
   });
 
+  const GRASP_REJECTION_MESSAGES = Object.freeze({
+    LOW_GRASP_QUALITY: "抓取置信度不足",
+    GRIPPER_TOO_NARROW: "预测夹爪开口小于最小宽度",
+    GRIPPER_TOO_WIDE: "目标所需开口超过夹爪最大宽度",
+    TARGET_EDGE: "候选过于接近目标边缘",
+    INVALID_DEPTH: "候选局部深度无效",
+    NO_VALID_CANDIDATE: "没有有效抓取候选",
+  });
+
+  function graspRejectionLabel(code, mode = "RESEARCH") {
+    const reasons = String(code || "NO_VALID_CANDIDATE").split("+").filter(Boolean);
+    if (mode !== "DEMO") return reasons.join(" + ");
+    return reasons.map((reason) => GRASP_REJECTION_MESSAGES[reason] || reason).join("；");
+  }
+
   const byId = (id) => document.getElementById(id);
   const els = {
     pipelineBadge: byId("pipelineBadge"),
@@ -1249,6 +1264,7 @@
       return;
     }
     if (state.status === "PLANNING_REJECTED") {
+      const rejectionLabel = graspRejectionLabel(state.error_code, state.mode);
       if (state.media?.overlay_available) {
         setGraspLayer("candidates");
         els.graspMedia.hidden = false;
@@ -1265,8 +1281,8 @@
       els.graspQualityValue.textContent = "NOT AVAILABLE";
       els.graspApproachValue.textContent = "NOT AVAILABLE";
       els.graspFrameValue.textContent = "NOT AVAILABLE";
-      els.graspDetail.textContent = `${state.error_code || "NO_VALID_CANDIDATE"} · ${state.rejected_count} 个真实候选被过滤；VisualizationRequest 已生成`;
-      els.graspFooter.textContent = `PLANNING_REJECTED · ${state.error_code || "NO_VALID_CANDIDATE"}`;
+      els.graspDetail.textContent = `${rejectionLabel} · ${state.rejected_count} 个真实候选被过滤；VisualizationRequest 已生成`;
+      els.graspFooter.textContent = `PLANNING_REJECTED · ${rejectionLabel}`;
       updateActionButtons();
       return;
     }
@@ -1344,7 +1360,7 @@
       if (state.status === "GRASP_READY") {
         showNotice("抓取规划完成：真实 Top-K 已过滤并选出 Best Executable Grasp。", "success");
       } else if (state.status === "PLANNING_REJECTED") {
-        showNotice(`规划拒绝：${state.error_code || "NO_VALID_CANDIDATE"}；候选诊断已保留。`, "error");
+        showNotice(`规划拒绝：${graspRejectionLabel(state.error_code, state.mode)}；候选诊断已保留。`, "error");
       } else {
         showNotice(`抓取规划错误：${state.error_code || "GRASP_PLANNING_FAILED"}`, "error");
       }

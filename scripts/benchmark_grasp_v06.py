@@ -114,6 +114,8 @@ def run_benchmark(image_path: Path, stable_runs: int, device: str) -> dict[str, 
         "rejection_reason": representative.rejection_reason,
         "candidate_count": len(representative.candidates),
         "executable_count": sum(item.executable for item in representative.candidates),
+        "maps": representative.maps.public_metadata(),
+        "top_k": [candidate.public_metadata() for candidate in representative.candidates],
         "best_candidate_id": (
             representative.plan.best_candidate_id if representative.plan is not None else None
         ),

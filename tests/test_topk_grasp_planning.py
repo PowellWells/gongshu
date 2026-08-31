@@ -18,6 +18,7 @@ from vision2grasp.contracts import CameraIntrinsics, RGBFrame
 from vision2grasp.grasp_planning import (
     GRCONVNET_MODEL_ASSET,
     GRCONVNET_PROJECT_COMPATIBLE_PATHS,
+    GRConvNetDetector,
     GraspMaps,
     GraspPlanningService,
     PixelWiseTopKGraspPlanner,
@@ -155,7 +156,7 @@ class TopKPlannerTests(unittest.TestCase):
         self.assertEqual(len(outcome.candidates), 5)
         rejected_best_q = max(outcome.candidates, key=lambda candidate: candidate.quality_score)
         self.assertFalse(rejected_best_q.executable)
-        self.assertIn("GRIPPER_INCOMPATIBLE", rejected_best_q.rejection_reasons)
+        self.assertIn("GRIPPER_TOO_WIDE", rejected_best_q.rejection_reasons)
         self.assertIsNotNone(outcome.plan)
         assert outcome.plan is not None
         self.assertNotEqual(outcome.plan.best_candidate_id, rejected_best_q.candidate_id)
@@ -190,18 +191,41 @@ class TopKPlannerTests(unittest.TestCase):
             all("INSUFFICIENT_GEOMETRY" in item.rejection_reasons for item in outcome.candidates)
         )
 
-    def test_width_limit_is_final_reason_only_when_every_candidate_is_incompatible(self) -> None:
+    def test_too_wide_is_final_reason_only_when_every_candidate_is_too_wide(self) -> None:
         planner = PixelWiseTopKGraspPlanner(
             FakeMapDetector((100.0, 100.0, 100.0, 100.0, 100.0)),
             TopKGraspPlannerConfig(top_k=5, minimum_mask_margin_ratio=0.0),
         )
         outcome = planner.plan(make_observation(), make_snapshot())
         self.assertFalse(outcome.ready)
-        self.assertEqual(outcome.rejection_reason, "WIDTH_LIMIT")
+        self.assertEqual(outcome.rejection_reason, "GRIPPER_TOO_WIDE")
         self.assertTrue(all(not candidate.executable for candidate in outcome.candidates))
         request = outcome.visualization_request()
         self.assertEqual(request["planning_status"], "PLANNING_REJECTED")
         self.assertEqual(request["candidate_count"], 5)
+
+    def test_low_quality_and_too_narrow_are_both_preserved_in_summary(self) -> None:
+        planner = PixelWiseTopKGraspPlanner(
+            FakeMapDetector((0.1, 0.1, 0.1, 0.1, 0.1)),
+            TopKGraspPlannerConfig(
+                top_k=5,
+                minimum_quality=1.0,
+                minimum_mask_margin_ratio=0.0,
+            ),
+        )
+        outcome = planner.plan(make_observation(), make_snapshot())
+        self.assertFalse(outcome.ready)
+        self.assertEqual(
+            outcome.rejection_reason,
+            "LOW_GRASP_QUALITY+GRIPPER_TOO_NARROW",
+        )
+        self.assertTrue(
+            all(
+                candidate.rejection_reasons
+                == ("LOW_GRASP_QUALITY", "GRIPPER_TOO_NARROW")
+                for candidate in outcome.candidates
+            )
+        )
 
     def test_research_and_demo_use_identical_maps_and_candidates(self) -> None:
         detector = FakeMapDetector()
@@ -218,6 +242,61 @@ class TopKPlannerTests(unittest.TestCase):
         self.assertEqual(research.plan.best_candidate_id, demo.plan.best_candidate_id)
         self.assertFalse(research.maps.model_was_ready)
         self.assertTrue(demo.maps.model_was_ready)
+
+
+class GRConvNetPreprocessingContractTests(unittest.TestCase):
+    def test_upstream_preprocessing_keeps_rgbd_context_and_channel_order(self) -> None:
+        height = width = 100
+        rgb = np.empty((height, width, 3), dtype=np.uint8)
+        rgb[:] = (220, 20, 30)
+        rgb[20:80, 20:80] = (40, 80, 230)
+        mask = np.zeros((height, width), dtype=np.bool_)
+        mask[20:80, 20:80] = True
+        frame = RGBFrame(72, 13.0, "preprocess-contract", rgb)
+        target = TargetInstance(
+            instance_id="target-72-01",
+            mask=mask,
+            bbox_xyxy=(20.0, 20.0, 80.0, 80.0),
+            centroid_2d=(49.5, 49.5),
+            source_frame_id=72,
+            source_timestamp_s=13.0,
+        )
+        snapshot = TargetSceneSnapshot("snapshot-72", frame, target)
+        depth = np.full((height, width), 0.9, dtype=np.float32)
+        depth[20:80, 20:80] = 0.7
+        base = make_observation(depth_value=0.7)
+        observation = replace(
+            base,
+            snapshot_id=snapshot.snapshot_id,
+            geometry_chain_id=snapshot.geometry_chain_id,
+            source_frame_id=frame.frame_id,
+            source_timestamp_s=frame.timestamp_s,
+            target_instance_id=target.instance_id,
+            depth_frame=DepthFrame(
+                source_frame_id=frame.frame_id,
+                source_timestamp_s=frame.timestamp_s,
+                values=depth,
+                source=DepthSource.RGBD,
+                native_mode=DepthMode.METRIC,
+            ),
+            target_depth=TargetDepth(0.7, 1.0, 1.0, 3600, 3600),
+        )
+        detector = GRConvNetDetector()
+        with self.assertLogs(
+            "vision2grasp.grasp_planning.detector", level="DEBUG"
+        ) as captured:
+            tensor, crop = detector._prepare_input(snapshot, observation)
+
+        self.assertEqual(crop, (9, 9, 90, 90))
+        self.assertEqual(tuple(tensor.shape), (1, 4, 224, 224))
+        self.assertEqual(tensor.dtype, __import__("torch").float32)
+        values = tensor.numpy()[0]
+        # Context remains present: red dominates outside the target while blue
+        # dominates inside it. The first channel is numeric normalized depth.
+        self.assertGreater(values[1, 15, 112], values[3, 15, 112])
+        self.assertGreater(values[3, 112, 112], values[1, 112, 112])
+        self.assertGreater(values[0, 15, 112], values[0, 112, 112])
+        self.assertIn("model_input_channel_order", " ".join(captured.output))
 
 
 class GraspPlanningJobTests(unittest.TestCase):

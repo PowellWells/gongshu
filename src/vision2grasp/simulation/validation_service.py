@@ -304,7 +304,16 @@ class MuJoCoValidationService:
         """Keep a non-physics rejection visualization in this process session only."""
 
         reason = str(metadata.get("error_code") or "NO_VALID_CANDIDATE")
-        allowed = {"WIDTH_LIMIT", "OUT_OF_REACH", "ABNORMAL_SCALE", "LOW_GEOMETRY_CONFIDENCE"}
+        allowed = {
+            "WIDTH_LIMIT",  # Legacy session/import compatibility; planner no longer emits it.
+            "GRIPPER_TOO_NARROW",
+            "GRIPPER_TOO_WIDE",
+            "LOW_GRASP_QUALITY+GRIPPER_TOO_NARROW",
+            "LOW_GRASP_QUALITY+GRIPPER_TOO_WIDE",
+            "OUT_OF_REACH",
+            "ABNORMAL_SCALE",
+            "LOW_GEOMETRY_CONFIDENCE",
+        }
         if reason not in allowed or not preview_jpeg:
             return None
         job_id = str(metadata.get("job_id") or uuid.uuid4().hex)

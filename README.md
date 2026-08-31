@@ -69,7 +69,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 与 GR-ConvNet 各自使用 `Release Bundle → artifacts/models → 用户级 Cache → 官方下载` resolver，并在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 indoor metric Small 权重，保持 CPU persistent worker、`518` 输入尺寸和 lazy load。v0.6 使用官方 `skumra/robotic-grasping` Jacquard RGB-D GR-ConvNet3 checkpoint（revision `epoch_48_iou_0.93`，SHA-256 `adfb2cbb…`，BSD-3-Clause），`224×224` 目标感知 crop、AUTO CUDA/CPU 与进程内持久模型。模型解析、下载、校验、加载或推理失败会返回真实错误，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
+模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 与 GR-ConvNet 各自使用 `Release Bundle → artifacts/models → 用户级 Cache → 官方下载` resolver，并在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 indoor metric Small 权重，保持 CPU persistent worker、`518` 输入尺寸和 lazy load。v0.6 使用官方 `skumra/robotic-grasping` Jacquard RGB-D GR-ConvNet3 checkpoint（revision `epoch_48_iou_0.93`，SHA-256 `adfb2cbb…`，BSD-3-Clause），`224×224` 目标感知 crop、上游 Jacquard RGB-D normalization、AUTO CUDA/CPU 与进程内持久模型；目标 Mask 只约束候选提取，不再擦除模型输入中的真实 RGB-D 上下文。模型解析、下载、校验、加载或推理失败会返回真实错误，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 ## 启动
 

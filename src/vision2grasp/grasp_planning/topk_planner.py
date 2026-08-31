@@ -240,8 +240,10 @@ class PixelWiseTopKGraspPlanner:
             reasons.append("INVALID_DEPTH_SCALE")
         if float(np.max(extents)) > self.config.maximum_object_extent_m:
             reasons.append("ABNORMAL_SCALE")
-        if not self.config.minimum_gripper_width_m <= width_m <= self.config.maximum_gripper_width_m:
-            reasons.append("GRIPPER_INCOMPATIBLE")
+        if width_m < self.config.minimum_gripper_width_m:
+            reasons.append("GRIPPER_TOO_NARROW")
+        elif width_m > self.config.maximum_gripper_width_m:
+            reasons.append("GRIPPER_TOO_WIDE")
         if confidence.value < self.config.minimum_geometry_confidence:
             reasons.append("LOW_GEOMETRY_CONFIDENCE")
         if observation.target_point_cloud.shape[0] < self.config.minimum_points:
@@ -374,11 +376,21 @@ class PixelWiseTopKGraspPlanner:
     def _final_rejection_reason(candidates: tuple[GraspCandidate, ...]) -> str:
         if not candidates:
             return "NO_VALID_CANDIDATE"
-        if all(
-            "GRIPPER_INCOMPATIBLE" in candidate.rejection_reasons
-            for candidate in candidates
-        ):
-            return "WIDTH_LIMIT"
+        all_low_quality = all(
+            "LOW_GRASP_QUALITY" in candidate.rejection_reasons for candidate in candidates
+        )
+        width_reason = next(
+            (
+                reason
+                for reason in ("GRIPPER_TOO_NARROW", "GRIPPER_TOO_WIDE")
+                if all(reason in candidate.rejection_reasons for candidate in candidates)
+            ),
+            None,
+        )
+        if all_low_quality and width_reason is not None:
+            return f"LOW_GRASP_QUALITY+{width_reason}"
+        if width_reason is not None:
+            return width_reason
         reasons = [reason for candidate in candidates for reason in candidate.rejection_reasons]
         priorities = (
             "ABNORMAL_SCALE",

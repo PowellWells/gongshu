@@ -14,8 +14,13 @@
 The official checkpoint is a legacy `torch.save(model)` artifact. It is loaded
 only after exact size and SHA-256 verification; its state dictionary is then
 copied into the pinned vendored architecture. The network consumes a 224x224
-target-aware RGB-D crop and produces real pixel-wise quality, angle, and width
-maps. Network quality is an uncalibrated grasp score, not a success probability.
+target-aware RGB-D crop using the upstream Jacquard normalization order and
+produces real pixel-wise quality, angle, and width maps. The target mask gates
+candidate extraction but is not used to erase RGB-D context before inference.
+Network quality is an uncalibrated grasp score, not a success probability.
+
+The upstream-compatible resize and Gaussian postprocessing use `scikit-image`
+(BSD-3-Clause). It is a runtime dependency, not vendored source.
 
 ## Depth Anything V2 Metric Indoor Small
 

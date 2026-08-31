@@ -326,7 +326,7 @@ class MuJoCoValidationStateTests(unittest.TestCase):
                     {
                         "job_id": "grasp-rejected-width-test",
                         "status": "PLANNING_REJECTED",
-                        "error_code": "WIDTH_LIMIT",
+                        "error_code": "GRIPPER_TOO_WIDE",
                         "visualization_request": {
                             "required_grasp_width_m": 0.095,
                             "maximum_gripper_width_m": 0.08,
@@ -350,7 +350,10 @@ class MuJoCoValidationStateTests(unittest.TestCase):
                 try:
                     restored = restored_service.open_recording(summary["recording_id"], saved=True)
                     self.assertTrue(restored["media"]["visualization_available"])
-                    self.assertEqual(restored["recording"]["rejection_reason"], "WIDTH_LIMIT")
+                    self.assertEqual(
+                        restored["recording"]["rejection_reason"],
+                        "GRIPPER_TOO_WIDE",
+                    )
                 finally:
                     restored_service.close()
             finally:
