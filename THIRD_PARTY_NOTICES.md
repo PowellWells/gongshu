@@ -1,5 +1,22 @@
 # Third-party model and runtime notices
 
+## GR-ConvNet Jacquard RGB-D
+
+- Official code and checkpoint repository: <https://github.com/skumra/robotic-grasping>
+- Pinned code commit: `183c6f68c44c1c7ff0f07707e2db6fcfd6840d2d`
+- Vendored inference architecture: `src/vision2grasp/_vendor/grconvnet`
+- Checkpoint: `jacquard-rgbd-grconvnet3-drop0-ch32/epoch_48_iou_0.93`
+- Size: `7,661,004` bytes
+- SHA-256: `adfb2cbbb8df2708a732e12ddc4db114f3ec399ffb5d403ca75c5b5b9e769171`
+- License: BSD-3-Clause. The vendored license is at
+  `src/vision2grasp/_vendor/grconvnet/LICENSE`.
+
+The official checkpoint is a legacy `torch.save(model)` artifact. It is loaded
+only after exact size and SHA-256 verification; its state dictionary is then
+copied into the pinned vendored architecture. The network consumes a 224x224
+target-aware RGB-D crop and produces real pixel-wise quality, angle, and width
+maps. Network quality is an uncalibrated grasp score, not a success probability.
+
 ## Depth Anything V2 Metric Indoor Small
 
 - Official code: <https://github.com/DepthAnything/Depth-Anything-V2>

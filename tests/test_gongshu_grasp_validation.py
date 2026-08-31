@@ -138,8 +138,8 @@ class GeometricGraspPlanningTests(unittest.TestCase):
         self.assertTrue(0.01 <= plan.gripper_width <= 0.08)
         self.assertEqual(plan.quality_score, max(candidate.quality_score for candidate in candidates))
         encoded = json.dumps(plan.public_metadata())
-        self.assertIn("gongshu.grasp-plan/v1", encoded)
-        self.assertIn("SIMULATION_ONLY", encoded)
+        self.assertIn("gongshu.grasp-plan/v2", encoded)
+        self.assertIn("ROBOT_INDEPENDENT_CAMERA_FRAME", encoded)
 
     def test_abnormal_scale_and_width_limit_fail_without_clamping(self) -> None:
         with self.assertRaises(AbnormalScaleError):
@@ -151,7 +151,11 @@ class GeometricGraspPlanningTests(unittest.TestCase):
     def test_service_association_and_real_overlay(self) -> None:
         service = GraspPlanningService()
         state = service.plan(make_observation(), make_snapshot())
-        self.assertEqual(state["status"], "READY")
+        deadline = time.monotonic() + 2.0
+        while state["status"] == "PLANNING" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            state = service.snapshot()
+        self.assertEqual(state["status"], "GRASP_READY")
         self.assertTrue(state["media"]["overlay_available"])
         self.assertGreater(len(service.overlay_jpeg() or b""), 100)
 

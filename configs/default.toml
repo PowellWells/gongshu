@@ -120,15 +120,21 @@ spatial_computing_warning_s = 5.0
 spatial_computing_timeout_s = 30.0
 
 [gongshu_grasp_planning]
-strategy = "geometric_pca_top_down"
+strategy = "pixel_wise_topk_antipodal"
+backend = "grconvnet_jacquard_rgbd"
+device = "auto"
+input_size = 224
+top_k = 8
+minimum_quality = 0.20
 minimum_points = 30
 extent_lower_quantile = 0.02
 extent_upper_quantile = 0.98
-minimum_gripper_width_m = 0.01
-maximum_gripper_width_m = 0.08
-width_clearance_m = 0.008
 maximum_object_extent_m = 0.35
+minimum_valid_depth_ratio = 0.50
+minimum_geometry_confidence = 0.35
+minimum_mask_margin_ratio = 0.025
 point_support_reference = 1000
+crop_margin = 1.35
 
 [gongshu_validation]
 scene_transform = "NORMALIZED_VALIDATION_SCENE"

@@ -71,6 +71,13 @@
           <option value="manual">手动固定 Manual Pin</option>
         </select>
       </label>
+      <label class="control-field grasp-mode-field">
+        <span>规划模式 Planning Mode</span>
+        <select id="graspModeSelect">
+          <option value="RESEARCH">研究 Research</option>
+          <option value="DEMO">演示 Demo</option>
+        </select>
+      </label>
       <button id="analyzeTargetsButton" class="analyze-targets-button" type="button" disabled>
         <span>分析目标</span><small>Analyze Targets</small>
       </button>
@@ -170,6 +177,12 @@
           </header>
           <div class="workspace-view-stage pending-stage">
             <img id="graspMedia" class="workspace-media" alt="真实空间结果驱动的抓取规划可视化" hidden />
+            <div id="graspLayerControls" class="grasp-layer-controls" hidden>
+              <button type="button" data-grasp-layer="quality">Quality</button>
+              <button type="button" data-grasp-layer="angle">Angle</button>
+              <button type="button" data-grasp-layer="width">Width</button>
+              <button type="button" data-grasp-layer="candidates" class="is-active">Candidates</button>
+            </div>
             <div id="graspEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 7v15l7 7v10M34 7v15l-7 7v10M10 7h28"/><path d="M18 39h12"/></svg>
               <strong>等待抓取规划 WAITING</strong>
@@ -178,6 +191,8 @@
             <div id="graspPendingOverlay" class="pending-overlay" hidden>
               <strong id="graspProgressTitle">抓取规划 Grasp Planning</strong>
               <span id="graspProgressDetail">等待规划 WAITING</span>
+              <span id="graspElapsed">Elapsed —</span>
+              <span id="graspEta">ETA Estimating...</span>
             </div>
           </div>
           <footer class="workspace-view-footer"><span>输出接口 GraspPlan</span><strong id="graspFooter">NOT AVAILABLE</strong></footer>

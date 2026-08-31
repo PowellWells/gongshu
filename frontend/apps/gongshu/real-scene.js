@@ -4,7 +4,7 @@
   const CAMERA_SCHEMA_VERSION = "vision2grasp.camera/v1";
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
-  const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning/v1";
+  const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning-job/v2";
   const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v1";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
@@ -78,6 +78,7 @@
     conditionSelect: byId("conditionSelect"),
     robotSelect: byId("robotSelect"),
     viewModeSelect: byId("viewModeSelect"),
+    graspModeSelect: byId("graspModeSelect"),
     analyzeTargetsButton: byId("analyzeTargetsButton"),
     startGraspButton: byId("startGraspButton"),
     startGraspLabel: byId("startGraspLabel"),
@@ -125,6 +126,9 @@
     graspPendingOverlay: byId("graspPendingOverlay"),
     graspProgressTitle: byId("graspProgressTitle"),
     graspProgressDetail: byId("graspProgressDetail"),
+    graspElapsed: byId("graspElapsed"),
+    graspEta: byId("graspEta"),
+    graspLayerControls: byId("graspLayerControls"),
     graspFooter: byId("graspFooter"),
     simulationState: byId("simulationState"),
     simulationMedia: byId("simulationMedia"),
@@ -213,6 +217,8 @@
   let spatialAnalysisRunning = false;
   let activeSpatialJobId = null;
   let graspPlanningRunning = false;
+  let activeGraspJobId = null;
+  let graspLayer = "candidates";
   let validationRunning = false;
   let validationTimer = 0;
   let simulationStreamStarted = false;
@@ -287,7 +293,7 @@
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
     const validationReady = pipeline.state === "GRASP_PLANNING"
-      && graspPlanningState?.status === "READY"
+      && graspPlanningState?.status === "GRASP_READY"
       && els.robotSelect.value === "panda"
       && !validationRunning;
     els.startValidationButton.disabled = !validationReady;
@@ -300,7 +306,7 @@
     } else if (pipeline.state === "SPATIAL_READY") {
       els.startGraspLabel.textContent = "空间感知就绪";
       els.startGraspHint.textContent = "Spatial Ready";
-    } else if (pipeline.state === "GRASP_PLANNING" && graspPlanningState?.status === "READY") {
+    } else if (pipeline.state === "GRASP_PLANNING" && graspPlanningState?.status === "GRASP_READY") {
       els.startGraspLabel.textContent = "抓取计划就绪";
       els.startGraspHint.textContent = "Grasp Ready";
     } else if (pipeline.state === "GRASP_PLANNING") {
@@ -509,6 +515,9 @@
     els.graspFrameValue.textContent = "NOT AVAILABLE";
     els.graspDetail.textContent = "真实规划结果尚不可用。";
     els.graspPendingOverlay.hidden = true;
+    els.graspLayerControls.hidden = true;
+    els.graspElapsed.textContent = "Elapsed —";
+    els.graspEta.textContent = "ETA Estimating...";
     els.simulationHud.hidden = true;
     els.simulationHudState.textContent = "WAITING";
     els.simulationCollision.textContent = "CLEAR";
@@ -526,6 +535,8 @@
     spatialAnalysisRunning = false;
     activeSpatialJobId = null;
     graspPlanningRunning = false;
+    activeGraspJobId = null;
+    graspLayer = "candidates";
     validationRunning = false;
     simulationStreamStarted = false;
     window.clearInterval(validationTimer);
@@ -1155,7 +1166,7 @@
           targetId: snapshot.target_id,
           sourceFrameId: snapshot.source_frame_id,
         });
-        showNotice("空间感知完成：同一 Scene Snapshot 的 Depth、Target Point Cloud 与 Camera Frame XYZ 已生成；流程停在 SPATIAL_READY。", "success");
+        showNotice("空间感知完成：同一 Scene Snapshot 的 Depth、Point Cloud 与 Camera Frame XYZ 已生成，正在进入真实 Top-K 抓取规划。", "success");
       } else {
         showNotice(SPATIAL_ERROR_MESSAGES[state.error_code] || "空间分析失败 SPATIAL ERROR", "error");
       }
@@ -1187,17 +1198,24 @@
     }
     graspPlanningState = state;
     const plan = state.plan;
-    if (state.status === "READY" && plan) {
+    const timing = state.timing || {};
+    const elapsed = Number(timing.total_elapsed_s);
+    els.graspElapsed.textContent = Number.isFinite(elapsed) ? `Elapsed ${elapsed.toFixed(2)} s` : "Elapsed —";
+    els.graspEta.textContent = Number.isFinite(Number(timing.eta_s))
+      ? `ETA ${Number(timing.eta_s).toFixed(1)} s`
+      : "ETA Estimating...";
+    if (state.status === "GRASP_READY" && plan) {
       if (!hasGraspPlanAssociation(spatialPerceptionState, state)) {
         throw new Error("GraspPlan 与 SpatialResult 关联不一致");
       }
-      els.graspMedia.src = `/api/grasp-planning/overlay.jpg?revision=${state.revision}`;
+      setGraspLayer(graspLayer);
       els.graspMedia.hidden = false;
       els.graspEmpty.hidden = true;
       els.graspPendingOverlay.hidden = true;
-      els.graspState.textContent = "READY";
+      els.graspLayerControls.hidden = false;
+      els.graspState.textContent = "GRASP_READY";
       els.graspState.classList.add("has-data");
-      els.graspInspectorStatus.textContent = "READY";
+      els.graspInspectorStatus.textContent = "GRASP_READY";
       els.graspValue.textContent = `${vectorLabel(plan.grasp_point_xyz)} m`;
       els.graspAngleValue.textContent = `${Number(plan.grasp_angle_deg).toFixed(1)}°`;
       els.graspWidthValue.textContent = `${(Number(plan.gripper_width) * 1000).toFixed(1)} mm`;
@@ -1205,28 +1223,83 @@
       els.graspApproachValue.textContent = vectorLabel(plan.approach_vector, 2);
       els.graspFrameValue.textContent = "相机坐标系 Camera Frame";
       const confidence = plan.confidence || {};
-      els.graspDetail.textContent = `近似空间抓取 Approx. Spatial Grasp · 启发式未校准置信度 ${Number(confidence.value || 0).toFixed(2)} · ${plan.calibration_state} · SIMULATION ONLY`;
-      els.graspFooter.textContent = `${plan.candidate_count} CANDIDATES · ${plan.target_id}`;
+      const preflight = state.preflight || {};
+      els.graspDetail.textContent = state.mode === "DEMO"
+        ? `Graspability Preflight · ${preflight.executable_candidates || 0} 个可执行候选 · 同一真实算法`
+        : `Top-K ${state.candidate_count} · Reject ${state.rejected_count} · 几何置信度 ${Number(confidence.value || 0).toFixed(2)} · Workspace Reachability UNKNOWN`;
+      els.graspFooter.textContent = `${state.executable_count} EXECUTABLE / ${state.candidate_count} TOP-K · ${plan.best_candidate_id}`;
       updateActionButtons();
       return;
     }
-    if (state.status === "FAILED") {
-      els.graspState.textContent = "FAILED";
+    if (state.status === "PLANNING_REJECTED") {
+      if (state.media?.overlay_available) {
+        setGraspLayer("candidates");
+        els.graspMedia.hidden = false;
+        els.graspEmpty.hidden = true;
+        els.graspLayerControls.hidden = false;
+      }
+      els.graspPendingOverlay.hidden = true;
+      els.graspState.textContent = "REJECTED";
       els.graspState.classList.remove("has-data");
-      els.graspInspectorStatus.textContent = "FAILED";
-      els.graspValue.textContent = "规划失败 FAILED";
+      els.graspInspectorStatus.textContent = "PLANNING_REJECTED";
+      els.graspValue.textContent = "没有可执行候选 NO EXECUTABLE GRASP";
       els.graspAngleValue.textContent = "NOT AVAILABLE";
       els.graspWidthValue.textContent = "NOT AVAILABLE";
       els.graspQualityValue.textContent = "NOT AVAILABLE";
       els.graspApproachValue.textContent = "NOT AVAILABLE";
       els.graspFrameValue.textContent = "NOT AVAILABLE";
-      els.graspDetail.textContent = `${state.error_code || "GRASP_PLANNING_FAILED"} · ${state.message || "抓取规划失败"}`;
-      els.graspFooter.textContent = state.error_code || "FAILED";
+      els.graspDetail.textContent = `${state.error_code || "NO_VALID_CANDIDATE"} · ${state.rejected_count} 个真实候选被过滤；VisualizationRequest 已生成`;
+      els.graspFooter.textContent = `PLANNING_REJECTED · ${state.error_code || "NO_VALID_CANDIDATE"}`;
+      updateActionButtons();
+      return;
+    }
+    if (state.status === "GRASP_ERROR") {
+      els.graspState.textContent = "ERROR";
+      els.graspState.classList.remove("has-data");
+      els.graspInspectorStatus.textContent = "GRASP_ERROR";
+      els.graspValue.textContent = "规划错误 ERROR";
+      [els.graspAngleValue, els.graspWidthValue, els.graspQualityValue, els.graspApproachValue, els.graspFrameValue]
+        .forEach((element) => { element.textContent = "NOT AVAILABLE"; });
+      els.graspDetail.textContent = `${state.error_code || "GRASP_PLANNING_FAILED"} · ${state.message || "抓取规划错误"}`;
+      els.graspFooter.textContent = state.error_code || "GRASP_ERROR";
       els.graspPendingOverlay.hidden = false;
-      els.graspProgressTitle.textContent = "抓取规划失败 GRASP FAILED";
+      els.graspProgressTitle.textContent = "抓取规划错误 GRASP ERROR";
       els.graspProgressDetail.textContent = state.error_code || "PLANNING ERROR";
       updateActionButtons();
+      return;
     }
+    els.graspState.textContent = state.stage || "PLANNING";
+    els.graspState.classList.remove("has-data");
+    els.graspInspectorStatus.textContent = state.stage || "PLANNING";
+    els.graspPendingOverlay.hidden = false;
+    els.graspProgressTitle.textContent = "抓取规划 Grasp Planning";
+    els.graspProgressDetail.textContent = state.stage || "QUEUED";
+    els.graspFooter.textContent = state.job_id ? `JOB ${state.job_id.slice(-8)}` : "PROCESSING";
+  }
+
+  function setGraspLayer(layer) {
+    const available = graspPlanningState?.media?.available_layers || [];
+    const selected = available.includes(layer) ? layer : "candidates";
+    graspLayer = selected;
+    els.graspLayerControls.querySelectorAll("[data-grasp-layer]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.graspLayer === selected);
+    });
+    if (available.includes(selected)) {
+      els.graspMedia.src = selected === "candidates"
+        ? `/api/grasp-planning/overlay.jpg?revision=${graspPlanningState.revision}`
+        : `/api/grasp-planning/view.jpg?layer=${encodeURIComponent(selected)}&revision=${graspPlanningState.revision}`;
+    }
+  }
+
+  async function waitForGraspJob(jobId) {
+    while (graspPlanningRunning && activeGraspJobId === jobId) {
+      await waitMilliseconds(200);
+      const state = await apiGet(`/api/grasp-planning/state?t=${Date.now()}`);
+      if (state.job_id !== jobId) throw new Error(`Grasp Job 已被替换：${jobId}`);
+      renderGraspPlanning(state);
+      if (["GRASP_READY", "PLANNING_REJECTED", "GRASP_ERROR", "CANCELLED"].includes(state.status)) return state;
+    }
+    throw new Error("Grasp Job 已取消 CANCELLED");
   }
 
   async function runGraspPlanning() {
@@ -1237,28 +1310,41 @@
     els.graspInspectorStatus.textContent = "PLANNING";
     els.graspPendingOverlay.hidden = false;
     els.graspProgressTitle.textContent = "抓取规划 Grasp Planning";
-    els.graspProgressDetail.textContent = "PCA、Top-down 与候选评分正在计算 PROCESSING";
+    els.graspProgressDetail.textContent = "真实抓取图推理与 Top-K 规划 QUEUED";
     updateActionButtons();
     try {
-      const state = await apiPost("/api/grasp-planning/plan", {
+      const initial = await apiPost("/api/grasp-planning/plan", {
         snapshot_id: spatialPerceptionState?.observation?.snapshot_id,
+        mode: els.graspModeSelect.value,
       });
+      if (!initial.job_id) throw new Error("Grasp Planning 未返回 job_id");
+      activeGraspJobId = initial.job_id;
+      renderGraspPlanning(initial);
+      const state = ["GRASP_READY", "PLANNING_REJECTED", "GRASP_ERROR", "CANCELLED"].includes(initial.status)
+        ? initial
+        : await waitForGraspJob(initial.job_id);
       renderGraspPlanning(state);
-      if (state.status === "READY") {
-        showNotice("抓取规划完成：GraspPlan 已由真实目标点云生成，等待用户启动仿真。", "success");
+      if (state.status === "GRASP_READY") {
+        showNotice("抓取规划完成：真实 Top-K 已过滤并选出 Best Executable Grasp。", "success");
+      } else if (state.status === "PLANNING_REJECTED") {
+        showNotice(`规划拒绝：${state.error_code || "NO_VALID_CANDIDATE"}；候选诊断已保留。`, "error");
       } else {
-        showNotice(`抓取规划失败：${state.error_code || "GRASP_PLANNING_FAILED"}`, "error");
+        showNotice(`抓取规划错误：${state.error_code || "GRASP_PLANNING_FAILED"}`, "error");
       }
     } catch (error) {
       renderGraspPlanning({
         schema_version: GRASP_PLANNING_SCHEMA_VERSION,
-        status: "FAILED",
+        status: "GRASP_ERROR",
+        stage: "FAILED",
         error_code: "GRASP_PLANNING_FAILED",
         message: error.message,
         plan: null,
+        timing: {},
+        media: { available_layers: [] },
       });
       showNotice(`抓取规划未完成：${error.message}`, "error");
     } finally {
+      activeGraspJobId = null;
       graspPlanningRunning = false;
       updateActionButtons();
     }
@@ -1319,7 +1405,7 @@
   async function startValidation() {
     if (
       pipeline.state !== "GRASP_PLANNING"
-      || graspPlanningState?.status !== "READY"
+      || graspPlanningState?.status !== "GRASP_READY"
       || els.robotSelect.value !== "panda"
       || validationRunning
     ) return;
@@ -1379,6 +1465,9 @@
         sourceFrameId: frame.id,
       });
       await runSpatialAnalysis();
+      if (pipeline.state === "SPATIAL_READY" && spatialPerceptionState?.observation) {
+        await runGraspPlanning();
+      }
     } catch (error) {
       updateActionButtons();
       showNotice(`无法开始空间分析：${error.message}`, "error");
@@ -1388,6 +1477,9 @@
   async function retrySpatialAnalysis() {
     if (pipeline.state !== "SPATIAL_ANALYSIS") return;
     await runSpatialAnalysis({ retry: true });
+    if (pipeline.state === "SPATIAL_READY" && spatialPerceptionState?.observation) {
+      await runGraspPlanning();
+    }
   }
 
   async function resetPipeline() {
@@ -1585,6 +1677,16 @@
     updateActionButtons();
   });
   els.viewModeSelect.addEventListener("change", () => setViewMode(els.viewModeSelect.value));
+  els.graspModeSelect.addEventListener("change", () => {
+    const label = els.graspModeSelect.value === "DEMO" ? "Demo" : "Research";
+    showNotice(`抓取规划已切换为 ${label} Mode；两种模式使用同一真实算法。`);
+  });
+  els.graspLayerControls.querySelectorAll("[data-grasp-layer]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setGraspLayer(button.dataset.graspLayer);
+    });
+  });
   els.targetOverlay.addEventListener("pointerdown", selectTargetAtPointer);
   els.analyzeTargetsButton.addEventListener("click", analyzeTargets);
   els.startGraspButton.addEventListener("click", startGrasp);

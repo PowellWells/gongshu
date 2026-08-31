@@ -126,9 +126,9 @@
   function hasGraspPlanAssociation(spatialState, graspState) {
     const observation = spatialState?.observation;
     const plan = graspState?.plan;
-    return graspState?.status === "READY"
+    return graspState?.status === "GRASP_READY"
       && Boolean(observation && plan)
-      && plan.planning_state === "READY"
+      && plan.planning_state === "GRASP_READY"
       && plan.snapshot_id === observation.snapshot_id
       && plan.source_frame_id === observation.source_frame_id
       && plan.target_id === observation.target_instance_id;

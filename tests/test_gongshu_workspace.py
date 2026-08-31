@@ -49,6 +49,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "conditionSelect",
             "robotSelect",
             "viewModeSelect",
+            "graspModeSelect",
             "analyzeTargetsButton",
             "startGraspButton",
             "targetOverlay",
@@ -73,6 +74,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "retrySpatialButton",
             "newSceneButton",
             "graspInspectorStatus",
+            "graspLayerControls",
+            "graspElapsed",
+            "graspEta",
             "graspAngleValue",
             "graspWidthValue",
             "graspQualityValue",
@@ -145,6 +149,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/spatial-perception/overview.jpg",
             "/api/grasp-planning/plan",
             "/api/grasp-planning/overlay.jpg",
+            "/api/grasp-planning/view.jpg",
             "/api/mujoco-validation/start",
             "/api/mujoco-validation/live.mjpeg",
             "/api/mujoco-validation/state",
@@ -163,11 +168,14 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("state?.total_elapsed_s", self.controller)
         self.assertIn("state?.eta?.estimated_remaining_s", self.controller)
         self.assertIn("waitForSpatialJob", self.controller)
+        self.assertIn("waitForGraspJob", self.controller)
+        self.assertIn("await runGraspPlanning();", self.controller)
+        self.assertIn('mode: els.graspModeSelect.value', self.controller)
+        self.assertIn('"GRASP_READY", "PLANNING_REJECTED", "GRASP_ERROR"', self.controller)
         self.assertIn("state.job_id !== jobId", self.controller)
         self.assertIn("monitorRestoredSpatialJob", self.controller)
         self.assertIn("bytes_downloaded", self.controller)
         self.assertNotIn("setInterval(pollSpatialAnalysisState", self.controller)
-        self.assertNotIn("await runGraspPlanning();", self.controller)
         self.assertNotIn("0–100", self.html)
         self.assertIn("请选择目标", self.html)
 

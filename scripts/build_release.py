@@ -13,6 +13,10 @@ import tempfile
 import zipfile
 
 from vision2grasp.model_assets import ModelAsset, ModelAssetResolver, sha256_file
+from vision2grasp.grasp_planning import (
+    GRCONVNET_MODEL_ASSET,
+    GRCONVNET_PROJECT_COMPATIBLE_PATHS,
+)
 from vision2grasp.spatial_perception import (
     DEPTH_MODEL_ASSET,
     DEPTH_PROJECT_COMPATIBLE_PATHS,
@@ -20,7 +24,7 @@ from vision2grasp.spatial_perception import (
 from vision2grasp.target_perception import FASTSAM_MODEL_ASSET, FastSAMModelResolver
 
 
-REQUIRED_MODELS = (FASTSAM_MODEL_ASSET, DEPTH_MODEL_ASSET)
+REQUIRED_MODELS = (FASTSAM_MODEL_ASSET, DEPTH_MODEL_ASSET, GRCONVNET_MODEL_ASSET)
 REQUIRED_SOURCE_DEPENDENCIES = (
     "cv2",
     "numpy",
@@ -70,6 +74,12 @@ def model_manifest(
                 "NETWORK_DOWNLOAD",
             ],
             DEPTH_MODEL_ASSET.key: [
+                "RELEASE_BUNDLE",
+                "PROJECT_COMPATIBLE",
+                "USER_CACHE",
+                "NETWORK_DOWNLOAD",
+            ],
+            GRCONVNET_MODEL_ASSET.key: [
                 "RELEASE_BUNDLE",
                 "PROJECT_COMPATIBLE",
                 "USER_CACHE",
@@ -162,7 +172,10 @@ def main() -> int:
     if missing:
         raise RuntimeError(f"release dependency check failed: {', '.join(missing)}")
     resolver = ModelAssetResolver(
-        project_compatible_paths=DEPTH_PROJECT_COMPATIBLE_PATHS
+        project_compatible_paths=(
+            *DEPTH_PROJECT_COMPATIBLE_PATHS,
+            *GRCONVNET_PROJECT_COMPATIBLE_PATHS,
+        )
     )
     fastsam_resolver = FastSAMModelResolver()
     models = resolve_required_models(

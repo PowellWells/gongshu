@@ -18,7 +18,7 @@ import sys
 import threading
 import tomllib
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import webbrowser
 
 import cv2
@@ -26,9 +26,11 @@ import numpy as np
 
 from vision2grasp.camera import PhoneLANConfig, PhoneLANProvider
 from vision2grasp.grasp_planning import (
-    GeometricGraspPlanner,
-    GeometricGraspPlannerConfig,
+    GRConvNetDetector,
+    GRConvNetDetectorConfig,
     GraspPlanningService,
+    PixelWiseTopKGraspPlanner,
+    TopKGraspPlannerConfig,
 )
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
@@ -128,20 +130,35 @@ def build_spatial_perception_provider(
     )
 
 
-def build_grasp_planner() -> GeometricGraspPlanner:
+def build_grasp_planner() -> PixelWiseTopKGraspPlanner:
     with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
-        config = tomllib.load(stream)["gongshu_grasp_planning"]
-    if str(config["strategy"]) != "geometric_pca_top_down":
+        document = tomllib.load(stream)
+    config = document["gongshu_grasp_planning"]
+    control = document["control"]
+    if str(config["strategy"]) != "pixel_wise_topk_antipodal":
         raise ValueError("unsupported Gongshu grasp planning strategy")
-    return GeometricGraspPlanner(
-        GeometricGraspPlannerConfig(
+    if str(config["backend"]) != "grconvnet_jacquard_rgbd":
+        raise ValueError("unsupported Gongshu grasp detector backend")
+    return PixelWiseTopKGraspPlanner(
+        GRConvNetDetector(
+            GRConvNetDetectorConfig(
+                device=str(config["device"]),
+                input_size=int(config["input_size"]),
+                crop_margin=float(config["crop_margin"]),
+            )
+        ),
+        TopKGraspPlannerConfig(
+            top_k=int(config["top_k"]),
+            minimum_quality=float(config["minimum_quality"]),
             minimum_points=int(config["minimum_points"]),
             extent_lower_quantile=float(config["extent_lower_quantile"]),
             extent_upper_quantile=float(config["extent_upper_quantile"]),
-            minimum_gripper_width_m=float(config["minimum_gripper_width_m"]),
-            maximum_gripper_width_m=float(config["maximum_gripper_width_m"]),
-            width_clearance_m=float(config["width_clearance_m"]),
+            minimum_gripper_width_m=float(control["minimum_gripper_width_m"]),
+            maximum_gripper_width_m=float(control["maximum_gripper_width_m"]),
             maximum_object_extent_m=float(config["maximum_object_extent_m"]),
+            minimum_valid_depth_ratio=float(config["minimum_valid_depth_ratio"]),
+            minimum_geometry_confidence=float(config["minimum_geometry_confidence"]),
+            minimum_mask_margin_ratio=float(config["minimum_mask_margin_ratio"]),
             point_support_reference=int(config["point_support_reference"]),
         )
     )
@@ -182,6 +199,7 @@ class Vision2GraspApp:
         *,
         phone_camera_config: PhoneLANConfig | None = None,
         spatial_provider: SpatialPerceptionProvider | None = None,
+        grasp_planner: object | None = None,
     ) -> None:
         self.camera = PhoneLANProvider(
             phone_camera_config or PhoneLANConfig(project_root=PROJECT_ROOT)
@@ -201,7 +219,7 @@ class Vision2GraspApp:
             compute_device=str(spatial_config["device"]),
             input_size=int(spatial_config["input_size"]),
         )
-        self.grasp_planning = GraspPlanningService(build_grasp_planner())
+        self.grasp_planning = GraspPlanningService(grasp_planner or build_grasp_planner())
         self.mujoco_validation = build_mujoco_validation_service()
 
     @property
@@ -270,13 +288,22 @@ class Vision2GraspApp:
         self.mujoco_validation.reset()
         return self.spatial_perception.retry()
 
-    def plan_grasp(self) -> dict[str, object]:
+    def plan_grasp(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Plan only from the immutable SpatialResult and selected snapshot."""
 
         self.mujoco_validation.reset()
+        body = request or {}
+        observation = self.spatial_perception.current_observation()
+        snapshot = self.target_perception.selected_scene_snapshot()
+        if snapshot is None:
+            raise RuntimeError("no selected Scene Snapshot is available for grasp planning")
+        requested_snapshot_id = str(body.get("snapshot_id", "")).strip()
+        if requested_snapshot_id and requested_snapshot_id != snapshot.snapshot_id:
+            raise ValueError("Grasp Planning request does not match selected Scene Snapshot")
         return self.grasp_planning.plan(
-            self.spatial_perception.current_observation(),
-            self.target_perception.selected_scene_snapshot(),
+            observation,
+            snapshot,
+            mode=str(body.get("mode", "RESEARCH")),
         )
 
     def start_validation(self) -> dict[str, object]:
@@ -460,6 +487,14 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             self._send_binary(overlay, "image/jpeg")
             return
+        if path == "/api/grasp-planning/view.jpg":
+            layer = parse_qs(urlparse(self.path).query).get("layer", ["candidates"])[0]
+            view = self.app.grasp_planning.view_jpeg(layer)
+            if view is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "grasp view not ready")
+                return
+            self._send_binary(view, "image/jpeg")
+            return
         if path == "/api/mujoco-validation/state":
             self._send_json(self.app.mujoco_validation.snapshot())
             return
@@ -556,7 +591,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.app.spatial_perception.reset())
                 return
             if path == "/api/grasp-planning/plan":
-                self._send_json(self.app.plan_grasp())
+                self._send_json(self.app.plan_grasp(body), status=HTTPStatus.ACCEPTED)
                 return
             if path == "/api/grasp-planning/reset":
                 self._send_json(self.app.grasp_planning.reset())
