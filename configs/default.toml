@@ -105,6 +105,19 @@ minimum_points = 30
 maximum_points = 4096
 outlier_mad_scale = 3.5
 minimum_depth_band = 0.02
+heartbeat_interval_s = 0.5
+download_warning_stall_s = 30.0
+download_timeout_stall_s = 120.0
+checksum_warning_s = 15.0
+checksum_timeout_s = 60.0
+model_loading_warning_s = 15.0
+model_loading_timeout_s = 60.0
+depth_inference_warning_s = 15.0
+depth_inference_timeout_s = 60.0
+point_cloud_warning_s = 5.0
+point_cloud_timeout_s = 30.0
+spatial_computing_warning_s = 5.0
+spatial_computing_timeout_s = 30.0
 
 [gongshu_grasp_planning]
 strategy = "geometric_pca_top_down"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
+from http import HTTPStatus
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -90,6 +91,14 @@ class _DepthProvider:
             native_mode=self.mode,
             inference_time_s=0.125,
         )
+
+
+class _SlowDepthProvider(_DepthProvider):
+    def infer(self, frame: RGBFrame, progress=None) -> DepthFrame:
+        if progress is not None:
+            progress(SpatialStage.DEPTH_INFERENCE, {"heartbeat": True})
+        time.sleep(0.35)
+        return super().infer(frame, progress)
 
 
 class _UnavailableDepthProvider:
@@ -357,7 +366,7 @@ class SpatialPerceptionServiceTests(unittest.TestCase):
             expected_target_instance_id=snapshot.target.instance_id,
             expected_source_timestamp_s=snapshot.frame.timestamp_s,
         )
-        self.assertEqual(mismatched["status"], "ERROR")
+        self.assertEqual(mismatched["status"], "FAILED")
         self.assertEqual(mismatched["error_code"], "FRAME_MISMATCH")
         self.assertIsNone(mismatched["observation"])
         self.assertFalse(mismatched["media"]["overview_available"])
@@ -369,7 +378,7 @@ class SpatialPerceptionServiceTests(unittest.TestCase):
             expected_target_instance_id=snapshot.target.instance_id,
             expected_source_timestamp_s=snapshot.frame.timestamp_s,
         )
-        self.assertEqual(unavailable["status"], "ERROR")
+        self.assertEqual(unavailable["status"], "FAILED")
         self.assertEqual(unavailable["error_code"], "DEPTH_UNAVAILABLE")
         self.assertIsNone(unavailable["observation"])
         self.assertIsNone(service.overview_jpeg())
@@ -552,11 +561,11 @@ class MonocularDepthIntegrationTests(unittest.TestCase):
 
 
 class SpatialPerceptionHTTPTests(unittest.TestCase):
-    def test_analyze_endpoint_uses_locked_snapshot_and_serves_real_overview(self) -> None:
+    def test_analyze_endpoint_returns_job_immediately_then_serves_ready_state(self) -> None:
         snapshot = make_snapshot(frame_id=87, timestamp_s=12.75)
         service = SpatialPerceptionService(
             MaskSpatialPerceptionProvider(
-                _DepthProvider(np.full((48, 64), 1.35, dtype=np.float32)),
+                _SlowDepthProvider(np.full((48, 64), 1.35, dtype=np.float32)),
                 NominalFOVCameraIntrinsicsProvider(),
             )
         )
@@ -570,7 +579,7 @@ class SpatialPerceptionHTTPTests(unittest.TestCase):
             spatial_perception = service
 
             def analyze_spatial(self, body: dict[str, object]) -> dict[str, object]:
-                return self.spatial_perception.analyze(
+                return self.spatial_perception.start(
                     snapshot,
                     expected_snapshot_id=str(body["snapshot_id"]),
                     expected_source_frame_id=int(body["source_frame_id"]),
@@ -594,9 +603,27 @@ class SpatialPerceptionHTTPTests(unittest.TestCase):
             method="POST",
         )
         try:
+            started = time.perf_counter()
             with urlopen(request, timeout=3) as response:
-                ready = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, HTTPStatus.ACCEPTED)
+                initial = json.loads(response.read().decode("utf-8"))
+            self.assertLess(time.perf_counter() - started, 0.25)
+            self.assertIn(initial["status"], {"QUEUED", "ANALYZING"})
+            self.assertTrue(initial["job_id"])
+            deadline = time.monotonic() + 3.0
+            ready = initial
+            while ready["status"] not in {"READY", "FAILED", "CANCELLED"}:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+                with urlopen(
+                    f"{base_url}/api/spatial-perception/state", timeout=3
+                ) as response:
+                    ready = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(ready["job_id"], initial["job_id"])
             self.assertEqual(ready["status"], "READY")
+            self.assertEqual(
+                ready["binding"]["source_frame_id"], snapshot.frame.frame_id
+            )
             with urlopen(f"{base_url}/api/spatial-perception/overview.jpg", timeout=3) as response:
                 self.assertEqual(response.headers.get_content_type(), "image/jpeg")
                 self.assertGreater(len(response.read()), 1000)

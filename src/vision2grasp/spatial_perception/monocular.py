@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import threading
@@ -30,6 +31,10 @@ UPSTREAM_CODE_SOURCE = "https://github.com/DepthAnything/Depth-Anything-V2"
 UPSTREAM_CODE_REVISION = "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf"
 MODEL_SIZE_BYTES = 99_222_290
 MODEL_SHA256 = "b782898d8a3e8be1f639de33837ed85e9b4b73e40f8f5e5cd99067588d722545"
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEPTH_PROJECT_COMPATIBLE_PATHS = (
+    _PROJECT_ROOT / "artifacts" / "models" / MODEL_FILENAME,
+)
 MODEL_FILES: dict[str, tuple[int, str]] = {
     MODEL_FILENAME: (MODEL_SIZE_BYTES, MODEL_SHA256),
 }
@@ -72,7 +77,9 @@ class MonocularDepthProvider:
         asset_resolver: ModelAssetResolver | None = None,
     ) -> None:
         self._config = config or MonocularDepthConfig()
-        self._asset_resolver = asset_resolver or ModelAssetResolver()
+        self._asset_resolver = asset_resolver or ModelAssetResolver(
+            project_compatible_paths=DEPTH_PROJECT_COMPATIBLE_PATHS
+        )
         self._load_lock = threading.Lock()
         self._model = None
         self._torch = None
@@ -88,17 +95,15 @@ class MonocularDepthProvider:
         progress: SpatialProgressCallback | None = None,
     ) -> DepthFrame:
         model_was_ready = self.model_ready
-        if not model_was_ready:
-            self._emit(progress, SpatialStage.MODEL_LOADING)
         load_started = time.perf_counter()
-        self._ensure_loaded()
+        self._ensure_loaded(progress)
         model_load_time_s = 0.0 if model_was_ready else time.perf_counter() - load_started
         assert self._model is not None
         assert self._torch is not None
 
         self._emit(
             progress,
-            SpatialStage.DEPTH_ESTIMATING,
+            SpatialStage.DEPTH_INFERENCE,
             {
                 "model_load_s": model_load_time_s,
                 "model_was_ready": model_was_ready,
@@ -140,16 +145,40 @@ class MonocularDepthProvider:
             resize_policy="OFFICIAL_LOWER_BOUND_MULTIPLE_OF_14_THEN_BILINEAR_TO_SNAPSHOT",
         )
 
-    def _ensure_loaded(self) -> None:
+    def _ensure_loaded(self, progress: SpatialProgressCallback | None = None) -> None:
         if self._model is not None:
             return
         with self._load_lock:
             if self._model is not None:
                 return
             try:
+                self._emit(
+                    progress,
+                    SpatialStage.MODEL_RESOLVING,
+                    {"cold_start": True, "model_state": "NOT_LOADED"},
+                )
+
+                def report_model_progress(
+                    stage: str,
+                    details: Mapping[str, object],
+                ) -> None:
+                    self._emit(progress, SpatialStage(stage), dict(details))
+
                 resolved = self._asset_resolver.resolve(
                     DEPTH_MODEL_ASSET,
                     allow_download=self._config.allow_download,
+                    progress=report_model_progress,
+                )
+                self._emit(
+                    progress,
+                    SpatialStage.MODEL_LOADING,
+                    {
+                        "model_location": resolved.location.value,
+                        "resolver_diagnostics": [
+                            dict(item) for item in resolved.diagnostics
+                        ],
+                        "cold_start": True,
+                    },
                 )
                 import torch
 
@@ -170,9 +199,11 @@ class MonocularDepthProvider:
                 model.to("cpu")
                 model.eval()
             except Exception as error:
-                raise DepthUnavailableError(
+                wrapped = DepthUnavailableError(
                     f"depth backend could not be loaded: {error}"
-                ) from error
+                )
+                wrapped.code = getattr(error, "code", "MODEL_LOAD_FAILED")
+                raise wrapped from error
             self._model = model
             self._torch = torch
             self._model_location = resolved.location

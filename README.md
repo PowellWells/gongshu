@@ -66,7 +66,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 保持独立的 `Release Bundle → 用户级 Cache → 联网下载` resolver，并继续使用 `VISION2GRASP_MODEL_CACHE`。两类权重都会在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 `depth_anything_v2_metric_hypersim_vits.pth`（模型 revision `3bc65d4e…`，SHA-256 `b782898d…`），固定 CPU、`518` 输入尺寸和 lazy load；失败只返回 `DEPTH_UNAVAILABLE`，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
+模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 保持独立的 `Release Bundle → artifacts/models/depth_anything_v2_metric_hypersim_vits.pth → Depth 用户级 Cache → 官方下载` resolver，并继续使用 `VISION2GRASP_MODEL_CACHE`。两类权重都会在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 `depth_anything_v2_metric_hypersim_vits.pth`（模型 revision `3bc65d4e…`，SHA-256 `b782898d…`），固定 CPU、`518` 输入尺寸和 lazy load；模型解析、下载、校验、加载或推理失败会返回对应真实错误，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 ## 启动
 

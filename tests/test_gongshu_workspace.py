@@ -140,6 +140,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/target-perception/overlay.jpg",
             "/api/target-perception/scene-snapshot.jpg",
             "/api/spatial-perception/analyze",
+            "/api/spatial-perception/retry",
             "/api/spatial-perception/state",
             "/api/spatial-perception/overview.jpg",
             "/api/grasp-planning/plan",
@@ -159,8 +160,13 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertNotIn("captureLiveFrame", self.controller)
         self.assertNotIn("canvas.toBlob", self.controller)
         self.assertIn("state?.stage_message", self.controller)
-        self.assertIn("state?.timing?.elapsed_s", self.controller)
-        self.assertIn("window.setInterval(pollSpatialAnalysisState, 180)", self.controller)
+        self.assertIn("state?.total_elapsed_s", self.controller)
+        self.assertIn("state?.eta?.estimated_remaining_s", self.controller)
+        self.assertIn("waitForSpatialJob", self.controller)
+        self.assertIn("state.job_id !== jobId", self.controller)
+        self.assertIn("monitorRestoredSpatialJob", self.controller)
+        self.assertIn("bytes_downloaded", self.controller)
+        self.assertNotIn("setInterval(pollSpatialAnalysisState", self.controller)
         self.assertNotIn("await runGraspPlanning();", self.controller)
         self.assertNotIn("0–100", self.html)
         self.assertIn("请选择目标", self.html)

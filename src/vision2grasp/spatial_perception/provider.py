@@ -70,6 +70,20 @@ class MaskSpatialPerceptionProvider:
         self._intrinsics_provider = intrinsics_provider
         self._config = config or MaskSpatialPerceptionConfig()
 
+    @property
+    def model_ready(self) -> bool:
+        return bool(getattr(self._depth_provider, "model_ready", False))
+
+    def cancel_current(self) -> None:
+        cancel = getattr(self._depth_provider, "cancel_current", None)
+        if callable(cancel):
+            cancel()
+
+    def close(self) -> None:
+        close = getattr(self._depth_provider, "close", None)
+        if callable(close):
+            close()
+
     def analyze(
         self,
         snapshot: TargetSceneSnapshot,

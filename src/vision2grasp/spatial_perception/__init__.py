@@ -15,6 +15,11 @@ from .contracts import (
     SpatialStage,
     TargetDepth,
 )
+from .depth_worker import (
+    PersistentDepthWorkerProvider,
+    SpatialWatchdogConfig,
+    SpatialWorkerTimeoutError,
+)
 from .interfaces import (
     CameraIntrinsicsCandidateProvider,
     CameraIntrinsicsProvider,
@@ -37,6 +42,7 @@ from .intrinsics import (
 )
 from .monocular import (
     DEPTH_MODEL_ASSET,
+    DEPTH_PROJECT_COMPATIBLE_PATHS,
     MODEL_FILES,
     MODEL_ID,
     MODEL_LICENSE,
@@ -51,6 +57,13 @@ from .monocular import (
 )
 from .provider import MaskSpatialPerceptionConfig, MaskSpatialPerceptionProvider
 from .service import SPATIAL_PERCEPTION_SCHEMA_VERSION, SpatialPerceptionService
+from .timing_history import (
+    TIMING_HISTORY_ENV,
+    TIMING_HISTORY_SCHEMA_VERSION,
+    SpatialTimingHistory,
+    TimingProfile,
+    default_timing_history_path,
+)
 
 __all__ = [
     "CalibrationState",
@@ -60,6 +73,7 @@ __all__ = [
     "CameraIntrinsicsCandidateProvider",
     "CameraIntrinsicsProvider",
     "DepthFrame",
+    "PersistentDepthWorkerProvider",
     "DepthCalibrationMode",
     "DepthMode",
     "DepthProvider",
@@ -67,6 +81,7 @@ __all__ = [
     "DepthUnavailableError",
     "default_camera_intrinsics_path",
     "DEPTH_MODEL_ASSET",
+    "DEPTH_PROJECT_COMPATIBLE_PATHS",
     "GeometrySanity",
     "GeometrySanityStatus",
     "INTRINSICS_SOURCE_PRIORITY",
@@ -93,9 +108,16 @@ __all__ = [
     "SpatialObservation",
     "SpatialProgressCallback",
     "SpatialStage",
+    "SpatialTimingHistory",
+    "SpatialWatchdogConfig",
+    "SpatialWorkerTimeoutError",
     "SpatialPerceptionProvider",
     "SpatialPerceptionService",
     "TargetDepth",
+    "TIMING_HISTORY_ENV",
+    "TIMING_HISTORY_SCHEMA_VERSION",
+    "TimingProfile",
+    "default_timing_history_path",
     "UPSTREAM_CODE_REVISION",
     "UPSTREAM_CODE_SOURCE",
 ]

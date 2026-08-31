@@ -9,6 +9,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import multiprocessing as mp
 import os
 from pathlib import Path
 import signal
@@ -38,14 +39,15 @@ from vision2grasp.spatial_perception import (
     MaskSpatialPerceptionProvider,
     MaskSpatialPerceptionConfig,
     MODEL_REVISION,
+    PersistentDepthWorkerProvider,
     UPSTREAM_CODE_REVISION,
     MonocularDepthConfig,
-    MonocularDepthProvider,
     NominalFOVCameraIntrinsicsProvider,
     NominalFOVIntrinsicsConfig,
     PriorityCameraIntrinsicsProvider,
     SpatialPerceptionProvider,
     SpatialPerceptionService,
+    SpatialWatchdogConfig,
 )
 from vision2grasp.target_perception import FastSAMTargetSegmenter, TargetPerceptionService
 from vision2grasp.simulation import MuJoCoValidationService
@@ -61,10 +63,35 @@ LAUNCHER_LOG_ROOT = PROJECT_ROOT / "artifacts" / "launcher"
 MAX_JSON_BODY_BYTES = 20 * 1024 * 1024
 
 
-def build_spatial_perception_provider() -> SpatialPerceptionProvider:
+def _spatial_perception_config() -> dict[str, Any]:
     with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
         document = tomllib.load(stream)
-    config = document["spatial_perception"]
+    return dict(document["spatial_perception"])
+
+
+def build_spatial_watchdog(config: dict[str, Any] | None = None) -> SpatialWatchdogConfig:
+    values = config or _spatial_perception_config()
+    return SpatialWatchdogConfig(
+        heartbeat_interval_s=float(values["heartbeat_interval_s"]),
+        download_warning_stall_s=float(values["download_warning_stall_s"]),
+        download_timeout_stall_s=float(values["download_timeout_stall_s"]),
+        checksum_warning_s=float(values["checksum_warning_s"]),
+        checksum_timeout_s=float(values["checksum_timeout_s"]),
+        model_loading_warning_s=float(values["model_loading_warning_s"]),
+        model_loading_timeout_s=float(values["model_loading_timeout_s"]),
+        depth_inference_warning_s=float(values["depth_inference_warning_s"]),
+        depth_inference_timeout_s=float(values["depth_inference_timeout_s"]),
+        point_cloud_warning_s=float(values["point_cloud_warning_s"]),
+        point_cloud_timeout_s=float(values["point_cloud_timeout_s"]),
+        spatial_computing_warning_s=float(values["spatial_computing_warning_s"]),
+        spatial_computing_timeout_s=float(values["spatial_computing_timeout_s"]),
+    )
+
+
+def build_spatial_perception_provider(
+    config: dict[str, Any] | None = None,
+) -> SpatialPerceptionProvider:
+    config = config or _spatial_perception_config()
     if str(config["backend"]) != "depth_anything_v2_metric_indoor_small":
         raise ValueError("unsupported spatial perception backend")
     if str(config["model_revision"]) != MODEL_REVISION:
@@ -72,11 +99,12 @@ def build_spatial_perception_provider() -> SpatialPerceptionProvider:
     if str(config["upstream_code_revision"]) != UPSTREAM_CODE_REVISION:
         raise ValueError("spatial perception upstream code revision does not match frozen backend")
     return MaskSpatialPerceptionProvider(
-        MonocularDepthProvider(
+        PersistentDepthWorkerProvider(
             MonocularDepthConfig(
                 device=str(config["device"]),
                 input_size=int(config["input_size"]),
-            )
+            ),
+            build_spatial_watchdog(config),
         ),
         PriorityCameraIntrinsicsProvider(
             (
@@ -162,8 +190,16 @@ class Vision2GraspApp:
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
         self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
+        spatial_config = _spatial_perception_config()
+        watchdog = build_spatial_watchdog(spatial_config)
         self.spatial_perception = SpatialPerceptionService(
-            spatial_provider or build_spatial_perception_provider()
+            spatial_provider or build_spatial_perception_provider(spatial_config),
+            watchdog=watchdog,
+            benchmark_path=(
+                PROJECT_ROOT / "artifacts" / "benchmarks" / "spatial-v0.5-cpu.json"
+            ),
+            compute_device=str(spatial_config["device"]),
+            input_size=int(spatial_config["input_size"]),
         )
         self.grasp_planning = GraspPlanningService(build_grasp_planner())
         self.mujoco_validation = build_mujoco_validation_service()
@@ -186,6 +222,7 @@ class Vision2GraspApp:
 
     def stop(self) -> None:
         self.mujoco_validation.reset()
+        self.spatial_perception.close()
         self.camera.stop()
         if self._real_scene is not None:
             self._real_scene.stop()
@@ -220,13 +257,18 @@ class Vision2GraspApp:
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
         snapshot = self.target_perception.selected_scene_snapshot()
-        return self.spatial_perception.analyze(
+        return self.spatial_perception.start(
             snapshot,
             expected_snapshot_id=str(request["snapshot_id"]),
             expected_source_frame_id=int(request["source_frame_id"]),
             expected_target_instance_id=str(request["target_instance_id"]),
             expected_source_timestamp_s=float(request["source_timestamp_s"]),
         )
+
+    def retry_spatial(self) -> dict[str, object]:
+        self.grasp_planning.reset()
+        self.mujoco_validation.reset()
+        return self.spatial_perception.retry()
 
     def plan_grasp(self) -> dict[str, object]:
         """Plan only from the immutable SpatialResult and selected snapshot."""
@@ -469,21 +511,21 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.app.analyze_phone_targets())
                 return
             if path == "/api/target-perception/select":
-                self._send_json(
-                    self.app.target_perception.select(
-                        str(body["target_id"]),
-                        source_frame_id=int(body["source_frame_id"]),
-                    )
+                result = self.app.target_perception.select(
+                    str(body["target_id"]),
+                    source_frame_id=int(body["source_frame_id"]),
                 )
+                self._reset_downstream_after_target_change()
+                self._send_json(result)
                 return
             if path == "/api/target-perception/select-at":
-                self._send_json(
-                    self.app.target_perception.select_at(
-                        source_x=float(body["source_x"]),
-                        source_y=float(body["source_y"]),
-                        source_frame_id=int(body["source_frame_id"]),
-                    )
+                result = self.app.target_perception.select_at(
+                    source_x=float(body["source_x"]),
+                    source_y=float(body["source_y"]),
+                    source_frame_id=int(body["source_frame_id"]),
                 )
+                self._reset_downstream_after_target_change()
+                self._send_json(result)
                 return
             if path == "/api/target-perception/reset":
                 result = self.app.target_perception.reset()
@@ -499,7 +541,16 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(result)
                 return
             if path == "/api/spatial-perception/analyze":
-                self._send_json(self.app.analyze_spatial(body))
+                self._send_json(
+                    self.app.analyze_spatial(body),
+                    status=HTTPStatus.ACCEPTED,
+                )
+                return
+            if path == "/api/spatial-perception/retry":
+                self._send_json(
+                    self.app.retry_spatial(),
+                    status=HTTPStatus.ACCEPTED,
+                )
                 return
             if path == "/api/spatial-perception/reset":
                 self._send_json(self.app.spatial_perception.reset())
@@ -551,6 +602,17 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 },
                 status=400,
             )
+
+    def _reset_downstream_after_target_change(self) -> None:
+        for service_name in (
+            "spatial_perception",
+            "grasp_planning",
+            "mujoco_validation",
+        ):
+            service = getattr(self.app, service_name, None)
+            reset = getattr(service, "reset", None)
+            if callable(reset):
+                reset()
 
     def _set_source(self, body: dict[str, Any]) -> None:
         kind = str(body.get("kind", ""))
@@ -753,4 +815,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    mp.freeze_support()
     raise SystemExit(main())

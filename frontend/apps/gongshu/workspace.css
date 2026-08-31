@@ -539,6 +539,31 @@
   font: 700 9px/1.35 "Cascadia Mono", Consolas, monospace;
 }
 
+.spatial-eta {
+  color: #b9dbe8 !important;
+  font: 700 8px/1.35 "Cascadia Mono", Consolas, monospace;
+}
+
+.spatial-download-progress {
+  display: grid;
+  width: min(290px, 86%);
+  gap: 4px;
+  margin: 2px auto;
+  color: #c8edf3;
+  font: 700 8px/1.25 "Cascadia Mono", Consolas, monospace;
+}
+
+.spatial-download-progress progress {
+  width: 100%;
+  height: 7px;
+  accent-color: #64dfe8;
+}
+
+.spatial-slow-warning {
+  color: #ffd28d !important;
+  font-weight: 800;
+}
+
 .spatial-model-state {
   color: #8ddde4 !important;
   font-weight: 700;

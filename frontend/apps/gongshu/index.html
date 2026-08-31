@@ -130,6 +130,7 @@
                 <div><dt>Model Load</dt><dd id="spatialModelLoadTiming">—</dd></div>
                 <div><dt>Depth Inference</dt><dd id="spatialDepthTiming">—</dd></div>
                 <div><dt>Point Cloud</dt><dd id="spatialPointCloudTiming">—</dd></div>
+                <div><dt>Spatial Compute</dt><dd id="spatialComputeTiming">—</dd></div>
                 <div><dt>Total</dt><dd id="spatialTotalTiming">—</dd></div>
               </dl>
             </div>
@@ -143,6 +144,12 @@
               <strong id="spatialProgressTitle">空间分析 Spatial Analysis</strong>
               <span id="spatialProgressDetail">等待计算 WAITING</span>
               <span id="spatialElapsed" class="spatial-elapsed">Processing</span>
+              <span id="spatialEta" class="spatial-eta">正在估计耗时 Estimating...</span>
+              <div id="spatialDownloadProgress" class="spatial-download-progress" hidden>
+                <progress id="spatialDownloadBar" max="1" value="0"></progress>
+                <span id="spatialDownloadDetail">等待下载 Download Pending</span>
+              </div>
+              <span id="spatialSlowWarning" class="spatial-slow-warning" hidden>运行时间异常 Taking Longer Than Expected</span>
               <span id="spatialModelState" class="spatial-model-state">Model Pending</span>
               <div id="spatialErrorActions" class="pending-actions" hidden>
                 <button id="retrySpatialButton" type="button">重新分析 Analyze Again</button>

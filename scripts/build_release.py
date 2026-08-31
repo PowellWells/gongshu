@@ -13,7 +13,10 @@ import tempfile
 import zipfile
 
 from vision2grasp.model_assets import ModelAsset, ModelAssetResolver, sha256_file
-from vision2grasp.spatial_perception import DEPTH_MODEL_ASSET
+from vision2grasp.spatial_perception import (
+    DEPTH_MODEL_ASSET,
+    DEPTH_PROJECT_COMPATIBLE_PATHS,
+)
 from vision2grasp.target_perception import FASTSAM_MODEL_ASSET, FastSAMModelResolver
 
 
@@ -68,6 +71,7 @@ def model_manifest(
             ],
             DEPTH_MODEL_ASSET.key: [
                 "RELEASE_BUNDLE",
+                "PROJECT_COMPATIBLE",
                 "USER_CACHE",
                 "NETWORK_DOWNLOAD",
             ],
@@ -157,7 +161,9 @@ def main() -> int:
     missing = sorted(name for name, available in dependencies.items() if not available)
     if missing:
         raise RuntimeError(f"release dependency check failed: {', '.join(missing)}")
-    resolver = ModelAssetResolver()
+    resolver = ModelAssetResolver(
+        project_compatible_paths=DEPTH_PROJECT_COMPATIBLE_PATHS
+    )
     fastsam_resolver = FastSAMModelResolver()
     models = resolve_required_models(
         resolver,

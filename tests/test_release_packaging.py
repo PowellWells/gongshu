@@ -54,6 +54,21 @@ class ReleasePackagingTests(unittest.TestCase):
                 )
             self.assertEqual(manifest["models"][0]["verified_sha256"], asset.sha256)
 
+    def test_release_manifest_documents_depth_project_compatibility_priority(self) -> None:
+        from scripts.build_release import model_manifest
+        from vision2grasp.spatial_perception import DEPTH_MODEL_ASSET
+
+        document = model_manifest(())
+        self.assertEqual(
+            document["lookup_priority"][DEPTH_MODEL_ASSET.key],
+            [
+                "RELEASE_BUNDLE",
+                "PROJECT_COMPATIBLE",
+                "USER_CACHE",
+                "NETWORK_DOWNLOAD",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

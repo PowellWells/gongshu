@@ -3,7 +3,7 @@
 
   const CAMERA_SCHEMA_VERSION = "vision2grasp.camera/v1";
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
-  const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v1";
+  const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
   const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning/v1";
   const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v1";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
@@ -50,12 +50,23 @@
 
   const SPATIAL_ERROR_MESSAGES = Object.freeze({
     DEPTH_UNAVAILABLE: "深度不可用 DEPTH UNAVAILABLE",
+    MODEL_NOT_FOUND: "未找到深度模型 MODEL NOT FOUND",
+    DOWNLOAD_FAILED: "深度模型下载失败 DOWNLOAD FAILED",
+    CHECKSUM_FAILED: "深度模型校验失败 CHECKSUM FAILED",
+    MODEL_LOAD_FAILED: "深度模型加载失败 MODEL LOAD FAILED",
     TARGET_MASK_EMPTY: "目标掩膜为空 TARGET MASK EMPTY",
     TOO_FEW_VALID_DEPTH_PIXELS: "有效深度像素不足 INSUFFICIENT DEPTH",
     INVALID_INTRINSICS: "相机投影参数无效 INVALID PROJECTION PARAMETERS",
     FRAME_MISMATCH: "场景快照关联不一致 FRAME MISMATCH",
     TARGET_MISMATCH: "目标实例关联不一致 TARGET MISMATCH",
     POINT_CLOUD_EMPTY: "目标点云为空 POINT CLOUD EMPTY",
+    DOWNLOAD_TIMEOUT: "模型下载超时 DOWNLOAD TIMEOUT",
+    CHECKSUM_TIMEOUT: "模型校验超时 CHECKSUM TIMEOUT",
+    MODEL_LOAD_TIMEOUT: "模型加载超时 MODEL LOAD TIMEOUT",
+    DEPTH_INFERENCE_TIMEOUT: "深度推理超时 DEPTH INFERENCE TIMEOUT",
+    POINT_CLOUD_TIMEOUT: "点云生成超时 POINT CLOUD TIMEOUT",
+    SPATIAL_COMPUTE_TIMEOUT: "空间计算超时 SPATIAL COMPUTE TIMEOUT",
+    SPATIAL_JOB_CANCELLED: "空间任务已取消 SPATIAL JOB CANCELLED",
     SPATIAL_ANALYSIS_FAILED: "空间分析失败 SPATIAL ERROR",
   });
 
@@ -91,12 +102,18 @@
     spatialProgressDetail: byId("spatialProgressDetail"),
     spatialLoadingIndicator: byId("spatialLoadingIndicator"),
     spatialElapsed: byId("spatialElapsed"),
+    spatialEta: byId("spatialEta"),
+    spatialDownloadProgress: byId("spatialDownloadProgress"),
+    spatialDownloadBar: byId("spatialDownloadBar"),
+    spatialDownloadDetail: byId("spatialDownloadDetail"),
+    spatialSlowWarning: byId("spatialSlowWarning"),
     spatialModelState: byId("spatialModelState"),
     spatialTimingSummary: byId("spatialTimingSummary"),
     spatialReadyTiming: byId("spatialReadyTiming"),
     spatialModelLoadTiming: byId("spatialModelLoadTiming"),
     spatialDepthTiming: byId("spatialDepthTiming"),
     spatialPointCloudTiming: byId("spatialPointCloudTiming"),
+    spatialComputeTiming: byId("spatialComputeTiming"),
     spatialTotalTiming: byId("spatialTotalTiming"),
     spatialErrorActions: byId("spatialErrorActions"),
     retrySpatialButton: byId("retrySpatialButton"),
@@ -194,7 +211,7 @@
   let graspPlanningState = null;
   let validationState = null;
   let spatialAnalysisRunning = false;
-  let spatialAnalysisPollTimer = 0;
+  let activeSpatialJobId = null;
   let graspPlanningRunning = false;
   let validationRunning = false;
   let validationTimer = 0;
@@ -413,7 +430,7 @@
     if (state === "SPATIAL_READY" && spatialPerceptionState?.status === "READY") {
       const total = timingSeconds(spatialPerceptionState.timing?.total_s);
       els.systemStatus.textContent = total === "—" ? "READY" : `READY · ${total}`;
-    } else if (state === "SPATIAL_ANALYSIS" && spatialPerceptionState?.status === "ANALYZING") {
+    } else if (state === "SPATIAL_ANALYSIS" && ["QUEUED", "ANALYZING"].includes(spatialPerceptionState?.status)) {
       const elapsed = timingSeconds(spatialPerceptionState.timing?.elapsed_s);
       els.systemStatus.textContent = elapsed === "—" ? "PROCESSING" : `PROCESSING · ${elapsed}`;
     } else {
@@ -457,6 +474,9 @@
     els.spatialProgressDetail.textContent = "等待计算 WAITING";
     els.spatialLoadingIndicator.hidden = false;
     els.spatialElapsed.textContent = "Processing";
+    els.spatialEta.textContent = "正在估计耗时 Estimating...";
+    els.spatialDownloadProgress.hidden = true;
+    els.spatialSlowWarning.hidden = true;
     els.spatialModelState.textContent = "Model Pending";
     els.spatialTimingSummary.hidden = true;
     els.spatialErrorActions.hidden = true;
@@ -504,8 +524,7 @@
     graspPlanningState = null;
     validationState = null;
     spatialAnalysisRunning = false;
-    window.clearInterval(spatialAnalysisPollTimer);
-    spatialAnalysisPollTimer = 0;
+    activeSpatialJobId = null;
     graspPlanningRunning = false;
     validationRunning = false;
     simulationStreamStarted = false;
@@ -788,8 +807,16 @@
     if (pipeline.state !== "TARGET_SELECTED" || !targetPerceptionState?.scene_snapshot) return;
     try {
       const state = await apiGet(`/api/spatial-perception/state?t=${Date.now()}`);
-      if (!hasSpatialObservationAssociation(targetPerceptionState, state)) return;
       const snapshot = targetPerceptionState.scene_snapshot;
+      const binding = state?.binding;
+      const bindingMatches = Boolean(state?.job_id
+        && binding?.job_id === state.job_id
+        && binding?.snapshot_id === snapshot.snapshot_id
+        && binding?.source_frame_id === snapshot.source_frame_id
+        && binding?.target_instance_id === snapshot.target_id
+        && binding?.source_timestamp_s === snapshot.source_timestamp_s);
+      const readyMatches = hasSpatialObservationAssociation(targetPerceptionState, state);
+      if (!bindingMatches && !readyMatches) return;
       pipeline.transition("SCENE_CAPTURED", {
         restored: true,
         snapshotId: snapshot.snapshot_id,
@@ -803,13 +830,22 @@
         sourceFrameId: snapshot.source_frame_id,
       });
       renderSpatialPerception(state);
-      pipeline.transition("SPATIAL_READY", {
-        restored: true,
-        snapshotId: snapshot.snapshot_id,
-        targetId: snapshot.target_id,
-        sourceFrameId: snapshot.source_frame_id,
-      });
-      els.statusSnapshot.textContent = `Frame ${snapshot.source_frame_id} · 已恢复 Restored`;
+      if (readyMatches) {
+        pipeline.transition("SPATIAL_READY", {
+          restored: true,
+          snapshotId: snapshot.snapshot_id,
+          targetId: snapshot.target_id,
+          sourceFrameId: snapshot.source_frame_id,
+        });
+        els.statusSnapshot.textContent = `Frame ${snapshot.source_frame_id} · 已恢复 Restored`;
+        return;
+      }
+      if (["QUEUED", "ANALYZING"].includes(state.status)) {
+        spatialAnalysisRunning = true;
+        activeSpatialJobId = state.job_id;
+        updateActionButtons();
+        void monitorRestoredSpatialJob(snapshot, state.job_id);
+      }
     } catch { /* stale or incomplete spatial state must not advance the pipeline */ }
   }
 
@@ -861,6 +897,24 @@
     return Number.isFinite(seconds) && seconds >= 0 ? `${seconds.toFixed(1)} s` : "—";
   }
 
+  function formatBytes(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) return "—";
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function spatialEtaLabel(state) {
+    const downloadEta = Number(state?.download?.download_eta_s);
+    if (state?.stage === "MODEL_DOWNLOADING" && Number.isFinite(downloadEta)) {
+      return `下载 ETA（估计）· 约 ${Math.ceil(downloadEta)} s`;
+    }
+    const eta = Number(state?.eta?.estimated_remaining_s);
+    if (state?.eta?.available && Number.isFinite(eta)) {
+      return `预计剩余（本机历史估计）· 约 ${Math.ceil(eta)} s`;
+    }
+    return "正在估计耗时 Estimating...";
+  }
+
   function renderSpatialTimingSummary(state) {
     const timing = state?.timing || {};
     const total = Number(timing.total_s);
@@ -871,6 +925,7 @@
       : timingSeconds(timing.model_load_s);
     els.spatialDepthTiming.textContent = timingSeconds(timing.depth_inference_s);
     els.spatialPointCloudTiming.textContent = timingSeconds(timing.point_cloud_s);
+    els.spatialComputeTiming.textContent = timingSeconds(timing.spatial_computing_s);
     els.spatialTotalTiming.textContent = totalLabel;
     els.spatialTimingSummary.hidden = false;
   }
@@ -915,9 +970,9 @@
       return;
     }
 
-    if (state.status === "ERROR") {
+    if (["FAILED", "CANCELLED"].includes(state.status)) {
       const errorLabel = SPATIAL_ERROR_MESSAGES[state.error_code] || SPATIAL_ERROR_MESSAGES.SPATIAL_ANALYSIS_FAILED;
-      els.spatialState.textContent = "ERROR";
+      els.spatialState.textContent = state.status;
       els.spatialState.classList.remove("has-data");
       els.spatialInspectorStatus.textContent = "ERROR";
       els.spatialDepthValue.textContent = "NOT AVAILABLE";
@@ -930,7 +985,15 @@
       els.spatialPendingOverlay.hidden = false;
       els.spatialPendingOverlay.classList.add("is-error");
       els.spatialLoadingIndicator.hidden = true;
-      const loadFailed = state.error_code === "DEPTH_UNAVAILABLE" && state.failed_stage === "MODEL_LOADING";
+      const loadFailed = [
+        "DEPTH_UNAVAILABLE",
+        "MODEL_NOT_FOUND",
+        "DOWNLOAD_FAILED",
+        "CHECKSUM_FAILED",
+        "MODEL_LOAD_FAILED",
+        "MODEL_LOAD_TIMEOUT",
+      ].includes(state.error_code)
+        && state.failed_stage === "MODEL_LOADING";
       els.spatialProgressTitle.textContent = loadFailed
         ? "DEPTH UNAVAILABLE"
         : "空间分析失败 SPATIAL ERROR";
@@ -938,6 +1001,9 @@
         ? `Model Loading Failed · ${state.message || errorLabel}`
         : `${errorLabel} · ${state.message || "No spatial output generated"}`;
       els.spatialElapsed.textContent = `Elapsed · ${timingSeconds(state.timing?.elapsed_s)}`;
+      els.spatialEta.textContent = spatialEtaLabel(state);
+      els.spatialDownloadProgress.hidden = true;
+      els.spatialSlowWarning.hidden = true;
       els.spatialModelState.textContent = loadFailed ? "Model Loading Failed" : "No READY output";
       els.spatialTimingSummary.hidden = true;
       els.spatialErrorActions.hidden = false;
@@ -945,7 +1011,7 @@
       return;
     }
 
-    if (state.status === "ANALYZING") showSpatialAnalyzing(state);
+    if (["QUEUED", "ANALYZING"].includes(state.status)) showSpatialAnalyzing(state);
   }
 
   function showSpatialAnalyzing(state = null) {
@@ -956,11 +1022,38 @@
     els.spatialLoadingIndicator.hidden = false;
     els.spatialProgressTitle.textContent = "空间分析 Spatial Analysis";
     els.spatialProgressDetail.textContent = state?.stage_message || "正在准备场景 Scene Preparing...";
-    const elapsed = timingSeconds(state?.timing?.elapsed_s);
-    els.spatialElapsed.textContent = elapsed === "—" ? "Processing" : `Processing · ${elapsed}`;
+    const elapsed = timingSeconds(state?.total_elapsed_s ?? state?.timing?.elapsed_s);
+    const stageElapsed = timingSeconds(state?.stage_elapsed_s);
+    els.spatialElapsed.textContent = elapsed === "—"
+      ? "Processing"
+      : `已用时 Elapsed · ${elapsed} · Stage ${stageElapsed}`;
+    els.spatialEta.textContent = spatialEtaLabel(state);
+    const download = state?.download;
+    const totalBytes = Number(download?.bytes_total);
+    const downloadedBytes = Number(download?.bytes_downloaded);
+    const hasKnownTotal = Number.isFinite(totalBytes) && totalBytes > 0;
+    const hasDownload = state?.stage === "MODEL_DOWNLOADING" && Number.isFinite(downloadedBytes);
+    els.spatialDownloadProgress.hidden = !hasDownload;
+    if (hasDownload) {
+      els.spatialDownloadBar.hidden = !hasKnownTotal;
+      if (hasKnownTotal) {
+        els.spatialDownloadBar.value = Math.max(0, Math.min(downloadedBytes / totalBytes, 1));
+        els.spatialDownloadDetail.textContent = `${Math.round(downloadedBytes / totalBytes * 100)}% · ${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`;
+      } else {
+        els.spatialDownloadDetail.textContent = `已下载 ${formatBytes(downloadedBytes)}`;
+      }
+    }
+    els.spatialSlowWarning.hidden = !state?.taking_longer;
+    if (state?.taking_longer) {
+      const range = state?.eta?.stage_typical_range_s;
+      els.spatialSlowWarning.textContent = Array.isArray(range) && range.length === 2
+        ? `运行时间异常 Taking Longer Than Expected · 通常 ${timingSeconds(range[0])}–${timingSeconds(range[1])}`
+        : "运行时间异常 Taking Longer Than Expected";
+    }
     els.spatialModelState.textContent = state?.model_state === "READY"
       ? "Model Ready"
-      : state?.stage === "MODEL_LOADING" ? "Model Loading" : "Model Pending";
+      : state?.stage === "MODEL_LOADING" ? "Model Loading"
+        : state?.cold_start ? "Cold Start" : "Warm Start";
     els.spatialErrorActions.hidden = true;
     els.spatialState.textContent = elapsed === "—" ? "ANALYZING" : `PROCESSING · ${elapsed}`;
     els.spatialState.classList.remove("has-data");
@@ -974,28 +1067,84 @@
     els.systemStatus.textContent = els.spatialState.textContent;
   }
 
-  async function pollSpatialAnalysisState() {
-    try {
-      const state = await apiGet(`/api/spatial-perception/state?t=${Date.now()}`);
-      if (spatialAnalysisRunning && state.status === "ANALYZING") renderSpatialPerception(state);
-    } catch { /* the in-flight POST remains the authoritative final result */ }
+  function waitMilliseconds(value) {
+    return new Promise((resolve) => window.setTimeout(resolve, value));
   }
 
-  async function runSpatialAnalysis() {
+  async function waitForSpatialJob(jobId) {
+    while (spatialAnalysisRunning && activeSpatialJobId === jobId) {
+      await waitMilliseconds(250);
+      const state = await apiGet(`/api/spatial-perception/state?t=${Date.now()}`);
+      if (state.job_id !== jobId) {
+        throw new Error(`Spatial Job 已被替换：${jobId}`);
+      }
+      renderSpatialPerception(state);
+      if (["READY", "FAILED", "CANCELLED"].includes(state.status)) return state;
+    }
+    throw new Error(`Spatial Job 已取消：${jobId}`);
+  }
+
+  async function monitorRestoredSpatialJob(snapshot, jobId) {
+    try {
+      const state = await waitForSpatialJob(jobId);
+      renderSpatialPerception(state);
+      if (state.status === "READY") {
+        if (!hasSpatialObservationAssociation(targetPerceptionState, state)) {
+          throw new Error("恢复的 Spatial Job 与当前 Scene Snapshot 关联不一致");
+        }
+        pipeline.transition("SPATIAL_READY", {
+          restored: true,
+          snapshotId: snapshot.snapshot_id,
+          targetId: snapshot.target_id,
+          sourceFrameId: snapshot.source_frame_id,
+        });
+        els.statusSnapshot.textContent = `Frame ${snapshot.source_frame_id} · 已恢复 Restored`;
+        showNotice("空间感知后台任务已完成并恢复到当前 Workspace。", "success");
+      } else {
+        showNotice(SPATIAL_ERROR_MESSAGES[state.error_code] || "空间分析失败 SPATIAL ERROR", "error");
+      }
+    } catch (error) {
+      renderSpatialPerception({
+        schema_version: SPATIAL_PERCEPTION_SCHEMA_VERSION,
+        status: "FAILED",
+        error_code: "SPATIAL_ANALYSIS_FAILED",
+        message: error.message,
+        timing: {},
+        observation: null,
+      });
+      showNotice(`空间分析恢复失败：${error.message}`, "error");
+    } finally {
+      if (activeSpatialJobId === jobId) activeSpatialJobId = null;
+      spatialAnalysisRunning = false;
+      updateActionButtons();
+    }
+  }
+
+  async function runSpatialAnalysis({ retry = false } = {}) {
     const snapshot = targetPerceptionState?.scene_snapshot;
     if (spatialAnalysisRunning || !snapshot?.available || pipeline.state !== "SPATIAL_ANALYSIS") return;
     spatialAnalysisRunning = true;
     showSpatialAnalyzing();
-    window.clearInterval(spatialAnalysisPollTimer);
-    spatialAnalysisPollTimer = window.setInterval(pollSpatialAnalysisState, 180);
     updateActionButtons();
     try {
-      const state = await apiPost("/api/spatial-perception/analyze", {
-        snapshot_id: snapshot.snapshot_id,
-        source_frame_id: snapshot.source_frame_id,
-        target_instance_id: snapshot.target_id,
-        source_timestamp_s: snapshot.source_timestamp_s,
-      });
+      const initial = retry
+        ? await apiPost("/api/spatial-perception/retry")
+        : await apiPost("/api/spatial-perception/analyze", {
+          snapshot_id: snapshot.snapshot_id,
+          source_frame_id: snapshot.source_frame_id,
+          target_instance_id: snapshot.target_id,
+          source_timestamp_s: snapshot.source_timestamp_s,
+        });
+      if (!initial.job_id || initial.binding?.snapshot_id !== snapshot.snapshot_id
+        || initial.binding?.source_frame_id !== snapshot.source_frame_id
+        || initial.binding?.target_instance_id !== snapshot.target_id) {
+        throw new Error("Spatial Job 与当前 Scene Snapshot / Frame / Target 绑定不一致");
+      }
+      activeSpatialJobId = initial.job_id;
+      renderSpatialPerception(initial);
+      const state = ["READY", "FAILED", "CANCELLED"].includes(initial.status)
+        ? initial
+        : await waitForSpatialJob(initial.job_id);
       renderSpatialPerception(state);
       if (state.status === "READY") {
         if (!hasSpatialObservationAssociation(targetPerceptionState, state)) {
@@ -1013,14 +1162,15 @@
     } catch (error) {
       renderSpatialPerception({
         schema_version: SPATIAL_PERCEPTION_SCHEMA_VERSION,
-        status: "ERROR",
+        status: "FAILED",
         error_code: "SPATIAL_ANALYSIS_FAILED",
+        message: error.message,
+        timing: {},
         observation: null,
       });
       showNotice(`空间分析未完成：${error.message}`, "error");
     } finally {
-      window.clearInterval(spatialAnalysisPollTimer);
-      spatialAnalysisPollTimer = 0;
+      activeSpatialJobId = null;
       spatialAnalysisRunning = false;
       updateActionButtons();
     }
@@ -1237,7 +1387,7 @@
 
   async function retrySpatialAnalysis() {
     if (pipeline.state !== "SPATIAL_ANALYSIS") return;
-    await runSpatialAnalysis();
+    await runSpatialAnalysis({ retry: true });
   }
 
   async function resetPipeline() {
