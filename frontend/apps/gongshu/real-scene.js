@@ -5,7 +5,7 @@
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
   const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning-job/v2";
-  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v1";
+  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v2";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
@@ -140,6 +140,7 @@
     simulationLift: byId("simulationLift"),
     simulationTarget: byId("simulationTarget"),
     simulationResult: byId("simulationResult"),
+    validationScenarioSelect: byId("validationScenarioSelect"),
     startValidationButton: byId("startValidationButton"),
     targetStatus: byId("targetStatus"),
     targetValue: byId("targetValue"),
@@ -297,6 +298,7 @@
       && els.robotSelect.value === "panda"
       && !validationRunning;
     els.startValidationButton.disabled = !validationReady;
+    els.validationScenarioSelect.disabled = validationRunning;
     if (mayStart) {
       els.startGraspLabel.textContent = "开始抓取";
       els.startGraspHint.textContent = "Start Grasp";
@@ -1368,7 +1370,7 @@
     const currentZ = Number(telemetry.target_position_world?.[2]);
     const liveLift = Number.isFinite(initialZ) && Number.isFinite(currentZ) ? Math.max(0, currentZ - initialZ) : 0;
     els.simulationLift.textContent = `${Number(result?.lift_height_m ?? liveLift).toFixed(3)} m`;
-    els.simulationFooter.textContent = `${state.camera_mode} · ${state.status}`;
+    els.simulationFooter.textContent = `${state.scenario || "NOMINAL"} · ${state.camera_mode} · ${state.status}`;
     document.querySelectorAll("[data-sim-camera]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.simCamera === state.camera_mode);
     });
@@ -1415,7 +1417,10 @@
     els.simulationState.textContent = "INITIALIZING";
     els.simulationFooter.textContent = "UNCALIBRATED · SIMULATION ONLY";
     try {
-      const state = await apiPost("/api/mujoco-validation/start", { target_id: graspPlanningState.plan.target_id });
+      const state = await apiPost("/api/mujoco-validation/start", {
+        target_id: graspPlanningState.plan.target_id,
+        scenario: els.validationScenarioSelect.value,
+      });
       renderValidation(state);
       els.simulationMedia.src = `/api/mujoco-validation/live.mjpeg?opened=${Date.now()}`;
       simulationStreamStarted = true;
@@ -1680,6 +1685,12 @@
   els.graspModeSelect.addEventListener("change", () => {
     const label = els.graspModeSelect.value === "DEMO" ? "Demo" : "Research";
     showNotice(`抓取规划已切换为 ${label} Mode；两种模式使用同一真实算法。`);
+  });
+  els.validationScenarioSelect.addEventListener("change", () => {
+    const stress = els.validationScenarioSelect.value === "TARGET_OFFSET_STRESS";
+    showNotice(stress
+      ? "已选择 Target Offset Stress：只扰动物体位置，成功/失败仍由 MuJoCo 物理判定。"
+      : "已选择 Nominal：执行当前真实 GraspPlan 的标称物理验证。", stress ? "error" : "success");
   });
   els.graspLayerControls.querySelectorAll("[data-grasp-layer]").forEach((button) => {
     button.addEventListener("click", (event) => {

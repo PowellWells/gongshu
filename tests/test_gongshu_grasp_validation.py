@@ -6,6 +6,7 @@ import time
 import unittest
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 
 from vision2grasp.contracts import CameraIntrinsics
@@ -24,6 +25,7 @@ from vision2grasp.simulation import (
     SimulationState,
     ValidationRequest,
     ValidationResult,
+    ValidationScenario,
 )
 from vision2grasp.spatial_perception import (
     CalibrationState,
@@ -206,6 +208,20 @@ class MuJoCoValidationStateTests(unittest.TestCase):
             metadata["grasp_plan"]["grasp_point_xyz"],
         )
 
+    def test_target_offset_stress_changes_only_simulated_target_pose(self) -> None:
+        request = ValidationRequest.from_grasp_plan(
+            self._ready_plan(),
+            scenario=ValidationScenario.TARGET_OFFSET_STRESS,
+            failure_target_offset_m=(0.14, 0.0, 0.0),
+        )
+        transform = request.scene_transform
+        np.testing.assert_allclose(transform.target_offset_world, [0.14, 0.0, 0.0])
+        np.testing.assert_allclose(
+            transform.target_position_world - transform.grasp_position_world,
+            transform.target_offset_world,
+        )
+        self.assertEqual(request.public_metadata()["scene_transform"]["scenario"], "TARGET_OFFSET_STRESS")
+
     def test_state_transitions_stream_frames_and_succeed(self) -> None:
         service = MuJoCoValidationService(lambda request, director: _FakeValidationBackend(request, director))
         started = service.start(self._ready_plan())
@@ -223,6 +239,20 @@ class MuJoCoValidationStateTests(unittest.TestCase):
         self.assertEqual(finished["status"], "FAILED")
         self.assertEqual(finished["reason"], "Lift Failed")
         self.assertEqual(finished["result"]["lift_height_m"], 0.0)
+
+    def test_service_exposes_scenario_and_state_history(self) -> None:
+        service = MuJoCoValidationService(
+            lambda request, director: _FakeValidationBackend(request, director)
+        )
+        started = service.start(
+            self._ready_plan(),
+            scenario=ValidationScenario.TARGET_OFFSET_STRESS,
+        )
+        self.assertEqual(started["scenario"], "TARGET_OFFSET_STRESS")
+        finished = self._wait(service)
+        self.assertEqual(finished["scenario"], "TARGET_OFFSET_STRESS")
+        self.assertEqual(finished["state_history"][0]["state"], "INITIALIZING")
+        self.assertEqual(finished["state_history"][-1]["state"], "SUCCESS")
 
 
 class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
@@ -249,6 +279,37 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(result.lift_height_m, 0.08)
         self.assertFalse(result.invalid_table_collision)
         self.assertTrue(result.stable_window_passed)
+
+    def test_target_offset_stress_animates_physical_failure(self) -> None:
+        request = ValidationRequest.from_grasp_plan(
+            GeometricGraspPlanner().plan(make_observation())[0],
+            scenario=ValidationScenario.TARGET_OFFSET_STRESS,
+        )
+        backend = NativePandaValidation(
+            request,
+            CameraDirector(),
+            NativePandaValidationConfig(
+                width=320,
+                height=180,
+                render_fps=4,
+                stable_window_s=0.2,
+                realtime_playback=False,
+            ),
+        )
+        states: list[str] = []
+        frames: list[bytes] = []
+        result = backend.run(
+            lambda state, jpeg, telemetry: (states.append(state.value), frames.append(jpeg)),
+            threading.Event(),
+        )
+        self.assertEqual(result.state, SimulationState.FAILED)
+        self.assertIn(result.reason, {"Lift Failed", "Collision", "Stability Failed"})
+        self.assertIn("LIFT", states)
+        self.assertEqual(states[-1], "FAILED")
+        self.assertGreater(len(frames[-1]), 100)
+        decoded = cv2.imdecode(np.frombuffer(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
+        self.assertIsNotNone(decoded)
+        self.assertGreater(float(np.mean(decoded[:8, :, 2])), float(np.mean(decoded[:8, :, 0])))
 
 
 if __name__ == "__main__":

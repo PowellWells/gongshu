@@ -6,6 +6,7 @@ from .validation_contracts import (
     SimulationState,
     ValidationRequest,
     ValidationResult,
+    ValidationScenario,
     ValidationSceneTransform,
 )
 from .validation_service import MuJoCoValidationService, VALIDATION_SCHEMA_VERSION
@@ -23,6 +24,7 @@ __all__ = [
     "VALIDATION_SCHEMA_VERSION",
     "ValidationRequest",
     "ValidationResult",
+    "ValidationScenario",
     "ValidationSceneTransform",
 ]
 

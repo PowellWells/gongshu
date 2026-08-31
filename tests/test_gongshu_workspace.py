@@ -98,6 +98,8 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "空间感知 <b>Spatial Perception</b>",
             "抓取规划 <b>Grasp Planning</b>",
             "仿真验证 <b>MuJoCo Validation</b>",
+            'id="validationScenarioSelect"',
+            "TARGET_OFFSET_STRESS",
             "当前目标 <b>Target</b>",
             "空间信息 <b>Spatial</b>",
             "抓取结果 <b>Grasp</b>",

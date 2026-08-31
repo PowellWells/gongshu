@@ -8,16 +8,24 @@ from typing import Any, Callable, Final
 
 from vision2grasp.grasp_planning import GraspPlan
 
-from .validation_contracts import CameraMode, SimulationState, ValidationRequest, ValidationResult
+from .validation_contracts import (
+    CameraMode,
+    SimulationState,
+    ValidationRequest,
+    ValidationResult,
+    ValidationScenario,
+)
 
 
-VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v1"
+VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v2"
 
 
 class MuJoCoValidationService:
     def __init__(
         self,
         backend_factory: Callable[[ValidationRequest, Any], Any] | None = None,
+        *,
+        failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
     ) -> None:
         self._backend_factory = backend_factory
         self._lock = threading.RLock()
@@ -35,12 +43,26 @@ class MuJoCoValidationService:
         self._stop_event = threading.Event()
         self._camera_director: Any | None = None
         self._camera_mode = CameraMode.CINEMATIC
+        self._failure_target_offset_m = tuple(float(value) for value in failure_target_offset_m)
+        if len(self._failure_target_offset_m) != 3:
+            raise ValueError("failure_target_offset_m must contain three values")
+        self._started_at = 0.0
+        self._state_history: list[dict[str, object]] = []
 
-    def start(self, plan: GraspPlan) -> dict[str, object]:
+    def start(
+        self,
+        plan: GraspPlan,
+        *,
+        scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
+    ) -> dict[str, object]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 raise RuntimeError("MuJoCo validation is already running")
-            self._request = ValidationRequest.from_grasp_plan(plan)
+            self._request = ValidationRequest.from_grasp_plan(
+                plan,
+                scenario=scenario,
+                failure_target_offset_m=self._failure_target_offset_m,
+            )
             self._result = None
             self._reason = None
             self._telemetry = {}
@@ -49,6 +71,8 @@ class MuJoCoValidationService:
 
             self._camera_director = CameraDirector(CameraMode.CINEMATIC)
             self._camera_mode = CameraMode.CINEMATIC
+            self._started_at = time.monotonic()
+            self._state_history = []
             self._set_state_locked(SimulationState.INITIALIZING, "正在初始化 MuJoCo Validation")
             self._stop_event.clear()
             self._thread = threading.Thread(target=self._run_worker, name="gongshu-mujoco-validation", daemon=True)
@@ -67,6 +91,8 @@ class MuJoCoValidationService:
             self._reason = None
             self._telemetry = {}
             self._frame_jpeg = None
+            self._started_at = 0.0
+            self._state_history = []
             self._set_state_locked(SimulationState.WAITING, "等待仿真验证 WAITING")
             return self.snapshot()
 
@@ -107,8 +133,14 @@ class MuJoCoValidationService:
                     if self._camera_director is not None
                     else self._camera_mode.value
                 ),
+                "scenario": (
+                    self._request.scenario.value
+                    if self._request is not None
+                    else ValidationScenario.NOMINAL.value
+                ),
                 "request": None if self._request is None else self._request.public_metadata(),
                 "telemetry": dict(self._telemetry),
+                "state_history": [dict(item) for item in self._state_history],
                 "result": None if self._result is None else self._result.public_metadata(),
                 "media": {"stream_available": self._frame_jpeg is not None},
             }
@@ -166,6 +198,9 @@ class MuJoCoValidationService:
             self._frame_condition.notify_all()
 
     def _set_state_locked(self, state: SimulationState, message: str) -> None:
+        if not self._state_history or self._state_history[-1]["state"] != state.value:
+            elapsed = 0.0 if self._started_at <= 0.0 else time.monotonic() - self._started_at
+            self._state_history.append({"state": state.value, "elapsed_s": elapsed})
         self._state = state
         self._message = message
         self._revision += 1

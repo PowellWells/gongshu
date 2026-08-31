@@ -227,6 +227,13 @@
               <button type="button" data-sim-camera="AUTO_FOLLOW">自动跟随 Auto Follow</button>
               <button type="button" data-sim-camera="MANUAL">手动 Manual</button>
             </div>
+            <label class="simulation-scenario-control">
+              <span>物理场景 Physics Scenario</span>
+              <select id="validationScenarioSelect">
+                <option value="NOMINAL">标称路径 Nominal</option>
+                <option value="TARGET_OFFSET_STRESS">目标偏移 Target Offset Stress</option>
+              </select>
+            </label>
             <button id="startValidationButton" class="start-validation-button" type="button" disabled>
               开始仿真验证 <b>Start Validation</b>
             </button>

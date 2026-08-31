@@ -190,7 +190,12 @@ def build_mujoco_validation_service() -> MuJoCoValidationService:
             ),
         )
 
-    return MuJoCoValidationService(create_backend)
+    return MuJoCoValidationService(
+        create_backend,
+        failure_target_offset_m=tuple(
+            float(value) for value in config["failure_target_offset_m"]
+        ),
+    )
 
 
 class Vision2GraspApp:
@@ -306,10 +311,18 @@ class Vision2GraspApp:
             mode=str(body.get("mode", "RESEARCH")),
         )
 
-    def start_validation(self) -> dict[str, object]:
+    def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Create a normalized simulation-only request from the READY GraspPlan."""
 
-        return self.mujoco_validation.start(self.grasp_planning.current_plan())
+        body = request or {}
+        plan = self.grasp_planning.current_plan()
+        requested_target_id = str(body.get("target_id", "")).strip()
+        if requested_target_id and requested_target_id != plan.target_id:
+            raise ValueError("Validation request does not match the READY GraspPlan target")
+        return self.mujoco_validation.start(
+            plan,
+            scenario=str(body.get("scenario", "NOMINAL")),
+        )
 
     def run_simulation(self) -> dict[str, Any]:
         if not self._simulation_lock.acquire(blocking=False):
@@ -597,7 +610,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.app.grasp_planning.reset())
                 return
             if path == "/api/mujoco-validation/start":
-                self._send_json(self.app.start_validation())
+                self._send_json(self.app.start_validation(body))
                 return
             if path == "/api/mujoco-validation/reset":
                 self._send_json(self.app.mujoco_validation.reset())

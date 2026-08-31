@@ -279,24 +279,75 @@ class NativePandaValidation:
             for _ in range(steps_per_frame):
                 self.data.qfrc_applied[self._arm_dofs] = self.data.qfrc_bias[self._arm_dofs]
                 mujoco.mj_step(self.model, self.data)
-            callback(state, self._render(renderer, state), {**self._telemetry(state), **result})
+            callback(
+                state,
+                self._render(renderer, state, result=result),
+                {**self._telemetry(state), **result},
+            )
             if self.config.realtime_playback:
                 next_frame_time += 1.0 / self.config.render_fps
                 remaining = next_frame_time - time.monotonic()
                 if remaining > 0.0:
                     time.sleep(remaining)
 
-    def _render(self, renderer: mujoco.Renderer, state: SimulationState) -> bytes:
+    def _render(
+        self,
+        renderer: mujoco.Renderer,
+        state: SimulationState,
+        *,
+        result: dict[str, object] | None = None,
+    ) -> bytes:
         target = self.data.xpos[self._target_body].copy()
         eef = self.data.site_xpos[self._eef_site].copy()
         camera = self.camera_director.camera(state, target, eef)
         renderer.update_scene(self.data, camera=camera, scene_option=self._render_option)
         rgb = renderer.render()
-        # The border is presentation-only and communicates the actual state.
+        overlay = rgb.copy()
+        cv2.rectangle(overlay, (12, 12), (min(rgb.shape[1] - 12, 390), 74), (3, 13, 23), -1)
+        rgb = cv2.addWeighted(overlay, 0.74, rgb, 0.26, 0.0)
+        cv2.putText(
+            rgb,
+            f"PANDA DYNAMIC VALIDATION  {state.value}",
+            (26, 38),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.52,
+            (185, 232, 250),
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            rgb,
+            f"SCENARIO  {self.request.scenario.value}",
+            (26, 61),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.40,
+            (120, 185, 214),
+            1,
+            cv2.LINE_AA,
+        )
+        # The border and final reason are presentation-only; the result comes
+        # from simulated contact, lift height, and the stability window.
         if state is SimulationState.SUCCESS:
             cv2.rectangle(rgb, (3, 3), (rgb.shape[1] - 4, rgb.shape[0] - 4), (80, 245, 180), 5)
         elif state is SimulationState.FAILED:
             cv2.rectangle(rgb, (3, 3), (rgb.shape[1] - 4, rgb.shape[0] - 4), (244, 92, 88), 5)
+        if result is not None and state in {SimulationState.SUCCESS, SimulationState.FAILED}:
+            label = (
+                "PHYSICS SUCCESS"
+                if state is SimulationState.SUCCESS
+                else f"PHYSICS FAILURE  {result.get('reason') or 'STATE ERROR'}"
+            )
+            color = (92, 248, 186) if state is SimulationState.SUCCESS else (255, 122, 114)
+            cv2.putText(
+                rgb,
+                label,
+                (26, rgb.shape[0] - 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.66,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
         ok, encoded = cv2.imencode(
             ".jpg", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 88]
         )
@@ -309,6 +360,8 @@ class NativePandaValidation:
             "robot_state": state.value,
             "grasp_state": state.value,
             "target_id": self.request.grasp_plan.target_id,
+            "scenario": self.request.scenario.value,
+            "target_offset_world": self.request.scene_transform.target_offset_world.tolist(),
             "collision": self._has_invalid_table_collision(),
             "target_position_world": self.data.xpos[self._target_body].tolist(),
             "eef_position_world": self.data.site_xpos[self._eef_site].tolist(),

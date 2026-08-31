@@ -838,6 +838,29 @@
   box-shadow: inset 0 0 16px rgba(49, 198, 235, .13);
 }
 
+.simulation-scenario-control {
+  position: absolute;
+  left: 14px;
+  bottom: 50px;
+  z-index: 5;
+  display: grid;
+  gap: 3px;
+  color: #91adbe;
+  font-size: 7px;
+}
+
+.simulation-scenario-control select {
+  min-width: 178px;
+  padding: 6px 8px;
+  border: 1px solid rgba(116, 184, 216, .38);
+  border-radius: 7px;
+  background: rgba(4, 18, 29, .82);
+  color: #d5e9f3;
+  font: inherit;
+  font-size: 8px;
+  backdrop-filter: blur(8px);
+}
+
 .start-validation-button {
   position: absolute;
   left: 14px;
@@ -866,6 +889,7 @@
 
 .workspace-view:not(.is-primary) .simulation-hud-metrics,
 .workspace-view:not(.is-primary) .simulation-camera-controls,
+.workspace-view:not(.is-primary) .simulation-scenario-control,
 .workspace-view:not(.is-primary) .start-validation-button {
   display: none;
 }

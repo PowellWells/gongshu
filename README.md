@@ -8,6 +8,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
 - **Gongshu Workspace v0.6**：在 v0.5 同一 Scene Snapshot 空间链之上运行官方 GR-ConvNet RGB-D 抓取检测，输出真实 Quality / Angle / Width maps、Top-K 候选、逐候选可执行性与透明排名，并只在存在可执行候选时进入 `GRASP_READY`。
+- **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学动画；支持标称场景和目标偏移压测，最终 SUCCESS / FAILED 来自真实接触、桌面碰撞、抬升高度和稳定窗口，不使用固定结果。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -96,7 +97,7 @@ Phone Mode 的 Camera Intrinsics 优先级预留为 `CALIBRATED → SENSOR_METAD
 
 v0.6 已按 `Grasp Detection → Top-K Candidates → Feasibility Filtering → Candidate Ranking → Best Executable Grasp` 完成。默认 `Top-K=8`，候选逐一检查 target binding、quality、边缘余量、有效深度、几何置信度、异常尺度与 Panda 夹爪宽度；最高 quality 候选被拒绝时会继续评估其余候选。Panda 宽度直接复用 `[control]` 的 `0.01–0.08 m` 权威配置，`maximum_object_extent_m = 0.35` 没有放宽。由于尚无 Camera→Robot 外参，workspace reachability 与 collision feasibility 明确为 `UNKNOWN`，不伪造成可达或无碰撞。
 
-下一里程碑 v0.7 将接入动态 MuJoCo Success + Failure Visualization。扫码、证书、连接状态与高清 Capture 仍位于 `连接设置 Camera Setup`；原离线运行读取位于 `历史运行 History` 次级入口。
+v0.7 已接入动态 MuJoCo Success + Failure Visualization。`NOMINAL` 执行当前 GraspPlan 的标称验证；`TARGET_OFFSET_STRESS` 仅把仿真目标相对原计划偏移 `0.14 m`，Panda 仍执行同一轨迹，最终由物理结果决定失败类型。MJPEG 连续显示 HOME → PRE_GRASP → APPROACH → ALIGN → CLOSE → LIFT → VERIFY → SUCCESS / FAILED，最终帧标注物理结论和原因；API 同时保留实际状态历史。扫码、证书、连接状态与高清 Capture 仍位于 `连接设置 Camera Setup`；原离线运行读取位于 `历史运行 History` 次级入口。
 
 ## Windows Release 预留
 
@@ -145,6 +146,7 @@ Vision2Grasp/
 - Physical Phone v0.6 验收仍由用户完成，状态为 `PENDING USER VALIDATION`；Phone Mode 不包含任何具体手机型号硬编码，自动化和静态样本结果不得描述为实体手机精度实测。
 - USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
 - 尚未接入真实机械臂、外参标定、在线碰撞场景重建或物理执行闭环；当前 SUCCESS 仅表示 Simulation Validation。
+- `TARGET_OFFSET_STRESS` 是可复现的 simulation-only 扰动场景，用于演示真实失败动力学，不代表实体环境发生了同样的目标移动。
 - Hetu 只提供预览入口，没有世界模型算法。
 - 尚未冻结正式自包含 Windows EXE 构建工具链；当前只提供经过测试的 release 模型校验与 ZIP packaging 预留。
 - 运行产物、用户图片、证书私钥和模型权重均为本地数据，不随仓库发布。
