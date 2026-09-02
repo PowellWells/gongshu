@@ -166,7 +166,9 @@ def build_grasp_planner() -> PixelWiseTopKGraspPlanner:
 
 def build_mujoco_validation_service() -> MuJoCoValidationService:
     with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
-        config = tomllib.load(stream)["gongshu_validation"]
+        document = tomllib.load(stream)
+    config = document["gongshu_validation"]
+    control = document["control"]
     if str(config["scene_transform"]) != "NORMALIZED_VALIDATION_SCENE":
         raise ValueError("unsupported Gongshu validation scene transform")
     if str(config["controller"]) != "MUJOCO_POSITION_DLS_IK":
@@ -197,6 +199,8 @@ def build_mujoco_validation_service() -> MuJoCoValidationService:
             float(value) for value in config["failure_target_offset_m"]
         ),
         max_session_recordings=int(config["max_session_recordings"]),
+        minimum_gripper_width_m=float(control["minimum_gripper_width_m"]),
+        maximum_gripper_width_m=float(control["maximum_gripper_width_m"]),
     )
 
 
@@ -317,18 +321,31 @@ class Vision2GraspApp:
         )
 
     def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
-        """Create a normalized simulation-only request from the READY GraspPlan."""
+        """Create one normalized attempt from a ready or rejected candidate."""
 
         body = request or {}
-        plan = self.grasp_planning.current_plan()
+        outcome = self.grasp_planning.current_outcome()
         snapshot = self.target_perception.selected_scene_snapshot()
+        if snapshot is None:
+            raise RuntimeError("no selected Scene Snapshot is available for simulation")
+        candidate = outcome.plan if outcome.plan is not None else (
+            outcome.candidates[0] if outcome.candidates else None
+        )
+        if candidate is None:
+            raise RuntimeError("Simulation Attempt is unavailable because no candidate exists")
         requested_target_id = str(body.get("target_id", "")).strip()
-        if requested_target_id and requested_target_id != plan.target_id:
-            raise ValueError("Validation request does not match the READY GraspPlan target")
-        return self.mujoco_validation.start(
-            plan,
-            scenario=str(body.get("scenario", "NOMINAL")),
-            snapshot=snapshot,
+        candidate_target_id = (
+            candidate.target_id if outcome.plan is not None else candidate.target_instance_id
+        )
+        if requested_target_id and requested_target_id != candidate_target_id:
+            raise ValueError("Validation request does not match the selected simulation candidate")
+        scenario = str(body.get("scenario", "NOMINAL"))
+        if outcome.plan is not None:
+            return self.mujoco_validation.start(
+                outcome.plan, scenario=scenario, snapshot=snapshot
+            )
+        return self.mujoco_validation.start_rejected_attempt(
+            outcome, scenario=scenario, snapshot=snapshot
         )
 
     def run_simulation(self) -> dict[str, Any]:

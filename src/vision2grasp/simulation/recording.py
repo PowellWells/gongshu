@@ -197,6 +197,9 @@ class SimulationRecording:
         return left if value - self.timestamps[left] <= self.timestamps[right] - value else right
 
     def public_summary(self) -> dict[str, Any]:
+        attempt = self.request_metadata.get("simulation_attempt") or self.request_metadata.get(
+            "grasp_plan", {}
+        )
         return {
             "schema_version": RECORDING_SCHEMA_VERSION,
             "recording_id": self.recording_id,
@@ -205,10 +208,21 @@ class SimulationRecording:
             "duration_s": self.duration_s,
             "sample_hz": self.sample_hz,
             "sample_count": len(self.timestamps),
+            "event_count": len(self.events),
+            "events": [event.public_metadata() for event in self.events],
             "result": self.result.public_metadata(),
-            "source_frame_id": self.request_metadata.get("grasp_plan", {}).get("source_frame_id"),
-            "target_instance_id": self.request_metadata.get("grasp_plan", {}).get("target_id"),
-            "grasp_plan_id": self.request_metadata.get("grasp_plan", {}).get("plan_id"),
+            "source_frame_id": attempt.get("source_frame_id"),
+            "target_instance_id": attempt.get("target_id"),
+            "grasp_plan_id": (self.request_metadata.get("grasp_plan") or {}).get("plan_id"),
+            "simulation_attempt_id": attempt.get("attempt_id"),
+            "attempted_candidate_id": attempt.get("candidate_id") or attempt.get("best_candidate_id"),
+            "planning_result": self.request_metadata.get("planning_result"),
+            "requested_gripper_width": attempt.get(
+                "requested_gripper_width", attempt.get("gripper_width")
+            ),
+            "applied_gripper_width": attempt.get(
+                "applied_gripper_width", attempt.get("gripper_width")
+            ),
             "storage": "SAVED" if self.saved else "SESSION_ONLY",
             "saved_path": self.saved_path,
             "compatibility": dict(self.compatibility),
@@ -413,6 +427,7 @@ def load_recording(recording_id: str, root: Path | None = None) -> SimulationRec
             gripper_close_executed=bool(result_data["gripper_close_executed"]),
             lift_height_m=float(result_data["lift_height_m"]),
             stable_window_passed=bool(result_data["stable_window_passed"]),
+            failure_detail=result_data.get("failure_detail"),
         )
         contacts = tuple(
             tuple(

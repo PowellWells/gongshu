@@ -5,7 +5,7 @@
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
   const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning-job/v2";
-  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v3";
+  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v4";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
@@ -14,6 +14,7 @@
     canStartGrasp,
     hasSpatialObservationAssociation,
     hasGraspPlanAssociation,
+    hasGraspOutcomeAssociation,
   } = window.GongshuPipeline;
   const {
     clientPointToSource,
@@ -158,6 +159,10 @@
     simulationTexture: byId("simulationTexture"),
     simulationAppearanceSource: byId("simulationAppearanceSource"),
     simulationResult: byId("simulationResult"),
+    simulationPlanningResult: byId("simulationPlanningResult"),
+    simulationPlanningReason: byId("simulationPlanningReason"),
+    simulationAttemptState: byId("simulationAttemptState"),
+    simulationAttemptCandidate: byId("simulationAttemptCandidate"),
     simulationPlaybackControls: byId("simulationPlaybackControls"),
     recordingAvailability: byId("recordingAvailability"),
     recordingSaveState: byId("recordingSaveState"),
@@ -325,7 +330,8 @@
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
     const validationReady = pipeline.state === "GRASP_PLANNING"
-      && graspPlanningState?.status === "GRASP_READY"
+      && ["GRASP_READY", "PLANNING_REJECTED"].includes(graspPlanningState?.status)
+      && graspPlanningState?.simulation_attempt?.available === true
       && els.robotSelect.value === "panda"
       && !validationRunning;
     els.startValidationButton.disabled = !validationReady;
@@ -562,6 +568,12 @@
     els.simulationAppearanceSource.textContent = "Target Snapshot Frame —";
     els.simulationResult.textContent = "SIMULATION ONLY";
     els.simulationResult.className = "simulation-result";
+    els.simulationPlanningResult.textContent = "WAITING";
+    els.simulationPlanningResult.className = "";
+    els.simulationPlanningReason.textContent = "Reason —";
+    els.simulationAttemptState.textContent = "WAITING";
+    els.simulationAttemptState.className = "";
+    els.simulationAttemptCandidate.textContent = "Candidate —";
     els.startValidationButton.disabled = true;
     els.statusSnapshot.textContent = "WAITING";
     els.legacyRunStatus.textContent = "尚未载入 NOT LOADED";
@@ -902,11 +914,13 @@
     if (pipeline.state !== "SPATIAL_READY" || !spatialPerceptionState?.observation) return;
     try {
       const graspState = await apiGet(`/api/grasp-planning/state?t=${Date.now()}`);
-      if (!hasGraspPlanAssociation(spatialPerceptionState, graspState)) return;
+      if (!hasGraspOutcomeAssociation(spatialPerceptionState, graspState)) return;
       pipeline.transition("GRASP_PLANNING", { restored: true });
       renderGraspPlanning(graspState);
       const simulationState = await apiGet(`/api/mujoco-validation/state?t=${Date.now()}`);
-      if (!simulationState.request || simulationState.request.grasp_plan?.target_id !== graspState.plan.target_id) return;
+      const attemptTarget = simulationState.request?.simulation_attempt?.target_id;
+      const graspTarget = graspState.plan?.target_id || graspState.candidates?.[0]?.target_instance_id;
+      if (!simulationState.request || attemptTarget !== graspTarget) return;
       pipeline.transition("SCENE_SYNC", { restored: true });
       pipeline.transition("SIMULATION", { restored: true });
       if (simulationState.media?.stream_available) {
@@ -1236,6 +1250,18 @@
     }
     graspPlanningState = state;
     const plan = state.plan;
+    const attempt = state.simulation_attempt || {};
+    const attemptCandidate = Array.isArray(state.candidates) ? state.candidates[0] : null;
+    els.simulationPlanningResult.textContent = state.status === "PLANNING_REJECTED"
+      ? "REJECTED"
+      : (state.status === "GRASP_READY" ? "GRASP_READY" : state.status || "WAITING");
+    els.simulationPlanningResult.className = state.status === "PLANNING_REJECTED"
+      ? "is-rejected"
+      : (state.status === "GRASP_READY" ? "is-ready" : "");
+    els.simulationPlanningReason.textContent = `Reason ${state.error_code || "—"}`;
+    els.simulationAttemptState.textContent = attempt.available ? "READY" : "WAITING";
+    els.simulationAttemptState.className = attempt.available ? "is-ready" : "";
+    els.simulationAttemptCandidate.textContent = `Candidate ${attempt.candidate_id || "—"}`;
     const timing = state.timing || {};
     const elapsed = Number(timing.total_elapsed_s);
     els.graspElapsed.textContent = Number.isFinite(elapsed) ? `Elapsed ${elapsed.toFixed(2)} s` : "Elapsed —";
@@ -1281,14 +1307,24 @@
       els.graspState.textContent = "REJECTED";
       els.graspState.classList.remove("has-data");
       els.graspInspectorStatus.textContent = "PLANNING_REJECTED";
-      els.graspValue.textContent = "没有可执行候选 NO EXECUTABLE GRASP";
-      els.graspAngleValue.textContent = "NOT AVAILABLE";
-      els.graspWidthValue.textContent = "NOT AVAILABLE";
-      els.graspQualityValue.textContent = "NOT AVAILABLE";
-      els.graspApproachValue.textContent = "NOT AVAILABLE";
-      els.graspFrameValue.textContent = "NOT AVAILABLE";
-      els.graspDetail.textContent = `${rejectionLabel} · ${state.rejected_count} 个真实候选被过滤；VisualizationRequest 已生成`;
-      els.graspFooter.textContent = `PLANNING_REJECTED · ${rejectionLabel}`;
+      els.graspValue.textContent = attemptCandidate
+        ? `尝试候选 ${attemptCandidate.candidate_id} · PLANNING REJECTED`
+        : "没有候选 NO CANDIDATE";
+      els.graspAngleValue.textContent = attemptCandidate
+        ? `${Number(attemptCandidate.angle_deg).toFixed(1)}°`
+        : "NOT AVAILABLE";
+      els.graspWidthValue.textContent = attemptCandidate
+        ? `${(Number(attemptCandidate.width_m) * 1000).toFixed(1)} mm`
+        : "NOT AVAILABLE";
+      els.graspQualityValue.textContent = attemptCandidate
+        ? `${(Number(attemptCandidate.quality) * 100).toFixed(1)} / 100`
+        : "NOT AVAILABLE";
+      els.graspApproachValue.textContent = vectorLabel(attemptCandidate?.approach_direction, 2);
+      els.graspFrameValue.textContent = attemptCandidate ? "相机坐标系 Camera Frame" : "NOT AVAILABLE";
+      els.graspDetail.textContent = `${rejectionLabel} · ${state.rejected_count} 个真实候选被过滤 · Simulation Attempt ${attempt.available ? "READY" : "UNAVAILABLE"}`;
+      els.graspFooter.textContent = attempt.available
+        ? `PLANNING_REJECTED · ATTEMPT READY · ${attempt.candidate_id}`
+        : `PLANNING_REJECTED · ${rejectionLabel}`;
       updateActionButtons();
       return;
     }
@@ -1397,6 +1433,8 @@
     validationState = state;
     const telemetry = state.telemetry || {};
     const result = state.result;
+    const planningResult = state.planning_result || state.request?.planning_result;
+    const simulationAttempt = state.request?.simulation_attempt;
     const recording = state.recording;
     const playback = state.playback;
     els.simulationState.textContent = state.status;
@@ -1405,7 +1443,25 @@
     els.simulationHudState.textContent = telemetry.robot_state || state.status;
     els.simulationCollision.textContent = telemetry.collision ? "COLLISION" : "CLEAR";
     els.simulationCollision.classList.toggle("is-alert", Boolean(telemetry.collision));
-    els.simulationTarget.textContent = telemetry.target_id || state.request?.grasp_plan?.target_id || "—";
+    els.simulationTarget.textContent = telemetry.target_id || simulationAttempt?.target_id || "—";
+    if (planningResult) {
+      els.simulationPlanningResult.textContent = planningResult.status === "PLANNING_REJECTED"
+        ? "REJECTED"
+        : planningResult.status;
+      els.simulationPlanningResult.className = planningResult.status === "PLANNING_REJECTED"
+        ? "is-rejected"
+        : "is-ready";
+      els.simulationPlanningReason.textContent = `Reason ${planningResult.reason || "—"}`;
+    }
+    if (simulationAttempt) {
+      els.simulationAttemptState.textContent = ["SUCCESS", "FAILED"].includes(state.status)
+        ? state.status
+        : "RUNNING";
+      els.simulationAttemptState.className = state.status === "FAILED"
+        ? "is-failed"
+        : (state.status === "SUCCESS" ? "is-ready" : "");
+      els.simulationAttemptCandidate.textContent = `Candidate ${simulationAttempt.candidate_id || "—"}`;
+    }
     const appearance = telemetry.target_appearance
       || recording?.target_appearance
       || state.request?.target_appearance;
@@ -1437,7 +1493,10 @@
     if (recordAvailable) {
       const currentTime = Number(playback?.current_time || 0);
       const duration = Number(playback?.duration_s || recording.duration_s || 0);
-      els.recordingAvailability.textContent = replayAvailable ? "Replay Available" : "Visualization Available";
+      const replayState = recording?.result?.state || state.status;
+      els.recordingAvailability.textContent = replayAvailable
+        ? `${["SUCCESS", "FAILED"].includes(replayState) ? replayState : "Simulation"} Replay · Available`
+        : "Visualization Available";
       els.recordingSaveState.textContent = state.media.recording_saved ? "Saved" : "Unsaved";
       els.recordingSaveState.classList.toggle("is-saved", Boolean(state.media.recording_saved));
       els.saveRecordingButton.disabled = Boolean(state.media.recording_saved);
@@ -1500,7 +1559,8 @@
   async function startValidation() {
     if (
       pipeline.state !== "GRASP_PLANNING"
-      || graspPlanningState?.status !== "GRASP_READY"
+      || !["GRASP_READY", "PLANNING_REJECTED"].includes(graspPlanningState?.status)
+      || graspPlanningState?.simulation_attempt?.available !== true
       || els.robotSelect.value !== "panda"
       || validationRunning
     ) return;
@@ -1511,7 +1571,8 @@
     els.simulationFooter.textContent = "UNCALIBRATED · SIMULATION ONLY";
     try {
       const state = await apiPost("/api/mujoco-validation/start", {
-        target_id: graspPlanningState.plan.target_id,
+        target_id: graspPlanningState.plan?.target_id
+          || graspPlanningState.candidates?.[0]?.target_instance_id,
         scenario: els.validationScenarioSelect.value,
       });
       renderValidation(state);

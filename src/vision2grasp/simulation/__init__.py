@@ -8,6 +8,8 @@ from .appearance import (
 )
 from .validation_contracts import (
     CameraMode,
+    SimulationAttempt,
+    SimulationFailureReason,
     SimulationState,
     ValidationRequest,
     ValidationResult,
@@ -33,6 +35,8 @@ __all__ = [
     "RobosuiteRGBDSimulator",
     "RobosuiteSimulationConfig",
     "SimulationState",
+    "SimulationAttempt",
+    "SimulationFailureReason",
     "SimulationRecording",
     "TargetAppearance",
     "VALIDATION_SCHEMA_VERSION",

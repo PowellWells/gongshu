@@ -15,8 +15,12 @@ import numpy as np
 from vision2grasp.contracts import CameraIntrinsics
 from vision2grasp.grasp_planning import (
     AbnormalScaleError,
+    CandidateFeasibility,
     EmptyPointCloudError,
     GeometricGraspPlanner,
+    GraspCandidate,
+    GraspMaps,
+    GraspPlanningOutcome,
     GraspPlanningService,
     GripperWidthError,
 )
@@ -33,7 +37,12 @@ from vision2grasp.simulation import (
 )
 from vision2grasp.simulation.native_panda_validation import RecordingPlaybackRenderer
 from vision2grasp.simulation.recording import load_recording, save_recording
-from vision2grasp.simulation.recording import RecordingEvent, SimulationRecording, utc_timestamp
+from vision2grasp.simulation.recording import (
+    ContactState,
+    RecordingEvent,
+    SimulationRecording,
+    utc_timestamp,
+)
 from vision2grasp.spatial_perception import (
     CalibrationState,
     DepthFrame,
@@ -187,7 +196,7 @@ class _FakeValidationBackend:
         ):
             callback(state, b"real-frame", {"target_id": self.request.grasp_plan.target_id})
         if self.fail:
-            return ValidationResult(SimulationState.FAILED, "Lift Failed", True, False, True, 0.0, False)
+            return ValidationResult(SimulationState.FAILED, "NO_LIFT", True, False, True, 0.0, False)
         return ValidationResult(SimulationState.SUCCESS, None, True, False, True, 0.12, True)
 
 
@@ -216,6 +225,7 @@ class _RecordedFakeValidationBackend(_FakeValidationBackend):
     def run(self, callback, stop_event: threading.Event) -> ValidationResult:
         result = super().run(callback, stop_event)
         self.recording = make_minimal_recording(result)
+        object.__setattr__(self.recording, "request_metadata", self.request.public_metadata())
         return result
 
 
@@ -257,6 +267,68 @@ class MuJoCoValidationStateTests(unittest.TestCase):
             transform.target_offset_world,
         )
         self.assertEqual(request.public_metadata()["scene_transform"]["scenario"], "TARGET_OFFSET_STRESS")
+
+    def test_rejected_candidate_runs_independent_attempt_with_panda_width_limit(self) -> None:
+        candidate = GraspCandidate(
+            candidate_id="candidate-01",
+            grasp_point_xyz=np.array([0.0, 0.0, 0.735]),
+            approach_vector=np.array([0.0, 0.0, 1.0]),
+            closing_vector=np.array([1.0, 0.0, 0.0]),
+            grasp_angle=0.0,
+            gripper_width=0.12,
+            quality_score=0.18,
+            score_factors={"quality": 0.18},
+            ranking_score=0.18,
+            feasibility=CandidateFeasibility.REJECTED,
+            rejection_reasons=("LOW_GRASP_QUALITY", "GRIPPER_TOO_WIDE"),
+            source_frame_id=42,
+            target_instance_id="target-42-01",
+        )
+        maps = GraspMaps(
+            quality=np.full((2, 2), 0.18, dtype=np.float32),
+            angle=np.zeros((2, 2), dtype=np.float32),
+            width_px=np.ones((2, 2), dtype=np.float32),
+            crop_xyxy=(0, 0, 2, 2),
+            model_input_size=(2, 2),
+            inference_time_s=0.01,
+            model_load_time_s=0.0,
+            model_was_ready=True,
+            compute_device="cpu",
+            model_location="test",
+        )
+        outcome = GraspPlanningOutcome(
+            candidates=(candidate,),
+            maps=maps,
+            object_extents_xyz=np.array([0.12, 0.08, 0.04]),
+            plan=None,
+            rejection_reason="LOW_GRASP_QUALITY+GRIPPER_TOO_WIDE",
+            planning_time_s=0.02,
+        )
+        captured: list[ValidationRequest] = []
+
+        def factory(request, director):
+            captured.append(request)
+            return _RecordedFakeValidationBackend(request, director)
+
+        service = MuJoCoValidationService(factory)
+        started = service.start_rejected_attempt(outcome, snapshot=make_snapshot())
+        self.assertEqual(started["request"]["planning_result"]["status"], "PLANNING_REJECTED")
+        self.assertIsNone(started["request"]["grasp_plan"])
+        attempt = started["request"]["simulation_attempt"]
+        self.assertEqual(attempt["candidate_id"], "candidate-01")
+        self.assertEqual(attempt["requested_gripper_width"], 0.12)
+        self.assertEqual(attempt["applied_gripper_width"], 0.08)
+        self.assertTrue(attempt["width_limited"])
+        finished = self._wait(service)
+        self.assertEqual(finished["status"], "SUCCESS")
+        self.assertEqual(finished["request"]["planning_result"]["status"], "PLANNING_REJECTED")
+        self.assertTrue(finished["media"]["replay_available"])
+        self.assertEqual(
+            finished["recording"]["planning_result"]["status"], "PLANNING_REJECTED"
+        )
+        self.assertEqual(finished["recording"]["attempted_candidate_id"], "candidate-01")
+        self.assertEqual(captured[0].grasp_plan.planning_status, "PLANNING_REJECTED")
+        service.close()
 
     def test_state_transitions_stream_frames_and_succeed(self) -> None:
         service = MuJoCoValidationService(lambda request, director: _FakeValidationBackend(request, director))
@@ -304,7 +376,7 @@ class MuJoCoValidationStateTests(unittest.TestCase):
         service.start(self._ready_plan())
         finished = self._wait(service)
         self.assertEqual(finished["status"], "FAILED")
-        self.assertEqual(finished["reason"], "Lift Failed")
+        self.assertEqual(finished["reason"], "NO_LIFT")
         self.assertEqual(finished["result"]["lift_height_m"], 0.0)
 
     def test_service_exposes_scenario_and_state_history(self) -> None:
@@ -374,6 +446,8 @@ class MuJoCoValidationStateTests(unittest.TestCase):
                 history = service.session_history()
                 self.assertEqual(len(history["visualization_history"]), 1)
                 opened = service.open_recording(summary["recording_id"])
+                self.assertEqual(opened["status"], "WAITING")
+                self.assertEqual(opened["planning_result"]["status"], "PLANNING_REJECTED")
                 self.assertTrue(opened["media"]["visualization_available"])
                 self.assertFalse(opened["media"]["replay_available"])
                 self.assertIsNone(opened["playback"])
@@ -392,6 +466,73 @@ class MuJoCoValidationStateTests(unittest.TestCase):
                     restored_service.close()
             finally:
                 service.close()
+
+
+class SimulationFailureClassificationTests(unittest.TestCase):
+    @staticmethod
+    def _backend(*, states: list[str], contacts: list[bool], lifts: list[float]):
+        backend = object.__new__(NativePandaValidation)
+        backend.config = NativePandaValidationConfig(lift_height_m=0.08)
+        backend._sample_states = states
+        contact = ContactState(
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0),
+            "gripper0_finger_collision",
+            "bottle_target_collision",
+            0.0,
+        )
+        backend._sample_contacts = [(contact,) if active else () for active in contacts]
+        backend._sample_lift = lifts
+        return backend
+
+    def test_failure_taxonomy_uses_recorded_contact_lift_and_stability(self) -> None:
+        states = ["CLOSE", "LIFT", "VERIFY"]
+        backend = self._backend(states=states, contacts=[False, False, False], lifts=[0.0] * 3)
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.0, stable=False
+            ),
+            "NO_CONTACT",
+        )
+        backend = self._backend(states=states, contacts=[True, False, False], lifts=[0.0] * 3)
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.0, stable=False
+            ),
+            "CONTACT_LOSS",
+        )
+        backend = self._backend(states=states, contacts=[True, True, True], lifts=[0.0, 0.02, 0.02])
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.02, stable=False
+            ),
+            "NO_LIFT",
+        )
+        backend = self._backend(states=states, contacts=[True, True, True], lifts=[0.0, 0.09, 0.03])
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.03, stable=False
+            ),
+            "SLIP",
+        )
+        backend = self._backend(states=states, contacts=[True, True, True], lifts=[0.0, 0.09, 0.09])
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.09, stable=False
+            ),
+            "UNSTABLE_GRASP",
+        )
+        self.assertIsNone(
+            backend._classify_failure(
+                invalid_collision=False, close_executed=True, lift_height=0.09, stable=True
+            )
+        )
+        self.assertEqual(
+            backend._classify_failure(
+                invalid_collision=True, close_executed=False, lift_height=0.0, stable=False
+            ),
+            "COLLISION_ABORT",
+        )
 
 
 class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
@@ -578,8 +719,22 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
             threading.Event(),
         )
         self.assertEqual(result.state, SimulationState.FAILED)
-        self.assertIn(result.reason, {"Lift Failed", "Collision", "Stability Failed"})
-        self.assertIn("LIFT", states)
+        self.assertIn(
+            result.reason,
+            {
+                "COLLISION_ABORT",
+                "NO_CONTACT",
+                "NO_LIFT",
+                "CONTACT_LOSS",
+                "SLIP",
+                "UNSTABLE_GRASP",
+                "EXECUTION_ERROR",
+            },
+        )
+        if result.reason == "COLLISION_ABORT":
+            self.assertNotIn("LIFT", states)
+        else:
+            self.assertIn("LIFT", states)
         self.assertEqual(states[-1], "FAILED")
         self.assertIsNotNone(backend.recording)
         self.assertEqual(backend.recording.result.state, SimulationState.FAILED)

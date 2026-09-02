@@ -211,7 +211,19 @@
             <div id="simulationEmpty" class="workspace-empty">
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 6v12l6 6v8M32 6v12l-6 6v8M12 6h24"/><path d="m18 32 6-3 6 3v8l-6 3-6-3z"/></svg>
               <strong>等待仿真 WAITING</strong>
-              <span>等待 READY GraspPlan 与用户启动</span>
+              <span>等待可用候选与用户启动 Simulation Attempt</span>
+            </div>
+            <div class="simulation-attempt-summary" aria-label="规划与仿真尝试状态">
+              <div>
+                <small>抓取规划 Planning Result</small>
+                <strong id="simulationPlanningResult">WAITING</strong>
+                <span id="simulationPlanningReason">Reason —</span>
+              </div>
+              <div>
+                <small>仿真尝试 Simulation Attempt</small>
+                <strong id="simulationAttemptState">WAITING</strong>
+                <span id="simulationAttemptCandidate">Candidate —</span>
+              </div>
             </div>
             <div id="simulationHud" class="simulation-hud" hidden>
               <div><small>仿真状态 Simulation State</small><strong id="simulationHudState">WAITING</strong></div>
@@ -239,7 +251,7 @@
               </select>
             </label>
             <button id="startValidationButton" class="start-validation-button" type="button" disabled>
-              开始仿真验证 <b>Start Validation</b>
+              开始仿真尝试 <b>Start Attempt</b>
             </button>
             <section id="simulationPlaybackControls" class="simulation-playback-controls" hidden>
               <div class="recording-status-row">

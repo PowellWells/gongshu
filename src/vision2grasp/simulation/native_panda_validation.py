@@ -21,6 +21,7 @@ from .appearance import ProxyGeometry, TARGET_TEXTURE_ASSET_NAME, TargetAppearan
 from .validation_contracts import (
     CameraMode,
     SimulationState,
+    SimulationFailureReason,
     ValidationRequest,
     ValidationResult,
 )
@@ -169,7 +170,10 @@ class RecordingPlaybackRenderer:
         telemetry = {
             "robot_state": state.value,
             "grasp_state": state.value,
-            "target_id": self.recording.request_metadata.get("grasp_plan", {}).get("target_id"),
+            "target_id": (
+                self.recording.request_metadata.get("simulation_attempt")
+                or self.recording.request_metadata.get("grasp_plan", {})
+            ).get("target_id"),
             "collision": bool(self.recording.collision_states[index]),
             "target_position_world": self.recording.target_poses[index, :3].tolist(),
             "target_velocity": self.recording.target_velocities[index].tolist(),
@@ -317,6 +321,7 @@ class NativePandaValidation:
         self._sample_states: list[str] = []
         self._sample_contacts: list[tuple[ContactState, ...]] = []
         self._events: list[RecordingEvent] = []
+        self._last_target_gripper_contact = False
 
     def run(self, callback: FrameCallback, stop_event: threading.Event) -> ValidationResult:
         renderer: mujoco.Renderer | None = None
@@ -349,6 +354,7 @@ class NativePandaValidation:
             )
             self._events.append(RecordingEvent(float(self.data.time), "SIMULATION_STARTED", SimulationState.HOME.value))
             self._record_sample(SimulationState.HOME, force=True)
+            aborted_on_collision = False
             for state, start_q, end_q, duration, gripper in phases:
                 if stop_event.is_set():
                     raise RuntimeError("validation stopped")
@@ -361,23 +367,28 @@ class NativePandaValidation:
                 invalid_collision = invalid_collision or phase_collision
                 if state is SimulationState.VERIFY:
                     lift_samples.extend(samples)
-            completed = True
+                if phase_collision:
+                    aborted_on_collision = True
+                    self._events.append(RecordingEvent(
+                        float(self.data.time),
+                        SimulationFailureReason.COLLISION_ABORT.value,
+                        state.value,
+                    ))
+                    break
+            completed = not aborted_on_collision
             lift_height = float(self.data.xpos[self._target_body, 2] - initial_target_z)
             stable = bool(
                 lift_samples
                 and max(lift_samples) - min(lift_samples) <= 0.012
                 and lift_height >= self.config.lift_height_m
             )
-            if invalid_collision:
-                final_state, reason = SimulationState.FAILED, "Collision"
-            elif not close_executed:
-                final_state, reason = SimulationState.FAILED, "State Error"
-            elif lift_height < self.config.lift_height_m:
-                final_state, reason = SimulationState.FAILED, "Lift Failed"
-            elif not stable:
-                final_state, reason = SimulationState.FAILED, "Stability Failed"
-            else:
-                final_state, reason = SimulationState.SUCCESS, None
+            reason = self._classify_failure(
+                invalid_collision=invalid_collision,
+                close_executed=close_executed,
+                lift_height=lift_height,
+                stable=stable,
+            )
+            final_state = SimulationState.SUCCESS if reason is None else SimulationState.FAILED
             result = ValidationResult(
                 state=final_state,
                 reason=reason,
@@ -388,6 +399,8 @@ class NativePandaValidation:
                 stable_window_passed=stable,
             )
             self._events.append(RecordingEvent(float(self.data.time), "VALIDATION_RESULT", final_state.value))
+            if reason is not None:
+                self._events.append(RecordingEvent(float(self.data.time), reason, final_state.value))
             self._hold_final(final_state, renderer, callback, stop_event, result.public_metadata())
             self._record_sample(final_state, force=True)
             self._finalize_recording(result)
@@ -396,14 +409,22 @@ class NativePandaValidation:
             lift_height = float(self.data.xpos[self._target_body, 2] - initial_target_z)
             result = ValidationResult(
                 state=SimulationState.FAILED,
-                reason=str(error) or "State Error",
+                reason=SimulationFailureReason.EXECUTION_ERROR.value,
                 state_machine_complete=completed,
                 invalid_table_collision=invalid_collision,
                 gripper_close_executed=close_executed,
                 lift_height_m=lift_height,
                 stable_window_passed=False,
+                failure_detail=str(error) or "State Error",
             )
             self._events.append(RecordingEvent(float(self.data.time), "VALIDATION_RESULT", SimulationState.FAILED.value))
+            self._events.append(
+                RecordingEvent(
+                    float(self.data.time),
+                    SimulationFailureReason.EXECUTION_ERROR.value,
+                    SimulationState.FAILED.value,
+                )
+            )
             if renderer is not None:
                 self._hold_final(SimulationState.FAILED, renderer, callback, stop_event, result.public_metadata())
             self._record_sample(SimulationState.FAILED, force=True)
@@ -444,17 +465,66 @@ class NativePandaValidation:
             mujoco.mj_step(self.model, self.data)
             self._sample_step += 1
             self._record_sample(state)
-            invalid_collision = invalid_collision or self._has_invalid_table_collision()
+            collision_now = self._has_invalid_table_collision()
+            invalid_collision = invalid_collision or collision_now
             if state is SimulationState.VERIFY:
                 target_samples.append(float(self.data.xpos[self._target_body, 2]))
-            if step % render_stride == 0 or step == steps - 1:
+            if step % render_stride == 0 or step == steps - 1 or collision_now:
                 callback(state, self._render(renderer, state), self._telemetry(state))
                 if self.config.realtime_playback:
                     next_frame_time += 1.0 / self.config.render_fps
                     remaining = next_frame_time - time.monotonic()
                     if remaining > 0.0:
                         time.sleep(remaining)
+            if collision_now:
+                return True, target_samples
         return invalid_collision, target_samples
+
+    def _classify_failure(
+        self,
+        *,
+        invalid_collision: bool,
+        close_executed: bool,
+        lift_height: float,
+        stable: bool,
+    ) -> str | None:
+        """Classify observed dynamics without consulting the planning verdict."""
+
+        if invalid_collision:
+            return SimulationFailureReason.COLLISION_ABORT.value
+        if not close_executed:
+            return SimulationFailureReason.EXECUTION_ERROR.value
+        contact_samples = [
+            self._has_target_gripper_contact(contacts)
+            for state, contacts in zip(self._sample_states, self._sample_contacts, strict=True)
+            if state in {
+                SimulationState.CLOSE.value,
+                SimulationState.LIFT.value,
+                SimulationState.VERIFY.value,
+            }
+        ]
+        if not any(contact_samples):
+            return SimulationFailureReason.NO_CONTACT.value
+        max_lift = max(self._sample_lift, default=lift_height)
+        if max_lift >= self.config.lift_height_m and lift_height < self.config.lift_height_m:
+            return SimulationFailureReason.SLIP.value
+        if contact_samples and not contact_samples[-1]:
+            return SimulationFailureReason.CONTACT_LOSS.value
+        if lift_height < self.config.lift_height_m:
+            return SimulationFailureReason.NO_LIFT.value
+        if not stable:
+            return SimulationFailureReason.UNSTABLE_GRASP.value
+        return None
+
+    @staticmethod
+    def _has_target_gripper_contact(contacts: tuple[ContactState, ...]) -> bool:
+        for contact in contacts:
+            names = (contact.geom1.lower(), contact.geom2.lower())
+            target = any(name.startswith("bottle_") for name in names)
+            gripper = any(name.startswith("gripper0_") for name in names)
+            if target and gripper:
+                return True
+        return False
 
     def _hold_final(
         self,
@@ -575,8 +645,11 @@ class NativePandaValidation:
             # validation label to replace the last physical sample.
             self._sample_states[-1] = state.value
             self._sample_collision[-1] = self._has_invalid_table_collision()
-            self._sample_contacts[-1] = self._contact_states()
+            contacts = self._contact_states()
+            self._sample_contacts[-1] = contacts
+            self._record_contact_transition(timestamp, state, contacts)
             return
+        contacts = self._contact_states()
         target_quat = self.data.xquat[self._target_body].copy()
         self._sample_timestamps.append(timestamp)
         self._sample_qpos.append(self.data.qpos.copy())
@@ -595,7 +668,8 @@ class NativePandaValidation:
         self._sample_collision.append(self._has_invalid_table_collision())
         self._sample_lift.append(float(self.data.xpos[self._target_body, 2] - self._recording_initial_z))
         self._sample_states.append(state.value)
-        self._sample_contacts.append(self._contact_states())
+        self._sample_contacts.append(contacts)
+        self._record_contact_transition(timestamp, state, contacts)
         while self._next_record_time <= timestamp + 1e-12:
             self._next_record_time += self._recording_period
 
@@ -616,6 +690,19 @@ class NativePandaValidation:
                 )
             )
         return tuple(contacts)
+
+    def _record_contact_transition(
+        self,
+        timestamp: float,
+        state: SimulationState,
+        contacts: tuple[ContactState, ...],
+    ) -> None:
+        current = self._has_target_gripper_contact(contacts)
+        if current and not self._last_target_gripper_contact:
+            self._events.append(RecordingEvent(timestamp, "CONTACT_ESTABLISHED", state.value))
+        elif not current and self._last_target_gripper_contact:
+            self._events.append(RecordingEvent(timestamp, "CONTACT_LOST", state.value))
+        self._last_target_gripper_contact = current
 
     def _finalize_recording(self, result: ValidationResult) -> None:
         if self.recording is not None:

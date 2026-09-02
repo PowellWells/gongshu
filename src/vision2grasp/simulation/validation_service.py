@@ -11,7 +11,7 @@ import uuid
 import cv2
 import numpy as np
 
-from vision2grasp.grasp_planning import GraspPlan
+from vision2grasp.grasp_planning import GraspPlan, GraspPlanningOutcome
 from vision2grasp.target_perception import TargetSceneSnapshot
 
 from .appearance import extract_target_appearance
@@ -29,6 +29,7 @@ from .recording import (
 )
 from .validation_contracts import (
     CameraMode,
+    SimulationAttempt,
     SimulationState,
     ValidationRequest,
     ValidationResult,
@@ -36,7 +37,7 @@ from .validation_contracts import (
 )
 
 
-VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v3"
+VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v4"
 _PLAYBACK_SPEEDS: Final = (0.25, 0.5, 1.0, 2.0)
 
 
@@ -51,6 +52,8 @@ class MuJoCoValidationService:
         max_session_recordings: int = 8,
         recordings_root: Path | None = None,
         exports_root: Path | None = None,
+        minimum_gripper_width_m: float = 0.01,
+        maximum_gripper_width_m: float = 0.08,
     ) -> None:
         self._backend_factory = backend_factory
         self._lock = threading.RLock()
@@ -83,6 +86,13 @@ class MuJoCoValidationService:
         self._playback_shutdown = threading.Event()
         self._recordings_root = recordings_root
         self._exports_root = exports_root
+        self._minimum_gripper_width_m = float(minimum_gripper_width_m)
+        self._maximum_gripper_width_m = float(maximum_gripper_width_m)
+        if (
+            not 0.0 < self._minimum_gripper_width_m
+            <= self._maximum_gripper_width_m
+        ):
+            raise ValueError("Panda gripper width limits are invalid")
         self._export_lock = threading.Lock()
         self._playback_thread = threading.Thread(
             target=self._playback_loop, name="gongshu-recording-playback", daemon=True
@@ -91,7 +101,7 @@ class MuJoCoValidationService:
 
     def start(
         self,
-        plan: GraspPlan,
+        plan: GraspPlan | SimulationAttempt,
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         snapshot: TargetSceneSnapshot | None = None,
@@ -143,6 +153,35 @@ class MuJoCoValidationService:
             )
             self._thread.start()
             return self.snapshot()
+
+    def start_rejected_attempt(
+        self,
+        outcome: GraspPlanningOutcome,
+        *,
+        snapshot: TargetSceneSnapshot,
+        scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
+    ) -> dict[str, object]:
+        """Execute the highest-ranked rejected candidate without changing planning."""
+
+        if outcome.plan is not None:
+            raise ValueError("ready planning outcomes must start from their GraspPlan")
+        if not outcome.candidates:
+            raise RuntimeError("Simulation Attempt is unavailable because no candidate exists")
+        candidate = outcome.candidates[0]
+        if candidate.target_instance_id != snapshot.target.instance_id:
+            raise ValueError("Simulation candidate does not match selected target")
+        if candidate.source_frame_id != snapshot.frame.frame_id:
+            raise ValueError("Simulation candidate does not match selected source frame")
+        attempt = SimulationAttempt.from_rejected_candidate(
+            candidate,
+            snapshot_id=snapshot.snapshot_id,
+            object_extents_xyz=outcome.object_extents_xyz,
+            candidate_count=len(outcome.candidates),
+            planning_reason=outcome.rejection_reason or "NO_VALID_CANDIDATE",
+            minimum_gripper_width_m=self._minimum_gripper_width_m,
+            maximum_gripper_width_m=self._maximum_gripper_width_m,
+        )
+        return self.start(attempt, scenario=scenario, snapshot=snapshot)
 
     def reset(self) -> dict[str, object]:
         """Close the active run but intentionally retain bounded Session History."""
@@ -251,9 +290,10 @@ class MuJoCoValidationService:
             if visualization is not None:
                 self._current_recording = None
                 self._current_visualization = visualization
+                self._request = None
                 self._result = None
                 self._reason = visualization.rejection_reason
-                self._state = SimulationState.FAILED
+                self._state = SimulationState.WAITING
                 self._message = f"Planning Rejected · {visualization.rejection_reason}"
                 self._frame_jpeg = bytes(visualization.preview_jpeg)
                 self._frame_revision += 1
@@ -275,9 +315,10 @@ class MuJoCoValidationService:
                     self._planning_visualizations.append(visualization)
                     self._current_recording = None
                     self._current_visualization = visualization
+                    self._request = None
                     self._result = None
                     self._reason = visualization.rejection_reason
-                    self._state = SimulationState.FAILED
+                    self._state = SimulationState.WAITING
                     self._message = f"Planning Rejected · {visualization.rejection_reason}"
                     self._frame_jpeg = bytes(visualization.preview_jpeg)
                     self._frame_revision += 1
@@ -409,6 +450,11 @@ class MuJoCoValidationService:
         with self._lock:
             recording = self._current_recording
             visualization = self._current_visualization
+            request_metadata = (
+                self._request.public_metadata()
+                if self._request is not None
+                else (dict(recording.request_metadata) if recording is not None else None)
+            )
             active_summary = (
                 recording.public_summary() if recording is not None
                 else (visualization.public_summary() if visualization is not None else None)
@@ -421,8 +467,26 @@ class MuJoCoValidationService:
                 "revision": self._revision,
                 "frame_revision": self._frame_revision,
                 "camera_mode": self._camera_mode.value,
-                "scenario": self._request.scenario.value if self._request else ValidationScenario.NOMINAL.value,
-                "request": None if self._request is None else self._request.public_metadata(),
+                "scenario": (
+                    request_metadata.get("scene_transform", {}).get(
+                        "scenario", ValidationScenario.NOMINAL.value
+                    )
+                    if request_metadata is not None
+                    else ValidationScenario.NOMINAL.value
+                ),
+                "request": request_metadata,
+                "planning_result": (
+                    request_metadata.get("planning_result")
+                    if request_metadata is not None
+                    else (
+                        {
+                            "status": "PLANNING_REJECTED",
+                            "reason": visualization.rejection_reason,
+                        }
+                        if visualization is not None
+                        else None
+                    )
+                ),
                 "telemetry": dict(self._telemetry),
                 "state_history": [dict(item) for item in self._state_history],
                 "result": None if self._result is None else self._result.public_metadata(),
@@ -568,6 +632,8 @@ class MuJoCoValidationService:
     def _activate_recording_locked(
         self, recording: SimulationRecording, *, preserve_result: bool = False
     ) -> None:
+        if not preserve_result:
+            self._request = None
         self._current_recording = recording
         self._current_visualization = None
         self._result = recording.result

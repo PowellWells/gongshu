@@ -112,6 +112,7 @@ class PixelWiseTopKGraspPlanner:
             return GraspPlanningOutcome(
                 candidates=candidates,
                 maps=maps,
+                object_extents_xyz=extents,
                 plan=None,
                 rejection_reason=self._final_rejection_reason(candidates),
                 planning_time_s=elapsed,
@@ -160,7 +161,7 @@ class PixelWiseTopKGraspPlanner:
                 "input_size": list(maps.model_input_size),
             },
         )
-        return GraspPlanningOutcome(candidates, maps, plan, None, elapsed)
+        return GraspPlanningOutcome(candidates, maps, extents, plan, None, elapsed)
 
     def _top_k_peaks(
         self,

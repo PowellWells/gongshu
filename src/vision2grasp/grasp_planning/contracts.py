@@ -343,9 +343,18 @@ class GraspMaps:
 class GraspPlanningOutcome:
     candidates: tuple[GraspCandidate, ...]
     maps: GraspMaps
+    object_extents_xyz: NDArray[np.float64]
     plan: GraspPlan | None
     rejection_reason: str | None
     planning_time_s: float
+
+    def __post_init__(self) -> None:
+        extents = np.asarray(self.object_extents_xyz, dtype=np.float64)
+        if extents.shape != (3,) or not np.all(np.isfinite(extents)) or np.any(extents <= 0.0):
+            raise ValueError("object_extents_xyz must be a finite positive 3-vector")
+        immutable = np.ascontiguousarray(extents.copy())
+        immutable.setflags(write=False)
+        object.__setattr__(self, "object_extents_xyz", immutable)
 
     @property
     def ready(self) -> bool:
@@ -368,5 +377,6 @@ class GraspPlanningOutcome:
             ),
             "candidate_count": len(self.candidates),
             "best_candidate_id": None if self.plan is None else self.plan.best_candidate_id,
+            "object_extents_xyz": self.object_extents_xyz.tolist(),
             "candidates": [candidate.public_metadata() for candidate in self.candidates],
         }

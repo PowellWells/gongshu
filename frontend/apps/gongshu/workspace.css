@@ -810,6 +810,34 @@
   box-shadow: 0 0 34px rgba(255, 91, 82, .18);
 }
 
+.simulation-attempt-summary {
+  position: absolute;
+  left: 14px;
+  bottom: 174px;
+  z-index: 5;
+  display: flex;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.simulation-attempt-summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 168px;
+  padding: 7px 9px;
+  border: 1px solid rgba(116, 184, 216, .3);
+  border-radius: 7px;
+  background: rgba(3, 14, 23, .78);
+  backdrop-filter: blur(8px);
+}
+
+.simulation-attempt-summary small,
+.simulation-attempt-summary span { color: #91adbe; font-size: 7px; }
+.simulation-attempt-summary strong { color: #d9f4ff; font-size: 9px; letter-spacing: .08em; }
+.simulation-attempt-summary strong.is-ready { color: #79efc1; }
+.simulation-attempt-summary strong.is-rejected,
+.simulation-attempt-summary strong.is-failed { color: #ff9a95; }
+
 .simulation-camera-controls {
   position: absolute;
   right: 14px;
@@ -889,6 +917,7 @@
 }
 
 .workspace-view:not(.is-primary) .simulation-hud-metrics,
+.workspace-view:not(.is-primary) .simulation-attempt-summary,
 .workspace-view:not(.is-primary) .simulation-camera-controls,
 .workspace-view:not(.is-primary) .simulation-scenario-control,
 .workspace-view:not(.is-primary) .start-validation-button,

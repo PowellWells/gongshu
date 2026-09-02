@@ -134,6 +134,17 @@
       && plan.target_id === observation.target_instance_id;
   }
 
+  function hasGraspOutcomeAssociation(spatialState, graspState) {
+    if (hasGraspPlanAssociation(spatialState, graspState)) return true;
+    const observation = spatialState?.observation;
+    const candidate = Array.isArray(graspState?.candidates) ? graspState.candidates[0] : null;
+    return graspState?.status === "PLANNING_REJECTED"
+      && graspState?.simulation_attempt?.available === true
+      && Boolean(observation && candidate)
+      && candidate.source_frame_id === observation.source_frame_id
+      && candidate.target_instance_id === observation.target_instance_id;
+  }
+
   return Object.freeze({
     STATES,
     VIEW_BY_STATE,
@@ -142,6 +153,7 @@
     hasTargetSnapshotAssociation,
     hasSpatialObservationAssociation,
     hasGraspPlanAssociation,
+    hasGraspOutcomeAssociation,
     canStartGrasp,
   });
 });

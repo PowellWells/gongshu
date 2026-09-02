@@ -9,12 +9,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from vision2grasp.grasp_planning import GraspPlan
+from vision2grasp.grasp_planning import GraspCandidate, GraspPlan
 
 from .appearance import TargetAppearance
 
 
-VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v2"
+VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v3"
+SIMULATION_ATTEMPT_SCHEMA_VERSION = "gongshu.simulation-attempt/v1"
 
 
 class CameraMode(str, Enum):
@@ -53,6 +54,165 @@ class SimulationState(str, Enum):
     VERIFY = "VERIFY"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+
+
+class SimulationFailureReason(str, Enum):
+    COLLISION_ABORT = "COLLISION_ABORT"
+    NO_CONTACT = "NO_CONTACT"
+    NO_LIFT = "NO_LIFT"
+    CONTACT_LOSS = "CONTACT_LOSS"
+    SLIP = "SLIP"
+    UNSTABLE_GRASP = "UNSTABLE_GRASP"
+    EXECUTION_ERROR = "EXECUTION_ERROR"
+
+
+@dataclass(frozen=True, slots=True)
+class SimulationAttempt:
+    """A candidate selected for simulation without changing its planning verdict."""
+
+    attempt_id: str
+    planning_status: str
+    planning_reason: str | None
+    candidate_id: str
+    candidate_rejection_reasons: tuple[str, ...]
+    target_id: str
+    snapshot_id: str
+    source_frame_id: int
+    grasp_point_xyz: NDArray[np.float64]
+    approach_vector: NDArray[np.float64]
+    closing_vector: NDArray[np.float64]
+    grasp_angle: float
+    requested_gripper_width: float
+    applied_gripper_width: float
+    quality_score: float
+    object_extents_xyz: NDArray[np.float64]
+    candidate_count: int
+
+    def __post_init__(self) -> None:
+        if self.planning_status not in {"GRASP_READY", "PLANNING_REJECTED"}:
+            raise ValueError("simulation attempt requires a completed planning result")
+        if self.planning_status == "PLANNING_REJECTED" and not self.planning_reason:
+            raise ValueError("rejected simulation attempts require a planning reason")
+        for value, name in (
+            (self.attempt_id, "attempt_id"),
+            (self.candidate_id, "candidate_id"),
+            (self.target_id, "target_id"),
+            (self.snapshot_id, "snapshot_id"),
+        ):
+            if not str(value).strip():
+                raise ValueError(f"{name} must not be empty")
+        if self.source_frame_id < 0 or self.candidate_count < 1:
+            raise ValueError("simulation attempt source and candidate count must be valid")
+        if not np.isfinite(self.grasp_angle):
+            raise ValueError("grasp_angle must be finite")
+        for name in ("requested_gripper_width", "applied_gripper_width"):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        if not np.isfinite(self.quality_score) or not 0.0 <= self.quality_score <= 1.0:
+            raise ValueError("quality_score must be in [0, 1]")
+        for name in (
+            "grasp_point_xyz",
+            "approach_vector",
+            "closing_vector",
+            "object_extents_xyz",
+        ):
+            value = np.asarray(getattr(self, name), dtype=np.float64)
+            if value.shape != (3,) or not np.all(np.isfinite(value)):
+                raise ValueError(f"{name} must be a finite 3-vector")
+            if name in {"approach_vector", "closing_vector"} and not np.isclose(
+                np.linalg.norm(value), 1.0, atol=1e-6
+            ):
+                raise ValueError(f"{name} must be a unit vector")
+            if name == "object_extents_xyz" and np.any(value <= 0.0):
+                raise ValueError("object_extents_xyz must be positive")
+            immutable = np.ascontiguousarray(value.copy())
+            immutable.setflags(write=False)
+            object.__setattr__(self, name, immutable)
+        object.__setattr__(
+            self,
+            "candidate_rejection_reasons",
+            tuple(dict.fromkeys(self.candidate_rejection_reasons)),
+        )
+
+    @property
+    def gripper_width(self) -> float:
+        """Width actually applied to the unchanged Panda actuator limits."""
+
+        return self.applied_gripper_width
+
+    @property
+    def best_candidate_id(self) -> str:
+        return self.candidate_id
+
+    def public_metadata(self) -> dict[str, Any]:
+        return {
+            "schema_version": SIMULATION_ATTEMPT_SCHEMA_VERSION,
+            "attempt_id": self.attempt_id,
+            "planning_status": self.planning_status,
+            "planning_reason": self.planning_reason,
+            "candidate_id": self.candidate_id,
+            "candidate_rejection_reasons": list(self.candidate_rejection_reasons),
+            "target_id": self.target_id,
+            "snapshot_id": self.snapshot_id,
+            "source_frame_id": self.source_frame_id,
+            "grasp_point_xyz": self.grasp_point_xyz.tolist(),
+            "approach_vector": self.approach_vector.tolist(),
+            "closing_vector": self.closing_vector.tolist(),
+            "grasp_angle": self.grasp_angle,
+            "grasp_angle_deg": float(np.degrees(self.grasp_angle)),
+            "requested_gripper_width": self.requested_gripper_width,
+            "applied_gripper_width": self.applied_gripper_width,
+            "width_limited": not np.isclose(
+                self.requested_gripper_width, self.applied_gripper_width, atol=1e-12
+            ),
+            "quality_score": self.quality_score,
+            "object_extents_xyz": self.object_extents_xyz.tolist(),
+            "candidate_count": self.candidate_count,
+            "execution_scope": "SIMULATION_ONLY",
+        }
+
+    @classmethod
+    def from_rejected_candidate(
+        cls,
+        candidate: GraspCandidate,
+        *,
+        snapshot_id: str,
+        object_extents_xyz: NDArray[np.float64],
+        candidate_count: int,
+        planning_reason: str,
+        minimum_gripper_width_m: float,
+        maximum_gripper_width_m: float,
+    ) -> "SimulationAttempt":
+        applied_width = float(
+            np.clip(
+                candidate.gripper_width,
+                minimum_gripper_width_m,
+                maximum_gripper_width_m,
+            )
+        )
+        return cls(
+            attempt_id=(
+                f"attempt-{candidate.source_frame_id}-{candidate.target_instance_id}-"
+                f"{candidate.candidate_id}"
+            ),
+            planning_status="PLANNING_REJECTED",
+            planning_reason=planning_reason,
+            candidate_id=candidate.candidate_id,
+            candidate_rejection_reasons=candidate.rejection_reasons,
+            target_id=candidate.target_instance_id,
+            snapshot_id=snapshot_id,
+            source_frame_id=candidate.source_frame_id,
+            grasp_point_xyz=candidate.grasp_point_xyz,
+            approach_vector=candidate.approach_vector,
+            closing_vector=candidate.closing_vector,
+            grasp_angle=candidate.grasp_angle,
+            requested_gripper_width=candidate.gripper_width,
+            applied_gripper_width=applied_width,
+            quality_score=candidate.quality_score,
+            object_extents_xyz=object_extents_xyz,
+            candidate_count=candidate_count,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +269,7 @@ class ValidationSceneTransform:
     @classmethod
     def from_grasp_plan(
         cls,
-        plan: GraspPlan,
+        plan: GraspPlan | SimulationAttempt,
         *,
         table_top_z: float = 0.80,
         target_xy: tuple[float, float] = (0.0, 0.0),
@@ -167,7 +327,7 @@ class ValidationSceneTransform:
 
 @dataclass(frozen=True, slots=True)
 class ValidationRequest:
-    grasp_plan: GraspPlan
+    grasp_plan: GraspPlan | SimulationAttempt
     scene_transform: ValidationSceneTransform
     target_appearance: TargetAppearance | None = None
     appearance_failure_reason: str | None = None
@@ -189,7 +349,7 @@ class ValidationRequest:
     @classmethod
     def from_grasp_plan(
         cls,
-        plan: GraspPlan,
+        plan: GraspPlan | SimulationAttempt,
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
@@ -217,11 +377,49 @@ class ValidationRequest:
         return self.scene_transform.scenario
 
     def public_metadata(self) -> dict[str, Any]:
+        attempt = self.simulation_attempt_metadata()
         return {
             "schema_version": VALIDATION_REQUEST_SCHEMA_VERSION,
-            "grasp_plan": self.grasp_plan.public_metadata(),
+            "grasp_plan": (
+                self.grasp_plan.public_metadata()
+                if isinstance(self.grasp_plan, GraspPlan)
+                else None
+            ),
+            "planning_result": {
+                "status": attempt["planning_status"],
+                "reason": attempt["planning_reason"],
+            },
+            "simulation_attempt": attempt,
             "scene_transform": self.scene_transform.public_metadata(),
             "target_appearance": self.appearance_metadata(),
+        }
+
+    def simulation_attempt_metadata(self) -> dict[str, Any]:
+        if isinstance(self.grasp_plan, SimulationAttempt):
+            return self.grasp_plan.public_metadata()
+        plan = self.grasp_plan
+        return {
+            "schema_version": SIMULATION_ATTEMPT_SCHEMA_VERSION,
+            "attempt_id": f"attempt-{plan.source_frame_id}-{plan.target_id}-{plan.best_candidate_id}",
+            "planning_status": "GRASP_READY",
+            "planning_reason": None,
+            "candidate_id": plan.best_candidate_id,
+            "candidate_rejection_reasons": [],
+            "target_id": plan.target_id,
+            "snapshot_id": plan.snapshot_id,
+            "source_frame_id": plan.source_frame_id,
+            "grasp_point_xyz": plan.grasp_point_xyz.tolist(),
+            "approach_vector": plan.approach_vector.tolist(),
+            "closing_vector": plan.closing_vector.tolist(),
+            "grasp_angle": plan.grasp_angle,
+            "grasp_angle_deg": float(np.degrees(plan.grasp_angle)),
+            "requested_gripper_width": plan.gripper_width,
+            "applied_gripper_width": plan.gripper_width,
+            "width_limited": False,
+            "quality_score": plan.quality_score,
+            "object_extents_xyz": plan.object_extents_xyz.tolist(),
+            "candidate_count": plan.candidate_count,
+            "execution_scope": "SIMULATION_ONLY",
         }
 
     def appearance_metadata(self) -> dict[str, Any]:
@@ -249,6 +447,7 @@ class ValidationResult:
     gripper_close_executed: bool
     lift_height_m: float
     stable_window_passed: bool
+    failure_detail: str | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -263,6 +462,7 @@ class ValidationResult:
             "gripper_close_executed": self.gripper_close_executed,
             "lift_height_m": self.lift_height_m,
             "stable_window_passed": self.stable_window_passed,
+            "failure_detail": self.failure_detail,
             "validation_result": (
                 "Simulation Validation SUCCESS"
                 if self.succeeded

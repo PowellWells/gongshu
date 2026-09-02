@@ -326,6 +326,28 @@ class GraspPlanningJobTests(unittest.TestCase):
         for layer in state["media"]["available_layers"]:
             self.assertGreater(len(service.view_jpeg(layer) or b""), 100)
 
+    def test_rejected_job_exposes_deterministic_simulation_attempt_candidate(self) -> None:
+        service = GraspPlanningService(
+            PixelWiseTopKGraspPlanner(
+                FakeMapDetector((100.0, 100.0, 100.0, 100.0, 100.0)),
+                TopKGraspPlannerConfig(top_k=5, minimum_mask_margin_ratio=0.0),
+            )
+        )
+        service.plan(make_observation(), make_snapshot(), mode="RESEARCH")
+        state = self.wait(service)
+        self.assertEqual(state["status"], "PLANNING_REJECTED")
+        self.assertEqual(state["error_code"], "GRIPPER_TOO_WIDE")
+        self.assertTrue(state["simulation_attempt"]["available"])
+        self.assertEqual(state["simulation_attempt"]["state"], "READY")
+        self.assertEqual(
+            state["simulation_attempt"]["candidate_id"],
+            state["candidates"][0]["candidate_id"],
+        )
+        self.assertEqual(
+            service.current_outcome().object_extents_xyz.tolist(),
+            state["visualization_request"]["object_extents_xyz"],
+        )
+
     def test_reset_invalidates_late_job_result(self) -> None:
         planner = PixelWiseTopKGraspPlanner(
             FakeMapDetector(),

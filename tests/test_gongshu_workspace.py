@@ -83,6 +83,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "graspApproachValue",
             "graspFrameValue",
             "startValidationButton",
+            "simulationPlanningResult",
+            "simulationPlanningReason",
+            "simulationAttemptState",
+            "simulationAttemptCandidate",
             "simulationHud",
             "simulationHudState",
             "simulationAppearance",
@@ -208,6 +212,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("APPEARANCE FALLBACK", self.controller)
         self.assertIn("Target Snapshot Frame", self.controller)
         self.assertIn("target_appearance", self.controller)
+        self.assertIn("Simulation Attempt", self.html)
+        self.assertIn('"PLANNING_REJECTED"].includes(graspPlanningState?.status)', self.controller)
+        self.assertIn("state.request?.simulation_attempt", self.controller)
 
     def test_pipeline_declares_all_states_and_stage_driven_views(self) -> None:
         for state in (

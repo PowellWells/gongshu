@@ -19,7 +19,8 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 Phone Camera → Frozen RGB Frame → Manual Target → Verified Depth
 → Camera Intrinsics → Target Point Cloud / XYZ → Geometry Sanity → SPATIAL_READY
 → GR-ConvNet Grasp Maps → Top-K → Feasibility Filtering
-→ Best Executable Grasp → GRASP_READY
+→ Best Executable Grasp → GRASP_READY / PLANNING_REJECTED
+→ Candidate Exists → Simulation Attempt → MuJoCo SUCCESS / FAILED
 ```
 
 Camera 实时画面通过私有局域网 WebRTC 传输，只在内存中保留最新 RGB 帧；高清拍照先进入 PC 内存预览，只有用户明确保存时才写入 `artifacts/camera/captures/`。
@@ -97,7 +98,7 @@ Phone Mode 的 Camera Intrinsics 优先级预留为 `CALIBRATED → SENSOR_METAD
 
 v0.6 已按 `Grasp Detection → Top-K Candidates → Feasibility Filtering → Candidate Ranking → Best Executable Grasp` 完成。默认 `Top-K=8`，候选逐一检查 target binding、quality、边缘余量、有效深度、几何置信度、异常尺度与 Panda 夹爪宽度；最高 quality 候选被拒绝时会继续评估其余候选。Panda 宽度直接复用 `[control]` 的 `0.01–0.08 m` 权威配置，`maximum_object_extent_m = 0.35` 没有放宽。由于尚无 Camera→Robot 外参，workspace reachability 与 collision feasibility 明确为 `UNKNOWN`，不伪造成可达或无碰撞。
 
-v0.7 已将动态物理、Recording 与 Playback 解耦。`NOMINAL` 执行当前 GraspPlan 的标称验证；`TARGET_OFFSET_STRESS` 只把仿真目标相对原计划偏移 `0.14 m`，Panda 仍执行同一轨迹，最终 SUCCESS / FAILED 继续由真实接触、碰撞、抬升高度和稳定窗口决定。运行时以 60 Hz 记录 qpos/qvel、夹爪、目标位姿/速度、接触、碰撞、抬升量、验证状态和事件。回放只恢复 Recording 的 MuJoCo 状态并调用 `mj_forward` 渲染，不执行 `mj_step`，因此 Replay / Timeline / Step / 0.25×–2× / Auto Cinematic / Technical / Target Follow / Free Camera 都不会重跑 Phone、Depth、Grasp 或 Physics；SUCCESS 与失败 Recording 使用同一播放器。规划阶段的 `WIDTH_LIMIT / OUT_OF_REACH / ABNORMAL_SCALE / LOW_GEOMETRY_CONFIDENCE` 只形成非物理 Visualization Record，不伪造 Dynamic Simulation。
+v0.7 已将动态物理、Recording 与 Playback 解耦。`NOMINAL` 执行当前候选的标称 Simulation Attempt；`TARGET_OFFSET_STRESS` 只把仿真目标相对原候选偏移 `0.14 m`，Panda 仍执行同一轨迹，最终 SUCCESS / FAILED 继续由真实接触、碰撞、抬升高度和稳定窗口决定。`GRASP_READY` 与存在候选的 `PLANNING_REJECTED` 都可由用户启动一次尝试；Planning Result 与 Simulation Result 独立保存，规划拒绝不会被改写成可执行计划，仿真也允许产生独立的 SUCCESS。超出 Panda 宽度的候选同时记录 requested/applied width，实际控制继续严格使用 `[0.01, 0.08] m`。失败原因使用 `COLLISION_ABORT / NO_CONTACT / NO_LIFT / CONTACT_LOSS / SLIP / UNSTABLE_GRASP / EXECUTION_ERROR`，其中无效碰撞会中止后续轨迹但仍完成失败终态、Recording 与 Replay。运行时以 60 Hz 记录 qpos/qvel、夹爪、目标位姿/速度、接触、碰撞、抬升量、验证状态和事件。回放只恢复 Recording 的 MuJoCo 状态并调用 `mj_forward` 渲染，不执行 `mj_step`，因此 Replay / Timeline / Step / 0.25×–2× / Auto Cinematic / Technical / Target Follow / Free Camera 都不会重跑 Phone、Depth、Grasp 或 Physics；SUCCESS 与 FAILED Recording 使用同一播放器。零候选、`GRASP_ERROR` 或无法构建有限物理场景的结果不会进入 MuJoCo。
 
 目标表示采用 `Physics Proxy + Real Appearance Mapping`：只从与 GraspPlan 严格关联的冻结 RGB 和 Target Mask 提取前景，移除场景背景后生成内存 PNG，并依据可用语义与轮廓指标选择 box/package、bottle/cup、banana/elongated、apple/rounded 对应的低复杂度 proxy。BOX 的视觉层使用带显式 UV 的低多边形 mesh，正面映射完整真实 crop，背面和侧面只采样 Mask 内目标主色；cylinder 使用环绕 primitive mapping，rounded object 使用简化表面映射。碰撞 geom 继续独立持有 density、friction、contact 与自由体物理；贴图 geom 明确为 `contype=0 / conaffinity=0`，只负责渲染。只有 MuJoCo 实际编译并确认 texture → material → visual geom 绑定后，Workspace 才显示 `Appearance REAL RGB / Texture LOADED / Target Snapshot Frame …`；生成或绑定失败则明确显示 `APPEARANCE FALLBACK / FAILED`。贴图和 BOX visual OBJ 通过 MuJoCo 内存 assets 参与真实 Simulation 和 Replay，默认不写磁盘；只有显式保存 Recording 时才和 asset id、来源帧、appearance metadata 及兼容性指纹一起进入用户数据包。这不是单目 3D 重建，也不会让外观层修改物理结果。
 

@@ -110,6 +110,14 @@ class GraspPlanningService:
                 raise RuntimeError("GraspPlan is not GRASP_READY")
             return self._plan
 
+    def current_outcome(self) -> GraspPlanningOutcome:
+        """Return the immutable completed Top-K outcome, including rejected candidates."""
+
+        with self._lock:
+            if self._outcome is None or self._status not in {"GRASP_READY", "PLANNING_REJECTED"}:
+                raise RuntimeError("Grasp Planning outcome is not available")
+            return self._outcome
+
     def snapshot(self) -> dict[str, object]:
         with self._lock:
             active = self._status == "PLANNING"
@@ -123,6 +131,7 @@ class GraspPlanningService:
                 else [candidate.public_metadata() for candidate in outcome.candidates]
             )
             executable_count = sum(1 for item in candidates if item["feasibility"] == "EXECUTABLE")
+            attempt_candidate = None if outcome is None or not outcome.candidates else outcome.candidates[0]
             return {
                 "schema_version": GRASP_PLANNING_SCHEMA_VERSION,
                 "job_id": self._job_id,
@@ -164,6 +173,21 @@ class GraspPlanningService:
                         if executable_count > 0
                         else (self._error_code or "WAITING")
                     ),
+                },
+                "simulation_attempt": {
+                    "available": attempt_candidate is not None
+                    and self._status in {"GRASP_READY", "PLANNING_REJECTED"},
+                    "state": (
+                        "READY"
+                        if attempt_candidate is not None
+                        and self._status in {"GRASP_READY", "PLANNING_REJECTED"}
+                        else "WAITING"
+                    ),
+                    "candidate_id": (
+                        None if attempt_candidate is None else attempt_candidate.candidate_id
+                    ),
+                    "planning_status": self._status,
+                    "planning_reason": self._error_code,
                 },
                 "media": {
                     "available_layers": list(self._views),
