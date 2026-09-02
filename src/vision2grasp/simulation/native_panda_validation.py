@@ -28,6 +28,7 @@ from .recording import ContactState, RecordingEvent, SimulationRecording, utc_ti
 
 
 FrameCallback = Callable[[SimulationState, bytes, dict[str, object]], None]
+TARGET_BOX_VISUAL_MESH_ASSET_NAME = "target_box_appearance.obj"
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +179,7 @@ class RecordingPlaybackRenderer:
             "recording_timestamp_s": float(self.recording.timestamps[index]),
             "recording_index": index,
             "playback_source": "RECORDED_MUJOCO_STATE",
+            "target_appearance": self.recording.request_metadata.get("target_appearance"),
         }
         return encoded.tobytes(), telemetry
 
@@ -240,14 +242,46 @@ class NativePandaValidation:
         self.request = request
         self.camera_director = camera_director
         self.config = config or NativePandaValidationConfig()
-        self.model_xml, self.model_assets = self._build_model(
-            request,
-            offscreen_width=self.config.width,
-            offscreen_height=self.config.height,
-        )
-        self.model = mujoco.MjModel.from_xml_string(
-            self.model_xml, assets=self.model_assets
-        )
+        appearance = request.target_appearance
+        proxy_geometry = ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        self.appearance_runtime_metadata = request.appearance_metadata()
+        try:
+            self.model_xml, self.model_assets = self._build_model(
+                request,
+                appearance=appearance,
+                proxy_geometry=proxy_geometry,
+                offscreen_width=self.config.width,
+                offscreen_height=self.config.height,
+            )
+            self.model = mujoco.MjModel.from_xml_string(
+                self.model_xml, assets=self.model_assets
+            )
+            if appearance is not None:
+                self._verify_target_appearance_loaded(self.model, appearance)
+                self.appearance_runtime_metadata = {
+                    **appearance.public_metadata(),
+                    "texture_status": "LOADED",
+                    "appearance_status": "REAL_RGB",
+                    "runtime_binding": "MUJOCO_TEXTURE_MATERIAL_VISUAL_GEOM",
+                }
+        except Exception as error:
+            if appearance is None:
+                raise
+            self.appearance_runtime_metadata = {
+                **appearance.public_metadata(),
+                "texture_status": "FAILED",
+                "appearance_status": "APPEARANCE_FALLBACK",
+                "failure_reason": f"{type(error).__name__}: {str(error) or 'MuJoCo texture load failed'}",
+                "runtime_binding": "FALLBACK_PROXY_COLOR",
+            }
+            self.model_xml, self.model_assets = self._build_model(
+                request,
+                appearance=None,
+                proxy_geometry=proxy_geometry,
+                offscreen_width=self.config.width,
+                offscreen_height=self.config.height,
+            )
+            self.model = mujoco.MjModel.from_xml_string(self.model_xml)
         self.data = mujoco.MjData(self.model)
         self._arm_joint_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{i}") for i in range(1, 8)]
         self._arm_qpos = np.array([self.model.jnt_qposadr[j] for j in self._arm_joint_ids], dtype=np.int32)
@@ -527,6 +561,7 @@ class NativePandaValidation:
             "collision": self._has_invalid_table_collision(),
             "target_position_world": self.data.xpos[self._target_body].tolist(),
             "eef_position_world": self.data.site_xpos[self._eef_site].tolist(),
+            "target_appearance": dict(self.appearance_runtime_metadata),
         }
 
     def _record_sample(self, state: SimulationState, *, force: bool = False) -> None:
@@ -587,6 +622,8 @@ class NativePandaValidation:
             return
         recording_id = f"rec-{uuid.uuid4().hex[:16]}"
         run_id = f"run-{uuid.uuid4().hex[:16]}"
+        request_metadata = self.request.public_metadata()
+        request_metadata["target_appearance"] = dict(self.appearance_runtime_metadata)
         self.recording = SimulationRecording(
             recording_id=recording_id,
             run_id=run_id,
@@ -605,7 +642,7 @@ class NativePandaValidation:
             contacts=tuple(self._sample_contacts),
             events=tuple(self._events),
             result=result,
-            request_metadata=self.request.public_metadata(),
+            request_metadata=request_metadata,
             compatibility={
                 "mujoco_version": mujoco.__version__,
                 "model_sha256": hashlib.sha256(self.model_xml.encode("utf-8")).hexdigest(),
@@ -703,6 +740,8 @@ class NativePandaValidation:
         cls,
         request: ValidationRequest,
         *,
+        appearance: TargetAppearance | None,
+        proxy_geometry: ProxyGeometry,
         offscreen_width: int,
         offscreen_height: int,
     ) -> tuple[str, dict[str, bytes]]:
@@ -746,10 +785,6 @@ class NativePandaValidation:
                 target.remove(child)
         extents = request.scene_transform.target_extents_world
         half = extents / 2.0
-        appearance = request.target_appearance
-        proxy_geometry = (
-            ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
-        )
         ET.SubElement(
             target,
             "geom",
@@ -767,7 +802,9 @@ class NativePandaValidation:
                 "rgba": "0 0 0 0",
             },
         )
-        visual_attributes = cls._target_visual_attributes(half, appearance)
+        visual_attributes = cls._target_visual_attributes(
+            half, appearance, proxy_geometry
+        )
         ET.SubElement(
             target,
             "geom",
@@ -800,7 +837,9 @@ class NativePandaValidation:
                 {
                     "name": "target_appearance_material",
                     "texture": "target_appearance_texture",
-                    "texuniform": "true",
+                    "texuniform": (
+                        "false" if proxy_geometry is ProxyGeometry.BOX else "true"
+                    ),
                     "texrepeat": "1 1",
                     "rgba": "1 1 1 1",
                     "specular": "0.16",
@@ -808,6 +847,18 @@ class NativePandaValidation:
                 },
             )
             model_assets = appearance.model_assets()
+            if proxy_geometry is ProxyGeometry.BOX:
+                ET.SubElement(
+                    asset,
+                    "mesh",
+                    {
+                        "name": "target_box_appearance_mesh",
+                        "file": TARGET_BOX_VISUAL_MESH_ASSET_NAME,
+                    },
+                )
+                model_assets[TARGET_BOX_VISUAL_MESH_ASSET_NAME] = (
+                    cls._box_visual_mesh_obj(half * 0.992)
+                )
         worldbody = root.find("worldbody")
         if worldbody is None:
             raise RuntimeError("Panda model is missing worldbody")
@@ -833,15 +884,25 @@ class NativePandaValidation:
 
     @staticmethod
     def _target_visual_attributes(
-        half: np.ndarray, appearance: TargetAppearance | None
+        half: np.ndarray,
+        appearance: TargetAppearance | None,
+        geometry: ProxyGeometry | None = None,
     ) -> dict[str, str]:
         """Build a collision-disabled shell that stays inside the physics proxy."""
 
-        geometry = ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        geometry = geometry or (
+            ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        )
         common = {
             "rgba": "0.05 0.82 1.0 0.96" if appearance is None else "1 1 1 1",
             "material": "" if appearance is None else "target_appearance_material",
         }
+        if appearance is not None and geometry is ProxyGeometry.BOX:
+            return {
+                **common,
+                "type": "mesh",
+                "mesh": "target_box_appearance_mesh",
+            }
         return {
             **common,
             **NativePandaValidation._target_proxy_attributes(half, geometry, scale=0.992),
@@ -888,6 +949,60 @@ class NativePandaValidation:
             "type": "ellipsoid",
             "size": " ".join(f"{value:.8f}" for value in padded),
         }
+
+    @staticmethod
+    def _box_visual_mesh_obj(half: np.ndarray) -> bytes:
+        """Return a six-face box whose top/front has explicit full-image UVs.
+
+        All other faces sample the texture's median-colour border. This makes
+        packaging artwork visible on the view-facing face without projecting
+        the phone background or inventing unseen surfaces.
+        """
+
+        x, y, z = (float(value) for value in np.asarray(half, dtype=np.float64))
+        vertices = (
+            (-x, -y, -z), (x, -y, -z), (x, y, -z), (-x, y, -z),
+            (-x, -y, z), (x, -y, z), (x, y, z), (-x, y, z),
+        )
+        lines = [
+            *(f"v {vx:.9f} {vy:.9f} {vz:.9f}" for vx, vy, vz in vertices),
+            "vt 0 0", "vt 1 0", "vt 1 1", "vt 0 1", "vt 0.01 0.01",
+            # Positive Z is the normalized scene's visible/front face.
+            "f 5/1 6/2 7/3", "f 5/1 7/3 8/4",
+            # Back and sides use the guaranteed median-colour texture border.
+            "f 1/5 3/5 2/5", "f 1/5 4/5 3/5",
+            "f 1/5 2/5 6/5", "f 1/5 6/5 5/5",
+            "f 2/5 3/5 7/5", "f 2/5 7/5 6/5",
+            "f 3/5 4/5 8/5", "f 3/5 8/5 7/5",
+            "f 4/5 1/5 5/5", "f 4/5 5/5 8/5",
+        ]
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    @staticmethod
+    def _verify_target_appearance_loaded(
+        model: mujoco.MjModel, appearance: TargetAppearance
+    ) -> None:
+        texture_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_TEXTURE, "target_appearance_texture"
+        )
+        material_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_MATERIAL, "target_appearance_material"
+        )
+        visual_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_GEOM, "bottle_target_visual"
+        )
+        if min(texture_id, material_id, visual_id) < 0:
+            raise RuntimeError("target appearance asset binding is incomplete")
+        if int(model.geom_matid[visual_id]) != material_id:
+            raise RuntimeError("target visual geom is not bound to appearance material")
+        if int(model.tex_width[texture_id]) < 1 or int(model.tex_height[texture_id]) < 1:
+            raise RuntimeError("target appearance texture has invalid dimensions")
+        if appearance.proxy_geometry is ProxyGeometry.BOX:
+            if int(model.geom_type[visual_id]) != int(mujoco.mjtGeom.mjGEOM_MESH):
+                raise RuntimeError("box appearance must use an explicit-UV visual mesh")
+            mesh_id = int(model.geom_dataid[visual_id])
+            if mesh_id < 0 or int(model.mesh_texcoordnum[mesh_id]) < 4:
+                raise RuntimeError("box appearance mesh has no usable UV coordinates")
 
     @staticmethod
     def _add_showcase_geometry(worldbody: ET.Element, request: ValidationRequest) -> None:

@@ -155,6 +155,8 @@
     simulationLift: byId("simulationLift"),
     simulationTarget: byId("simulationTarget"),
     simulationAppearance: byId("simulationAppearance"),
+    simulationTexture: byId("simulationTexture"),
+    simulationAppearanceSource: byId("simulationAppearanceSource"),
     simulationResult: byId("simulationResult"),
     simulationPlaybackControls: byId("simulationPlaybackControls"),
     recordingAvailability: byId("recordingAvailability"),
@@ -556,6 +558,8 @@
     els.simulationLift.textContent = "0.000 m";
     els.simulationTarget.textContent = "—";
     els.simulationAppearance.textContent = "WAITING";
+    els.simulationTexture.textContent = "WAITING";
+    els.simulationAppearanceSource.textContent = "Target Snapshot Frame —";
     els.simulationResult.textContent = "SIMULATION ONLY";
     els.simulationResult.className = "simulation-result";
     els.startValidationButton.disabled = true;
@@ -1402,10 +1406,22 @@
     els.simulationCollision.textContent = telemetry.collision ? "COLLISION" : "CLEAR";
     els.simulationCollision.classList.toggle("is-alert", Boolean(telemetry.collision));
     els.simulationTarget.textContent = telemetry.target_id || state.request?.grasp_plan?.target_id || "—";
-    const appearance = state.request?.target_appearance || recording?.target_appearance;
-    els.simulationAppearance.textContent = appearance
-      ? `${String(appearance.proxy_geometry || "proxy").toUpperCase()} · REAL RGB`
-      : "PROXY COLOR";
+    const appearance = telemetry.target_appearance
+      || recording?.target_appearance
+      || state.request?.target_appearance;
+    const appearanceStatus = String(appearance?.appearance_status || "APPEARANCE_FALLBACK");
+    const textureStatus = String(appearance?.texture_status || "FAILED");
+    els.simulationAppearance.textContent = appearanceStatus === "REAL_RGB"
+      ? "REAL RGB"
+      : "APPEARANCE FALLBACK";
+    els.simulationTexture.textContent = textureStatus === "PENDING_LOAD"
+      ? "LOADING"
+      : textureStatus;
+    els.simulationTexture.classList.toggle("is-alert", textureStatus === "FAILED");
+    const appearanceFrame = Number(appearance?.source_frame_id);
+    els.simulationAppearanceSource.textContent = Number.isFinite(appearanceFrame)
+      ? `Target Snapshot Frame ${appearanceFrame}`
+      : "Target Snapshot Frame —";
     const initialZ = Number(state.request?.scene_transform?.target_position_world?.[2]);
     const currentZ = Number(telemetry.target_position_world?.[2]);
     const liveLift = Number.isFinite(initialZ) && Number.isFinite(currentZ) ? Math.max(0, currentZ - initialZ) : 0;

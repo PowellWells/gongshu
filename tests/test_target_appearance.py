@@ -53,6 +53,9 @@ class TargetAppearanceTests(unittest.TestCase):
                 self.assertEqual(appearance.texture_size, (96, 96))
                 self.assertEqual(appearance.extraction_source, "LOCKED_SCENE_SNAPSHOT_RGB_PLUS_TARGET_MASK")
                 self.assertEqual(appearance.public_metadata()["storage"], "SESSION_MEMORY")
+                self.assertEqual(
+                    appearance.public_metadata()["texture_status"], "PENDING_LOAD"
+                )
 
     def test_mask_removes_scene_background_before_texture_mapping(self) -> None:
         mask = np.zeros((80, 120), dtype=np.bool_)
@@ -94,6 +97,15 @@ class TargetAppearanceTests(unittest.TestCase):
         self.assertNotIn("contype", attributes)
         self.assertNotIn("friction", attributes)
         self.assertNotIn("density", attributes)
+
+    def test_box_visual_mesh_has_explicit_front_uv_and_colored_side_sampling(self) -> None:
+        mesh = NativePandaValidation._box_visual_mesh_obj(
+            np.array([0.03, 0.05, 0.02], dtype=np.float64)
+        ).decode("ascii")
+        self.assertIn("vt 0 0", mesh)
+        self.assertIn("vt 1 1", mesh)
+        self.assertIn("f 5/1 6/2 7/3", mesh)
+        self.assertGreaterEqual(mesh.count("/5"), 30)
 
 
 if __name__ == "__main__":

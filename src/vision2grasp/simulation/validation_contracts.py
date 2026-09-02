@@ -170,11 +170,14 @@ class ValidationRequest:
     grasp_plan: GraspPlan
     scene_transform: ValidationSceneTransform
     target_appearance: TargetAppearance | None = None
+    appearance_failure_reason: str | None = None
 
     def __post_init__(self) -> None:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
             raise ValueError("ValidationRequest requires normalized validation scene")
         appearance = self.target_appearance
+        if appearance is not None and self.appearance_failure_reason is not None:
+            raise ValueError("real appearance and appearance fallback cannot both be active")
         if appearance is not None:
             if appearance.snapshot_id != self.grasp_plan.snapshot_id:
                 raise ValueError("target appearance snapshot does not match GraspPlan")
@@ -191,6 +194,7 @@ class ValidationRequest:
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
         target_appearance: TargetAppearance | None = None,
+        appearance_failure_reason: str | None = None,
     ) -> "ValidationRequest":
         selected = (
             scenario
@@ -205,6 +209,7 @@ class ValidationRequest:
                 failure_target_offset_m=failure_target_offset_m,
             ),
             target_appearance=target_appearance,
+            appearance_failure_reason=appearance_failure_reason,
         )
 
     @property
@@ -216,9 +221,22 @@ class ValidationRequest:
             "schema_version": VALIDATION_REQUEST_SCHEMA_VERSION,
             "grasp_plan": self.grasp_plan.public_metadata(),
             "scene_transform": self.scene_transform.public_metadata(),
-            "target_appearance": (
-                None if self.target_appearance is None else self.target_appearance.public_metadata()
-            ),
+            "target_appearance": self.appearance_metadata(),
+        }
+
+    def appearance_metadata(self) -> dict[str, Any]:
+        if self.target_appearance is not None:
+            return self.target_appearance.public_metadata()
+        return {
+            "schema_version": "gongshu.target-appearance/v1",
+            "appearance_status": "APPEARANCE_FALLBACK",
+            "texture_status": "FAILED",
+            "texture_asset_id": None,
+            "source_frame_id": self.grasp_plan.source_frame_id,
+            "snapshot_id": self.grasp_plan.snapshot_id,
+            "target_instance_id": self.grasp_plan.target_id,
+            "failure_reason": self.appearance_failure_reason or "NO_TARGET_APPEARANCE",
+            "storage": "NONE",
         }
 
 

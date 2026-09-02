@@ -80,6 +80,10 @@ class TargetAppearance:
     def texture_sha256(self) -> str:
         return hashlib.sha256(self.texture_png).hexdigest()
 
+    @property
+    def texture_asset_id(self) -> str:
+        return f"appearance-{self.texture_sha256[:16]}"
+
     def model_assets(self) -> dict[str, bytes]:
         return {TARGET_TEXTURE_ASSET_NAME: bytes(self.texture_png)}
 
@@ -103,7 +107,15 @@ class TargetAppearance:
             "mask_elongation": self.mask_elongation,
             "background_removed": True,
             "storage": "SESSION_MEMORY",
+            "appearance_status": "REAL_RGB",
+            "texture_status": "PENDING_LOAD",
+            "texture_asset_id": self.texture_asset_id,
             "texture_sha256": self.texture_sha256,
+            "mapping": (
+                "EXPLICIT_FRONT_UV_PLUS_MEAN_COLOR_SIDES"
+                if self.proxy_geometry is ProxyGeometry.BOX
+                else "PRIMITIVE_SURFACE_MAPPING"
+            ),
         }
 
 
@@ -136,7 +148,9 @@ def extract_target_appearance(
     # colour and printed details wherever the target mask is true.
     clean = crop.copy()
     clean[~crop_mask] = median_rgb
-    scale = min(texture_side / clean.shape[1], texture_side / clean.shape[0])
+    border = max(4, texture_side // 32)
+    content_side = texture_side - 2 * border
+    scale = min(content_side / clean.shape[1], content_side / clean.shape[0])
     resized_width = max(1, int(round(clean.shape[1] * scale)))
     resized_height = max(1, int(round(clean.shape[0] * scale)))
     interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC

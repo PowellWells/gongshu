@@ -7,6 +7,7 @@ import time
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -110,6 +111,7 @@ def make_snapshot() -> TargetSceneSnapshot:
     rgb[..., 1] = 70
     mask = np.zeros((48, 64), dtype=np.bool_)
     mask[10:39, 15:51] = True
+    cv2.arrowedLine(rgb, (20, 24), (46, 24), (245, 245, 245), 3, tipLength=0.35)
     return TargetSceneSnapshot(
         "snapshot-42",
         RGBFrame(42, 12.5, "phone-frozen", rgb),
@@ -280,6 +282,23 @@ class MuJoCoValidationStateTests(unittest.TestCase):
             service.start(self._ready_plan(), snapshot=mismatched)
         service.close()
 
+    def test_texture_generation_failure_is_reported_as_appearance_fallback(self) -> None:
+        service = MuJoCoValidationService(
+            lambda request, director: _FakeValidationBackend(request, director)
+        )
+        try:
+            with patch(
+                "vision2grasp.simulation.validation_service.extract_target_appearance",
+                side_effect=RuntimeError("synthetic texture failure"),
+            ):
+                started = service.start(self._ready_plan(), snapshot=make_snapshot())
+            appearance = started["request"]["target_appearance"]
+            self.assertEqual(appearance["appearance_status"], "APPEARANCE_FALLBACK")
+            self.assertEqual(appearance["texture_status"], "FAILED")
+            self.assertIn("synthetic texture failure", appearance["failure_reason"])
+        finally:
+            service.close()
+
     def test_failure_fallback_preserves_real_reason(self) -> None:
         service = MuJoCoValidationService(lambda request, director: _FakeValidationBackend(request, director, fail=True))
         service.start(self._ready_plan())
@@ -407,9 +426,18 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         assert recording is not None
         self.assertIsNone(recording.saved_path)
         self.assertIn("target_appearance.png", recording.model_assets)
+        self.assertIn("target_box_appearance.obj", recording.model_assets)
         self.assertEqual(
-            recording.request_metadata["target_appearance"]["storage"],
-            "SESSION_MEMORY",
+            recording.request_metadata["target_appearance"]["texture_status"],
+            "LOADED",
+        )
+        self.assertEqual(
+            recording.request_metadata["target_appearance"]["source_frame_id"], 42
+        )
+        self.assertTrue(
+            recording.request_metadata["target_appearance"]["texture_asset_id"].startswith(
+                "appearance-"
+            )
         )
         collision_id = __import__("mujoco").mj_name2id(
             backend.model, __import__("mujoco").mjtObj.mjOBJ_GEOM, "bottle_target_collision"
@@ -423,6 +451,14 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertEqual(int(backend.model.geom_conaffinity[visual_id]), 0)
         self.assertGreater(int(backend.model.ntex), 0)
         self.assertGreaterEqual(int(backend.model.geom_matid[visual_id]), 0)
+        self.assertEqual(
+            int(backend.model.geom_type[visual_id]),
+            int(__import__("mujoco").mjtGeom.mjGEOM_MESH),
+        )
+        self.assertGreater(
+            int(backend.model.mesh_texcoordnum[int(backend.model.geom_dataid[visual_id])]),
+            3,
+        )
         # Probe the actual MuJoCo render, not only XML metadata. The frozen
         # snapshot target is green, so target pixels must no longer be the
         # historical fixed blue proxy colour.
@@ -446,6 +482,7 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         target_mean = np.mean(rendered[target_pixels], axis=0)
         self.assertGreater(float(target_mean[1]), float(target_mean[0]))
         self.assertGreater(float(target_mean[1]), float(target_mean[2]))
+        self.assertGreater(float(np.max(np.std(rendered[target_pixels], axis=0))), 20.0)
         self.assertGreater(len(recording.timestamps), 300)
         self.assertAlmostEqual(recording.sample_hz, 60.0)
         self.assertEqual(recording.qpos.shape[0], len(recording.timestamps))
@@ -459,6 +496,9 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
             self.assertTrue((root / recording.recording_id / "manifest.json").is_file())
             self.assertTrue(
                 (root / recording.recording_id / "assets" / "target_appearance.png").is_file()
+            )
+            self.assertTrue(
+                (root / recording.recording_id / "assets" / "target_box_appearance.obj").is_file()
             )
             restored = load_recording(recording.recording_id, root)
             np.testing.assert_allclose(restored.qpos, recording.qpos)
@@ -480,7 +520,40 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertGreater(len(first), 100)
         self.assertGreater(len(last), 100)
         self.assertEqual(first_telemetry["playback_source"], "RECORDED_MUJOCO_STATE")
+        self.assertEqual(
+            first_telemetry["target_appearance"]["texture_status"], "LOADED"
+        )
         self.assertEqual(last_telemetry["robot_state"], "SUCCESS")
+
+    def test_mujoco_texture_binding_failure_uses_explicit_proxy_fallback(self) -> None:
+        request = ValidationRequest.from_grasp_plan(
+            GeometricGraspPlanner().plan(make_observation())[0],
+            target_appearance=extract_target_appearance(make_snapshot()),
+        )
+        with patch.object(
+            NativePandaValidation,
+            "_verify_target_appearance_loaded",
+            side_effect=RuntimeError("synthetic MuJoCo texture failure"),
+        ):
+            backend = NativePandaValidation(
+                request,
+                CameraDirector(),
+                NativePandaValidationConfig(
+                    width=320,
+                    height=180,
+                    realtime_playback=False,
+                ),
+            )
+        self.assertEqual(
+            backend.appearance_runtime_metadata["appearance_status"],
+            "APPEARANCE_FALLBACK",
+        )
+        self.assertEqual(backend.appearance_runtime_metadata["texture_status"], "FAILED")
+        self.assertIn(
+            "synthetic MuJoCo texture failure",
+            backend.appearance_runtime_metadata["failure_reason"],
+        )
+        self.assertEqual(backend.model_assets, {})
 
     def test_target_offset_stress_animates_physical_failure(self) -> None:
         request = ValidationRequest.from_grasp_plan(

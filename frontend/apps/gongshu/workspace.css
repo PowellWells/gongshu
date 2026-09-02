@@ -786,6 +786,7 @@
 }
 
 .simulation-hud-metrics b { color: #f1fbff; font-size: 9px; }
+.simulation-hud-metrics b.is-alert { color: #ff9a95; }
 
 .simulation-result {
   padding: 9px 12px;

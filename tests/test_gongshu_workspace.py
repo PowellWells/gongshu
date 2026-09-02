@@ -86,6 +86,8 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "simulationHud",
             "simulationHudState",
             "simulationAppearance",
+            "simulationTexture",
+            "simulationAppearanceSource",
             "systemStatus",
             "cameraSetupDialog",
             "legacyDialog",
@@ -201,6 +203,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("Unsaved", self.html)
         self.assertIn("未保存项目在退出应用后丢弃", self.html)
         self.assertIn("外观 Appearance", self.html)
+        self.assertIn("纹理 Texture", self.html)
+        self.assertIn("来源 Source", self.html)
+        self.assertIn("APPEARANCE FALLBACK", self.controller)
+        self.assertIn("Target Snapshot Frame", self.controller)
         self.assertIn("target_appearance", self.controller)
 
     def test_pipeline_declares_all_states_and_stage_driven_views(self) -> None:

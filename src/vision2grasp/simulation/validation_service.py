@@ -100,6 +100,7 @@ class MuJoCoValidationService:
             if self._thread is not None and self._thread.is_alive():
                 raise RuntimeError("MuJoCo validation is already running")
             appearance = None
+            appearance_failure_reason = None
             if snapshot is not None:
                 if snapshot.snapshot_id != plan.snapshot_id:
                     raise ValueError("Validation Scene Snapshot does not match GraspPlan")
@@ -107,12 +108,20 @@ class MuJoCoValidationService:
                     raise ValueError("Validation source frame does not match GraspPlan")
                 if snapshot.target.instance_id != plan.target_id:
                     raise ValueError("Validation target does not match GraspPlan")
-                appearance = extract_target_appearance(snapshot)
+                try:
+                    appearance = extract_target_appearance(snapshot)
+                except Exception as error:
+                    appearance_failure_reason = (
+                        f"{type(error).__name__}: {str(error) or 'texture generation failed'}"
+                    )
+            else:
+                appearance_failure_reason = "NO_TARGET_SCENE_SNAPSHOT"
             self._request = ValidationRequest.from_grasp_plan(
                 plan,
                 scenario=scenario,
                 failure_target_offset_m=self._failure_target_offset_m,
                 target_appearance=appearance,
+                appearance_failure_reason=appearance_failure_reason,
             )
             self._result = None
             self._reason = None
