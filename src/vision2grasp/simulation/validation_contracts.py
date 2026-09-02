@@ -9,6 +9,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from vision2grasp.condition_processing import (
+    ConditionReport,
+    GraspUncertainty,
+    PerceptionUncertainty,
+    SpatialUncertainty,
+)
+
 from vision2grasp.grasp_planning import GraspCandidate, GraspPlan
 
 from .appearance import TargetAppearance
@@ -331,6 +338,10 @@ class ValidationRequest:
     scene_transform: ValidationSceneTransform
     target_appearance: TargetAppearance | None = None
     appearance_failure_reason: str | None = None
+    condition_report: ConditionReport | None = None
+    perception_uncertainty: PerceptionUncertainty | None = None
+    spatial_uncertainty: SpatialUncertainty | None = None
+    grasp_uncertainty: GraspUncertainty | None = None
 
     def __post_init__(self) -> None:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
@@ -355,6 +366,10 @@ class ValidationRequest:
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
         target_appearance: TargetAppearance | None = None,
         appearance_failure_reason: str | None = None,
+        condition_report: ConditionReport | None = None,
+        perception_uncertainty: PerceptionUncertainty | None = None,
+        spatial_uncertainty: SpatialUncertainty | None = None,
+        grasp_uncertainty: GraspUncertainty | None = None,
     ) -> "ValidationRequest":
         selected = (
             scenario
@@ -370,6 +385,10 @@ class ValidationRequest:
             ),
             target_appearance=target_appearance,
             appearance_failure_reason=appearance_failure_reason,
+            condition_report=condition_report,
+            perception_uncertainty=perception_uncertainty,
+            spatial_uncertainty=spatial_uncertainty,
+            grasp_uncertainty=grasp_uncertainty,
         )
 
     @property
@@ -378,6 +397,7 @@ class ValidationRequest:
 
     def public_metadata(self) -> dict[str, Any]:
         attempt = self.simulation_attempt_metadata()
+        condition_context = self.condition_context_metadata()
         return {
             "schema_version": VALIDATION_REQUEST_SCHEMA_VERSION,
             "grasp_plan": (
@@ -388,10 +408,45 @@ class ValidationRequest:
             "planning_result": {
                 "status": attempt["planning_status"],
                 "reason": attempt["planning_reason"],
+                "condition_warnings": condition_context["warnings"],
             },
             "simulation_attempt": attempt,
             "scene_transform": self.scene_transform.public_metadata(),
             "target_appearance": self.appearance_metadata(),
+            "condition_context": condition_context,
+        }
+
+    def condition_context_metadata(self) -> dict[str, Any]:
+        warnings: list[str] = []
+        for uncertainty in (
+            self.perception_uncertainty,
+            self.spatial_uncertainty,
+            self.grasp_uncertainty,
+        ):
+            if uncertainty is not None:
+                warnings.extend(uncertainty.reasons)
+        return {
+            "schema_version": "gongshu.condition-context/v1",
+            "condition_report": (
+                None if self.condition_report is None else self.condition_report.public_metadata()
+            ),
+            "perception_uncertainty": (
+                None
+                if self.perception_uncertainty is None
+                else self.perception_uncertainty.public_metadata()
+            ),
+            "spatial_uncertainty": (
+                None
+                if self.spatial_uncertainty is None
+                else self.spatial_uncertainty.public_metadata()
+            ),
+            "grasp_uncertainty": (
+                None
+                if self.grasp_uncertainty is None
+                else self.grasp_uncertainty.public_metadata()
+            ),
+            "warnings": list(dict.fromkeys(warnings)),
+            "effect_on_physics_result": "CONTEXT_ONLY",
         }
 
     def simulation_attempt_metadata(self) -> dict[str, Any]:

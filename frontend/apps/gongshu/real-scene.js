@@ -92,6 +92,12 @@
     pipelineMessage: byId("pipelineMessage"),
     sourceSelect: byId("sourceSelect"),
     conditionSelect: byId("conditionSelect"),
+    conditionStatus: byId("conditionStatus"),
+    conditionVisualValue: byId("conditionVisualValue"),
+    conditionQualityValue: byId("conditionQualityValue"),
+    conditionEnhancementValue: byId("conditionEnhancementValue"),
+    conditionReliabilityValue: byId("conditionReliabilityValue"),
+    conditionDetail: byId("conditionDetail"),
     robotSelect: byId("robotSelect"),
     viewModeSelect: byId("viewModeSelect"),
     graspModeSelect: byId("graspModeSelect"),
@@ -415,6 +421,7 @@
       throw new Error("Target Perception API 版本不匹配");
     }
     targetPerceptionState = state;
+    renderConditionReport(state.condition_report);
     const candidates = Array.isArray(state.candidates) ? state.candidates : [];
     const selected = state.selected_target;
     const frame = state.frame;
@@ -446,6 +453,35 @@
       els.liveSourceLabel.textContent = `手机 Phone · 冻结帧 Frame ${frame.id}`;
     }
     updateActionButtons();
+  }
+
+  function renderConditionReport(report) {
+    if (!report) {
+      els.conditionStatus.textContent = "WAITING";
+      els.conditionVisualValue.textContent = "NOT ASSESSED";
+      els.conditionQualityValue.textContent = "NOT AVAILABLE";
+      els.conditionEnhancementValue.textContent = "NOT AVAILABLE";
+      els.conditionReliabilityValue.textContent = "NOT AVAILABLE";
+      els.conditionDetail.textContent = "Protocol 尚未执行；选择条件不会向真实图像合成退化。";
+      return;
+    }
+    const quality = Number(report.image_quality_score);
+    const blur = Number(report.blur_score);
+    const brightness = Number(report.brightness_score);
+    const chain = Array.isArray(report.enhancement_chain) && report.enhancement_chain.length
+      ? report.enhancement_chain.join(" → ")
+      : "RAW ASSESSED";
+    const warnings = Array.isArray(report.uncertainty_hint) && report.uncertainty_hint.length
+      ? ` · Warnings ${report.uncertainty_hint.join(" + ")}`
+      : "";
+    els.conditionStatus.textContent = report.visual_condition || "ASSESSED";
+    els.conditionVisualValue.textContent = `${report.condition_type} / ${report.visual_condition}`;
+    els.conditionQualityValue.textContent = Number.isFinite(quality) ? quality.toFixed(2) : "NOT AVAILABLE";
+    els.conditionEnhancementValue.textContent = report.enhancement_status || "NOT AVAILABLE";
+    els.conditionReliabilityValue.textContent = report.reliability || report.confidence_hint || "NOT AVAILABLE";
+    els.conditionDetail.textContent = els.graspModeSelect.value === "RESEARCH"
+      ? `Blur ${blur.toFixed(2)} · Brightness ${brightness.toFixed(2)} · ${chain} · Raw ${report.raw_frame_id} → Processed ${report.processed_frame_id}${warnings}`
+      : `${report.visual_condition} · Quality ${quality.toFixed(2)} · ${report.reliability}`;
   }
 
   function setPrimaryView(view) {
@@ -538,6 +574,7 @@
     els.targetConfidenceValue.textContent = "NOT AVAILABLE";
     els.targetLockValue.textContent = "WAITING";
     els.targetDetail.textContent = "连接手机后分析真实 RGB 帧，再手动选择目标。";
+    renderConditionReport(null);
     els.spatialInspectorStatus.textContent = "WAITING";
     els.spatialDepthValue.textContent = "等待计算 WAITING";
     els.spatialValue.textContent = "NOT AVAILABLE";
@@ -762,7 +799,9 @@
     els.analyzeTargetsButton.querySelector("small").textContent = "Analyzing";
     updateActionButtons();
     try {
-      const state = await apiPost("/api/target-perception/analyze");
+      const state = await apiPost("/api/target-perception/analyze", {
+        condition: els.conditionSelect.value,
+      });
       if (requestRevision !== targetAnalysisRequest) return;
       showFrozenTargetFrame(state);
       showNotice(state.status === "NO_CANDIDATES"
@@ -1884,8 +1923,10 @@
 
   els.sourceSelect.addEventListener("change", () => selectSource(els.sourceSelect.value));
   els.conditionSelect.addEventListener("change", () => {
-    const pending = els.conditionSelect.value !== "normal";
-    showNotice(pending ? "测试条件入口已预留；本轮不会对真实画面施加退化。" : "已选择正常条件 Normal。", pending ? "error" : "success");
+    const protocol = els.conditionSelect.value;
+    showNotice(protocol === "NORMAL"
+      ? "NORMAL 为评估模式：保留原始像素，不执行增强。"
+      : `已选择 ${protocol} 处理协议：只检测真实退化并执行可回退增强，不会合成退化。`, "success");
   });
   els.robotSelect.addEventListener("change", () => {
     const pending = els.robotSelect.value !== "panda";
@@ -1896,6 +1937,7 @@
   els.graspModeSelect.addEventListener("change", () => {
     const label = els.graspModeSelect.value === "DEMO" ? "Demo" : "Research";
     showNotice(`抓取规划已切换为 ${label} Mode；两种模式使用同一真实算法。`);
+    renderConditionReport(targetPerceptionState?.condition_report || null);
   });
   els.validationScenarioSelect.addEventListener("change", () => {
     const stress = els.validationScenarioSelect.value === "TARGET_OFFSET_STRESS";

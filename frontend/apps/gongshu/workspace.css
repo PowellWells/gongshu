@@ -1042,7 +1042,7 @@
 
 .workspace-inspector {
   display: grid;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(5, minmax(0, 1fr));
   gap: 8px;
   min-height: 0;
 }

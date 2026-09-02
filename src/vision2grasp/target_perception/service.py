@@ -7,6 +7,11 @@ import threading
 from typing import Final
 
 from vision2grasp.contracts import RGBFrame
+from vision2grasp.condition_processing import (
+    ConditionedFrame,
+    PerceptionUncertainty,
+    ReliabilityLevel,
+)
 
 from .contracts import TargetInstance, TargetSceneSnapshot
 from .interfaces import TargetInstanceSegmenter
@@ -28,19 +33,22 @@ class TargetPerceptionService:
         self._error_code: str | None = None
         self._revision = 0
         self._frame: RGBFrame | None = None
+        self._conditioned_frame: ConditionedFrame | None = None
+        self._perception_uncertainty: PerceptionUncertainty | None = None
         self._instances: tuple[TargetInstance, ...] = ()
         self._selected_target_id: str | None = None
         self._overlay_jpeg: bytes | None = None
         self._snapshot_jpeg: bytes | None = None
 
-    def analyze(self, frame: RGBFrame) -> dict[str, object]:
+    def analyze(self, frame: RGBFrame | ConditionedFrame) -> dict[str, object]:
         if not self._analysis_guard.acquire(blocking=False):
             raise RuntimeError("target analysis is already running")
+        source = frame.processed_frame if isinstance(frame, ConditionedFrame) else frame
         frozen_frame = RGBFrame(
-            frame_id=frame.frame_id,
-            timestamp_s=frame.timestamp_s,
-            camera_name=frame.camera_name,
-            rgb=frame.rgb.copy(),
+            frame_id=source.frame_id,
+            timestamp_s=source.timestamp_s,
+            camera_name=source.camera_name,
+            rgb=source.rgb.copy(),
         )
         try:
             with self._lock:
@@ -48,6 +56,8 @@ class TargetPerceptionService:
                 self._message = "正在分析目标 Target Perception"
                 self._error_code = None
                 self._frame = frozen_frame
+                self._conditioned_frame = frame if isinstance(frame, ConditionedFrame) else None
+                self._perception_uncertainty = None
                 self._instances = ()
                 self._selected_target_id = None
                 self._overlay_jpeg = None
@@ -67,6 +77,19 @@ class TargetPerceptionService:
                 selected_target_id=None,
             )
             with self._lock:
+                if self._conditioned_frame is not None:
+                    report = self._conditioned_frame.report
+                    reasons = list(report.uncertainty_hints)
+                    if report.reliability is ReliabilityLevel.LOW and "PERCEPTION_UNCERTAIN" not in reasons:
+                        reasons.append("PERCEPTION_UNCERTAIN")
+                    confidences = [item.confidence for item in instances if item.confidence is not None]
+                    self._perception_uncertainty = PerceptionUncertainty(
+                        stage="TARGET_PERCEPTION",
+                        report_id=report.report_id,
+                        level=report.reliability,
+                        confidence=(None if not confidences else float(max(confidences))),
+                        reasons=tuple(reasons),
+                    )
                 self._instances = instances
                 self._status = "CANDIDATES" if instances else "NO_CANDIDATES"
                 self._message = (
@@ -163,6 +186,8 @@ class TargetPerceptionService:
             self._message = "等待目标分析 WAITING"
             self._error_code = None
             self._frame = None
+            self._conditioned_frame = None
+            self._perception_uncertainty = None
             self._instances = ()
             self._selected_target_id = None
             self._overlay_jpeg = None
@@ -190,6 +215,16 @@ class TargetPerceptionService:
                         "width": int(frame.rgb.shape[1]),
                         "height": int(frame.rgb.shape[0]),
                     }
+                ),
+                "condition_report": (
+                    None
+                    if self._conditioned_frame is None
+                    else self._conditioned_frame.report.public_metadata()
+                ),
+                "perception_uncertainty": (
+                    None
+                    if self._perception_uncertainty is None
+                    else self._perception_uncertainty.public_metadata()
                 ),
                 "candidates": [
                     instance.public_metadata(selected=instance.instance_id == self._selected_target_id)
@@ -245,9 +280,8 @@ class TargetPerceptionService:
             )
             return self._make_scene_snapshot(frozen_copy, selected)
 
-    @staticmethod
     def _make_scene_snapshot(
-        frame: RGBFrame, selected: TargetInstance
+        self, frame: RGBFrame, selected: TargetInstance
     ) -> TargetSceneSnapshot:
         timestamp_us = int(round(frame.timestamp_s * 1_000_000.0))
         return TargetSceneSnapshot(
@@ -256,4 +290,15 @@ class TargetPerceptionService:
             ),
             frame=frame,
             target=selected,
+            raw_frame=(
+                frame
+                if self._conditioned_frame is None
+                else self._conditioned_frame.raw_frame
+            ),
+            condition_report=(
+                None
+                if self._conditioned_frame is None
+                else self._conditioned_frame.report
+            ),
+            perception_uncertainty=self._perception_uncertainty,
         )

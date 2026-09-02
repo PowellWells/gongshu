@@ -51,10 +51,11 @@
       <label class="control-field">
         <span>测试条件 Condition</span>
         <select id="conditionSelect">
-          <option value="normal">正常 Normal</option>
-          <option value="low-light">低光 Low-Light</option>
-          <option value="blur">模糊 Blur</option>
-          <option value="occlusion">遮挡 Occlusion</option>
+          <option value="NORMAL">正常 Normal</option>
+          <option value="BLUR">模糊 Blur</option>
+          <option value="LOW_LIGHT">低光 Low-Light</option>
+          <option value="LOW_LIGHT_BLUR">低光 + 模糊 Low-Light + Blur</option>
+          <option value="OCCLUSION" disabled>遮挡 Occlusion · Pending</option>
         </select>
       </label>
       <label class="control-field">
@@ -285,6 +286,16 @@
       </section>
 
       <aside class="workspace-inspector" aria-label="抓取任务状态">
+        <section class="inspector-block condition-block">
+          <header><div><span>00</span><h2>观测条件 <b>Condition</b></h2></div><strong id="conditionStatus">WAITING</strong></header>
+          <dl class="target-summary">
+            <div><dt>观测退化 Visual</dt><dd id="conditionVisualValue">NOT ASSESSED</dd></div>
+            <div><dt>图像质量 Image Quality</dt><dd id="conditionQualityValue">NOT AVAILABLE</dd></div>
+            <div><dt>增强处理 Enhancement</dt><dd id="conditionEnhancementValue">NOT AVAILABLE</dd></div>
+            <div><dt>可靠性 Reliability</dt><dd id="conditionReliabilityValue">NOT AVAILABLE</dd></div>
+          </dl>
+          <p id="conditionDetail">Protocol 尚未执行；选择条件不会向真实图像合成退化。</p>
+        </section>
         <section class="inspector-block">
           <header><div><span>01</span><h2>当前目标 <b>Target</b></h2></div><strong id="targetStatus">WAITING</strong></header>
           <dl class="target-summary">

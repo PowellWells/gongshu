@@ -10,6 +10,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 from vision2grasp.spatial_perception import CalibrationState, DepthMode, IntrinsicsSource
+from vision2grasp.condition_processing import (
+    ConditionReport,
+    GraspUncertainty,
+    PerceptionUncertainty,
+    SpatialUncertainty,
+)
 
 
 GRASP_PLAN_SCHEMA_VERSION = "gongshu.grasp-plan/v2"
@@ -220,6 +226,10 @@ class GraspPlan:
     planning_time_s: float = 0.0
     mode: PlanningMode = PlanningMode.RESEARCH
     model_metadata: dict[str, Any] | None = None
+    condition_report: ConditionReport | None = None
+    perception_uncertainty: PerceptionUncertainty | None = None
+    spatial_uncertainty: SpatialUncertainty | None = None
+    grasp_uncertainty: GraspUncertainty | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id.strip() or not self.snapshot_id.strip():
@@ -288,6 +298,24 @@ class GraspPlan:
             "planning_time_s": self.planning_time_s,
             "mode": self.mode.value,
             "model_metadata": dict(self.model_metadata or {}),
+            "condition_report": (
+                None if self.condition_report is None else self.condition_report.public_metadata()
+            ),
+            "perception_uncertainty": (
+                None
+                if self.perception_uncertainty is None
+                else self.perception_uncertainty.public_metadata()
+            ),
+            "spatial_uncertainty": (
+                None
+                if self.spatial_uncertainty is None
+                else self.spatial_uncertainty.public_metadata()
+            ),
+            "grasp_uncertainty": (
+                None
+                if self.grasp_uncertainty is None
+                else self.grasp_uncertainty.public_metadata()
+            ),
             "execution_scope": "ROBOT_INDEPENDENT_CAMERA_FRAME",
         }
 
@@ -347,6 +375,10 @@ class GraspPlanningOutcome:
     plan: GraspPlan | None
     rejection_reason: str | None
     planning_time_s: float
+    condition_report: ConditionReport | None = None
+    perception_uncertainty: PerceptionUncertainty | None = None
+    spatial_uncertainty: SpatialUncertainty | None = None
+    grasp_uncertainty: GraspUncertainty | None = None
 
     def __post_init__(self) -> None:
         extents = np.asarray(self.object_extents_xyz, dtype=np.float64)
@@ -361,10 +393,14 @@ class GraspPlanningOutcome:
         return self.plan is not None
 
     def visualization_request(self) -> dict[str, Any]:
+        condition_warnings = (
+            [] if self.grasp_uncertainty is None else list(self.grasp_uncertainty.reasons)
+        )
         return {
             "schema_version": "gongshu.grasp-visualization-request/v1",
             "planning_status": "GRASP_READY" if self.plan is not None else "PLANNING_REJECTED",
             "rejection_reason": self.rejection_reason,
+            "condition_warnings": condition_warnings,
             "source_frame_id": (
                 self.plan.source_frame_id
                 if self.plan is not None
@@ -379,4 +415,22 @@ class GraspPlanningOutcome:
             "best_candidate_id": None if self.plan is None else self.plan.best_candidate_id,
             "object_extents_xyz": self.object_extents_xyz.tolist(),
             "candidates": [candidate.public_metadata() for candidate in self.candidates],
+            "condition_report": (
+                None if self.condition_report is None else self.condition_report.public_metadata()
+            ),
+            "perception_uncertainty": (
+                None
+                if self.perception_uncertainty is None
+                else self.perception_uncertainty.public_metadata()
+            ),
+            "spatial_uncertainty": (
+                None
+                if self.spatial_uncertainty is None
+                else self.spatial_uncertainty.public_metadata()
+            ),
+            "grasp_uncertainty": (
+                None
+                if self.grasp_uncertainty is None
+                else self.grasp_uncertainty.public_metadata()
+            ),
         }

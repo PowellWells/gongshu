@@ -9,6 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from vision2grasp.contracts import RGBFrame
+from vision2grasp.condition_processing import ConditionReport, PerceptionUncertainty
 
 
 UNKNOWN_TARGET_LABEL = "未知目标 Unknown Object"
@@ -99,6 +100,9 @@ class TargetSceneSnapshot:
     snapshot_id: str
     frame: RGBFrame
     target: TargetInstance
+    raw_frame: RGBFrame | None = None
+    condition_report: ConditionReport | None = None
+    perception_uncertainty: PerceptionUncertainty | None = None
 
     def __post_init__(self) -> None:
         if not self.snapshot_id.strip():
@@ -112,12 +116,29 @@ class TargetSceneSnapshot:
             rgb=immutable_rgb,
         )
         object.__setattr__(self, "frame", immutable_frame)
+        raw_source = self.raw_frame or self.frame
+        raw_rgb = np.ascontiguousarray(raw_source.rgb.copy(), dtype=np.uint8)
+        raw_rgb.setflags(write=False)
+        immutable_raw = RGBFrame(
+            frame_id=raw_source.frame_id,
+            timestamp_s=raw_source.timestamp_s,
+            camera_name=raw_source.camera_name,
+            rgb=raw_rgb,
+        )
+        object.__setattr__(self, "raw_frame", immutable_raw)
         if self.target.source_frame_id != self.frame.frame_id:
             raise ValueError("target source_frame_id does not match snapshot frame")
         if self.target.source_timestamp_s != self.frame.timestamp_s:
             raise ValueError("target timestamp does not match snapshot frame")
         if self.target.mask.shape != self.frame.rgb.shape[:2]:
             raise ValueError("target mask does not match snapshot frame")
+        if immutable_raw.timestamp_s != self.frame.timestamp_s:
+            raise ValueError("raw and processed snapshot timestamps do not match")
+        if self.condition_report is not None:
+            if self.condition_report.raw_frame_id != immutable_raw.frame_id:
+                raise ValueError("ConditionReport raw frame does not match snapshot")
+            if self.condition_report.processed_frame_id != self.frame.frame_id:
+                raise ValueError("ConditionReport processed frame does not match snapshot")
 
     def public_metadata(self) -> dict[str, object]:
         height, width = self.frame.rgb.shape[:2]
@@ -126,10 +147,20 @@ class TargetSceneSnapshot:
             "snapshot_id": self.snapshot_id,
             "geometry_chain_id": self.geometry_chain_id,
             "source_frame_id": self.frame.frame_id,
+            "raw_frame_id": self.raw_frame.frame_id,
+            "processed_frame_id": self.frame.frame_id,
             "source_timestamp_s": self.frame.timestamp_s,
             "target_id": self.target.instance_id,
             "snapshot_size": {"width": width, "height": height},
             "mask_size": {"width": self.target.mask.shape[1], "height": self.target.mask.shape[0]},
+            "condition_report": (
+                None if self.condition_report is None else self.condition_report.public_metadata()
+            ),
+            "perception_uncertainty": (
+                None
+                if self.perception_uncertainty is None
+                else self.perception_uncertainty.public_metadata()
+            ),
         }
 
     @property
@@ -141,8 +172,10 @@ class TargetSceneSnapshot:
             (
                 self.snapshot_id,
                 str(self.frame.frame_id),
+                str(self.raw_frame.frame_id),
                 repr(self.frame.timestamp_s),
                 self.target.instance_id,
+                "none" if self.condition_report is None else self.condition_report.report_id,
                 f"{width}x{height}",
             )
         ).encode("utf-8")

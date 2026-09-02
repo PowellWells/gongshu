@@ -119,6 +119,20 @@ point_cloud_timeout_s = 30.0
 spatial_computing_warning_s = 5.0
 spatial_computing_timeout_s = 30.0
 
+[condition_processing]
+# Normalized score directions: blur 0=clear/1=severe; brightness 0=dark/1=sufficient.
+# Protocol selection never synthesizes degradation and NORMAL is assessment-only.
+blur_mild_score = 0.35
+blur_moderate_score = 0.55
+blur_severe_score = 0.75
+low_light_mild_score = 0.62
+low_light_moderate_score = 0.42
+low_light_severe_score = 0.25
+low_quality_score = 0.45
+medium_quality_score = 0.70
+minimum_quality_gain = 0.01
+maximum_highlight_increase = 0.08
+
 [gongshu_grasp_planning]
 strategy = "pixel_wise_topk_antipodal"
 backend = "grconvnet_jacquard_rgbd"

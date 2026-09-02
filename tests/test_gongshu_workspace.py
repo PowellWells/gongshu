@@ -47,6 +47,12 @@ class GongshuWorkspaceTests(unittest.TestCase):
         required_ids = {
             "sourceSelect",
             "conditionSelect",
+            "conditionStatus",
+            "conditionVisualValue",
+            "conditionQualityValue",
+            "conditionEnhancementValue",
+            "conditionReliabilityValue",
+            "conditionDetail",
             "robotSelect",
             "viewModeSelect",
             "graspModeSelect",
@@ -111,6 +117,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "空间信息 <b>Spatial</b>",
             "抓取结果 <b>Grasp</b>",
             "系统状态 <b>Status</b>",
+            "观测条件 <b>Condition</b>",
         ):
             self.assertIn(label, self.html)
         for forbidden in (
@@ -184,6 +191,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("waitForGraspJob", self.controller)
         self.assertIn("await runGraspPlanning();", self.controller)
         self.assertIn('mode: els.graspModeSelect.value', self.controller)
+        self.assertIn('condition: els.conditionSelect.value', self.controller)
+        self.assertIn('value="LOW_LIGHT_BLUR"', self.html)
+        self.assertIn('value="OCCLUSION" disabled', self.html)
         self.assertIn('"GRASP_READY", "PLANNING_REJECTED", "GRASP_ERROR"', self.controller)
         self.assertIn("state.job_id !== jobId", self.controller)
         self.assertIn("monitorRestoredSpatialJob", self.controller)

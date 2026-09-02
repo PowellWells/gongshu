@@ -227,6 +227,7 @@ class SimulationRecording:
             "saved_path": self.saved_path,
             "compatibility": dict(self.compatibility),
             "target_appearance": self.request_metadata.get("target_appearance"),
+            "condition_context": self.request_metadata.get("condition_context"),
         }
 
     def manifest(self) -> dict[str, Any]:
@@ -266,6 +267,7 @@ class PlanningVisualizationRecording:
         return self.saved_path is not None
 
     def public_summary(self) -> dict[str, Any]:
+        condition_source = self.metadata.get("visualization_request") or self.metadata
         return {
             "schema_version": "gongshu.planning-visualization-recording/v1",
             "kind": "PLANNING_REJECTED_VISUALIZATION",
@@ -275,6 +277,13 @@ class PlanningVisualizationRecording:
             "duration_s": 0.0,
             "result": {"state": "PLANNING_REJECTED", "reason": self.rejection_reason},
             "rejection_reason": self.rejection_reason,
+            "condition_context": {
+                "condition_report": condition_source.get("condition_report"),
+                "perception_uncertainty": condition_source.get("perception_uncertainty"),
+                "spatial_uncertainty": condition_source.get("spatial_uncertainty"),
+                "grasp_uncertainty": condition_source.get("grasp_uncertainty"),
+                "warnings": condition_source.get("condition_warnings", []),
+            },
             "storage": "SAVED" if self.saved else "SESSION_ONLY",
             "saved_path": self.saved_path,
         }

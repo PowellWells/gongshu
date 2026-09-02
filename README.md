@@ -9,6 +9,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
 - **Gongshu Workspace v0.6**：在 v0.5 同一 Scene Snapshot 空间链之上运行官方 GR-ConvNet RGB-D 抓取检测，输出真实 Quality / Angle / Width maps、Top-K 候选、逐候选可执行性与透明排名，并只在存在可执行候选时进入 `GRASP_READY`。
 - **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学验证；锁定 Snapshot 的 RGB+Mask 会形成会话内真实外观贴图，并映射到 box / cylinder / capsule / ellipsoid 简化物理代理。真实状态以 60 Hz 形成会话内 Recording，动画结束后可立即 Replay、Scrub、逐帧、慢放和切换四种相机，且不重新运行 Vision / Depth / Grasp / Physics。
+- **Gongshu Condition Robustness v0.8**：在 Target Perception 之前增加独立、可解释的 Condition Processing Layer。它评估真实观测，在 `BLUR / LOW_LIGHT / LOW_LIGHT_BLUR` 协议下按需尝试经典增强并按质量增益决定接受或回退；`NORMAL` 始终只评估、不改像素。ConditionReport 贯穿 Target、Spatial、Grasp、Validation 与 Recording，但不修改 GR-ConvNet 评分、Panda 限制或 MuJoCo 成败判定。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -91,6 +92,8 @@ py -3.12 -m venv .venv
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
 
 进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用空间链。v0.6 严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING → GRASP_READY / PLANNING_REJECTED`。空间与抓取主视图显示真实 backend stage、elapsed time 和模型冷/热状态，没有虚假百分比或固定成功。Research Mode 显示完整 Top-K、Reject 原因和诊断图层；Demo Mode 调用同一真实算法，并通过 Graspability Preflight 优先提示可执行候选。Quality / Angle / Width / Candidates 四层可直接切换。
+
+顶部 Condition 是处理协议而不是退化生成器。每次 Analyze 都保留不可变 Raw Frame；只有增强被重新评估为质量提升且没有过度高光时才生成新的 Processed Frame ID，否则继续使用 Raw Frame ID。Workspace 的 Condition 卡显示实际观测条件、图像质量、增强状态与可靠性；Research Mode 还显示 blur/brightness 分数、完整处理链和 Raw → Processed 来源。`BLUR_TOO_SEVERE / LOW_LIGHT_TOO_SEVERE / LOW_IMAGE_QUALITY / PERCEPTION_UNCERTAIN / DEPTH_UNRELIABLE` 是上下文证据，不会覆盖 Planning Result 或 `NO_LIFT / SLIP / CONTACT_LOSS` 等物理结果。
 
 Phone Mode 的 Camera Intrinsics 优先级预留为 `CALIBRATED → SENSOR_METADATA → MODEL_PREDICTED → NOMINAL_FOV`。当前实现支持首尾两项：默认无需标定，直接回退到 Nominal FOV；若存在 `%LOCALAPPDATA%\Vision2Grasp\camera-intrinsics.json`（或 `VISION2GRASP_CAMERA_INTRINSICS` 指定文件），则可按逻辑 `camera_name` 提供 `width / height / fx / fy / cx / cy`。配置不包含 Honor Magic4 或任何具体手机型号参数，且只有宽高比一致时才允许按分辨率缩放已标定内参。
 

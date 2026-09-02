@@ -10,6 +10,8 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from vision2grasp.condition_processing import ReliabilityLevel, SpatialUncertainty
+
 from vision2grasp.contracts import CameraIntrinsics
 from vision2grasp.target_perception import TargetSceneSnapshot
 
@@ -200,6 +202,37 @@ class MaskSpatialPerceptionProvider:
             centroid=centroid,
             points=points,
         )
+        spatial_uncertainty = None
+        if snapshot.condition_report is not None:
+            report = snapshot.condition_report
+            confidence = float(
+                np.clip(
+                    min(
+                        report.image_quality_score,
+                        target_depth.valid_ratio,
+                        target_depth.inlier_ratio,
+                    ),
+                    0.0,
+                    1.0,
+                )
+            )
+            reasons = list(report.uncertainty_hints)
+            if report.reliability is ReliabilityLevel.LOW or target_depth.valid_ratio < 0.60:
+                reasons.append("DEPTH_UNRELIABLE")
+            level = (
+                ReliabilityLevel.LOW
+                if confidence < 0.45
+                else ReliabilityLevel.MEDIUM
+                if confidence < 0.70
+                else ReliabilityLevel.HIGH
+            )
+            spatial_uncertainty = SpatialUncertainty(
+                stage="SPATIAL_PERCEPTION",
+                report_id=report.report_id,
+                level=level,
+                confidence=confidence,
+                reasons=tuple(reasons),
+            )
         return SpatialObservation(
             snapshot_id=snapshot.snapshot_id,
             geometry_chain_id=snapshot.geometry_chain_id,
@@ -216,6 +249,9 @@ class MaskSpatialPerceptionProvider:
             inference_time_s=depth_frame.inference_time_s,
             geometry_sanity=sanity,
             geometry_diagnostics=diagnostics,
+            condition_report=snapshot.condition_report,
+            perception_uncertainty=snapshot.perception_uncertainty,
+            spatial_uncertainty=spatial_uncertainty,
         )
 
     def _geometry_diagnostics(

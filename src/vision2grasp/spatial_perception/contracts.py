@@ -8,6 +8,12 @@ from enum import Enum
 import numpy as np
 from numpy.typing import NDArray
 
+from vision2grasp.condition_processing import (
+    ConditionReport,
+    PerceptionUncertainty,
+    SpatialUncertainty,
+)
+
 from vision2grasp.contracts import CameraIntrinsics
 
 
@@ -329,6 +335,9 @@ class SpatialObservation:
     inference_time_s: float
     geometry_sanity: GeometrySanity
     geometry_diagnostics: SpatialGeometryDiagnostics | None = None
+    condition_report: ConditionReport | None = None
+    perception_uncertainty: PerceptionUncertainty | None = None
+    spatial_uncertainty: SpatialUncertainty | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -412,5 +421,18 @@ class SpatialObservation:
                 None
                 if self.geometry_diagnostics is None
                 else self.geometry_diagnostics.public_metadata()
+            ),
+            "condition_report": (
+                None if self.condition_report is None else self.condition_report.public_metadata()
+            ),
+            "perception_uncertainty": (
+                None
+                if self.perception_uncertainty is None
+                else self.perception_uncertainty.public_metadata()
+            ),
+            "spatial_uncertainty": (
+                None
+                if self.spatial_uncertainty is None
+                else self.spatial_uncertainty.public_metadata()
             ),
         }

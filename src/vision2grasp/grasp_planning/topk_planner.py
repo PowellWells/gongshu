@@ -8,6 +8,8 @@ import time
 import cv2
 import numpy as np
 
+from vision2grasp.condition_processing import GraspUncertainty, ReliabilityLevel
+
 from vision2grasp.spatial_perception import DepthMode, GeometrySanityStatus, SpatialObservation
 from vision2grasp.target_perception import TargetSceneSnapshot
 
@@ -108,6 +110,35 @@ class PixelWiseTopKGraspPlanner:
         )
         executable = [candidate for candidate in candidates if candidate.executable]
         elapsed = time.perf_counter() - started
+        grasp_uncertainty = None
+        condition_reasons: tuple[str, ...] = ()
+        if observation.condition_report is not None:
+            report = observation.condition_report
+            reasons = list(report.uncertainty_hints)
+            if observation.spatial_uncertainty is not None:
+                reasons.extend(observation.spatial_uncertainty.reasons)
+            best_quality = candidates[0].quality_score if candidates else None
+            evidence = [report.image_quality_score]
+            if observation.spatial_uncertainty is not None and observation.spatial_uncertainty.confidence is not None:
+                evidence.append(observation.spatial_uncertainty.confidence)
+            if best_quality is not None:
+                evidence.append(best_quality)
+            evidence_confidence = float(min(evidence))
+            level = (
+                ReliabilityLevel.LOW
+                if evidence_confidence < 0.45
+                else ReliabilityLevel.MEDIUM
+                if evidence_confidence < 0.70
+                else ReliabilityLevel.HIGH
+            )
+            grasp_uncertainty = GraspUncertainty(
+                stage="GRASP_PLANNING",
+                report_id=report.report_id,
+                level=level,
+                confidence=evidence_confidence,
+                reasons=tuple(reasons),
+            )
+            condition_reasons = grasp_uncertainty.reasons
         if not executable:
             return GraspPlanningOutcome(
                 candidates=candidates,
@@ -116,6 +147,10 @@ class PixelWiseTopKGraspPlanner:
                 plan=None,
                 rejection_reason=self._final_rejection_reason(candidates),
                 planning_time_s=elapsed,
+                condition_report=observation.condition_report,
+                perception_uncertainty=observation.perception_uncertainty,
+                spatial_uncertainty=observation.spatial_uncertainty,
+                grasp_uncertainty=grasp_uncertainty,
             )
         best = executable[0]
         uncertainty: list[str] = ["ROBOT_FRAME_TRANSFORM_UNAVAILABLE"]
@@ -123,6 +158,7 @@ class PixelWiseTopKGraspPlanner:
             uncertainty.append("APPROX_METRIC_INPUT")
         if observation.camera_intrinsics.calibration_state.value == "UNCALIBRATED":
             uncertainty.append("UNCALIBRATED_INTRINSICS")
+        uncertainty.extend(condition_reasons)
         plan = GraspPlan(
             target_id=observation.target_instance_id,
             snapshot_id=observation.snapshot_id,
@@ -160,8 +196,23 @@ class PixelWiseTopKGraspPlanner:
                 "inference_s": maps.inference_time_s,
                 "input_size": list(maps.model_input_size),
             },
+            condition_report=observation.condition_report,
+            perception_uncertainty=observation.perception_uncertainty,
+            spatial_uncertainty=observation.spatial_uncertainty,
+            grasp_uncertainty=grasp_uncertainty,
         )
-        return GraspPlanningOutcome(candidates, maps, extents, plan, None, elapsed)
+        return GraspPlanningOutcome(
+            candidates,
+            maps,
+            extents,
+            plan,
+            None,
+            elapsed,
+            observation.condition_report,
+            observation.perception_uncertainty,
+            observation.spatial_uncertainty,
+            grasp_uncertainty,
+        )
 
     def _top_k_peaks(
         self,

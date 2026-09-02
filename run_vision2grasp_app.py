@@ -25,6 +25,11 @@ import cv2
 import numpy as np
 
 from vision2grasp.camera import PhoneLANConfig, PhoneLANProvider
+from vision2grasp.condition_processing import (
+    ConditionProcessingConfig,
+    ConditionProcessor,
+    ConditionProtocol,
+)
 from vision2grasp.grasp_planning import (
     GRConvNetDetector,
     GRConvNetDetectorConfig,
@@ -69,6 +74,25 @@ def _spatial_perception_config() -> dict[str, Any]:
     with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
         document = tomllib.load(stream)
     return dict(document["spatial_perception"])
+
+
+def build_condition_processor() -> ConditionProcessor:
+    with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
+        values = tomllib.load(stream)["condition_processing"]
+    return ConditionProcessor(
+        ConditionProcessingConfig(
+            blur_mild_score=float(values["blur_mild_score"]),
+            blur_moderate_score=float(values["blur_moderate_score"]),
+            blur_severe_score=float(values["blur_severe_score"]),
+            low_light_mild_score=float(values["low_light_mild_score"]),
+            low_light_moderate_score=float(values["low_light_moderate_score"]),
+            low_light_severe_score=float(values["low_light_severe_score"]),
+            low_quality_score=float(values["low_quality_score"]),
+            medium_quality_score=float(values["medium_quality_score"]),
+            minimum_quality_gain=float(values["minimum_quality_gain"]),
+            maximum_highlight_increase=float(values["maximum_highlight_increase"]),
+        )
+    )
 
 
 def build_spatial_watchdog(config: dict[str, Any] | None = None) -> SpatialWatchdogConfig:
@@ -219,6 +243,7 @@ class Vision2GraspApp:
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
         self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
+        self.condition_processor = build_condition_processor()
         spatial_config = _spatial_perception_config()
         watchdog = build_spatial_watchdog(spatial_config)
         self.spatial_perception = SpatialPerceptionService(
@@ -275,13 +300,17 @@ class Vision2GraspApp:
             kind="image",
         )
 
-    def analyze_phone_targets(self) -> dict[str, object]:
+    def analyze_phone_targets(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Freeze one real Phone RGB frame and generate selectable instances."""
 
         self.spatial_perception.reset()
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
-        return self.target_perception.analyze(self.camera.capture())
+        protocol = ConditionProtocol(
+            str((request or {}).get("condition", "NORMAL")).upper().replace("-", "_")
+        )
+        conditioned = self.condition_processor.process(self.camera.capture(), protocol)
+        return self.target_perception.analyze(conditioned)
 
     def analyze_spatial(self, request: dict[str, Any]) -> dict[str, object]:
         """Analyze only the already-selected frozen Scene Snapshot."""
@@ -455,6 +484,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "camera.lan-live/webrtc",
                         "camera.lan-capture/original",
                         "target-perception.instance-mask/v1",
+                        "condition-processing.classical/v1",
+                        "condition-report.provenance/v1",
+                        "pipeline-uncertainty-interface/v1",
                         "target-selection.manual/v1",
                         "spatial-perception.monocular/v1",
                         "spatial-observation.camera-frame/v1",
@@ -587,7 +619,11 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "ok", "path": str(saved)})
                 return
             if path == "/api/target-perception/analyze":
-                self._send_json(self.app.analyze_phone_targets())
+                self._send_json(
+                    self.app.analyze_phone_targets(body)
+                    if body
+                    else self.app.analyze_phone_targets()
+                )
                 return
             if path == "/api/target-perception/select":
                 result = self.app.target_perception.select(

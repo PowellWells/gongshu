@@ -13,6 +13,7 @@ import numpy as np
 
 from vision2grasp.grasp_planning import GraspPlan, GraspPlanningOutcome
 from vision2grasp.target_perception import TargetSceneSnapshot
+from vision2grasp.condition_processing import GraspUncertainty, SpatialUncertainty
 
 from .appearance import extract_target_appearance
 from .recording import (
@@ -105,6 +106,8 @@ class MuJoCoValidationService:
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         snapshot: TargetSceneSnapshot | None = None,
+        spatial_uncertainty: SpatialUncertainty | None = None,
+        grasp_uncertainty: GraspUncertainty | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
@@ -132,6 +135,26 @@ class MuJoCoValidationService:
                 failure_target_offset_m=self._failure_target_offset_m,
                 target_appearance=appearance,
                 appearance_failure_reason=appearance_failure_reason,
+                condition_report=(
+                    snapshot.condition_report
+                    if snapshot is not None
+                    else getattr(plan, "condition_report", None)
+                ),
+                perception_uncertainty=(
+                    snapshot.perception_uncertainty
+                    if snapshot is not None
+                    else getattr(plan, "perception_uncertainty", None)
+                ),
+                spatial_uncertainty=(
+                    spatial_uncertainty
+                    if spatial_uncertainty is not None
+                    else getattr(plan, "spatial_uncertainty", None)
+                ),
+                grasp_uncertainty=(
+                    grasp_uncertainty
+                    if grasp_uncertainty is not None
+                    else getattr(plan, "grasp_uncertainty", None)
+                ),
             )
             self._result = None
             self._reason = None
@@ -181,7 +204,13 @@ class MuJoCoValidationService:
             minimum_gripper_width_m=self._minimum_gripper_width_m,
             maximum_gripper_width_m=self._maximum_gripper_width_m,
         )
-        return self.start(attempt, scenario=scenario, snapshot=snapshot)
+        return self.start(
+            attempt,
+            scenario=scenario,
+            snapshot=snapshot,
+            spatial_uncertainty=outcome.spatial_uncertainty,
+            grasp_uncertainty=outcome.grasp_uncertainty,
+        )
 
     def reset(self) -> dict[str, object]:
         """Close the active run but intentionally retain bounded Session History."""
@@ -475,6 +504,15 @@ class MuJoCoValidationService:
                     else ValidationScenario.NOMINAL.value
                 ),
                 "request": request_metadata,
+                "condition_context": (
+                    request_metadata.get("condition_context")
+                    if request_metadata is not None
+                    else (
+                        visualization.public_summary().get("condition_context")
+                        if visualization is not None
+                        else None
+                    )
+                ),
                 "planning_result": (
                     request_metadata.get("planning_result")
                     if request_metadata is not None
