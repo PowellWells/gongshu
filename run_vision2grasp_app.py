@@ -321,12 +321,14 @@ class Vision2GraspApp:
 
         body = request or {}
         plan = self.grasp_planning.current_plan()
+        snapshot = self.target_perception.selected_scene_snapshot()
         requested_target_id = str(body.get("target_id", "")).strip()
         if requested_target_id and requested_target_id != plan.target_id:
             raise ValueError("Validation request does not match the READY GraspPlan target")
         return self.mujoco_validation.start(
             plan,
             scenario=str(body.get("scenario", "NOMINAL")),
+            snapshot=snapshot,
         )
 
     def run_simulation(self) -> dict[str, Any]:
@@ -446,6 +448,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.session-recording/v1",
                         "mujoco-validation.state-playback/v1",
                         "mujoco-validation.explicit-save/v1",
+                        "mujoco-validation.real-appearance-proxy/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                 }

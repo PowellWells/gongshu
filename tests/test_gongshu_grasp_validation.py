@@ -28,6 +28,7 @@ from vision2grasp.simulation import (
     ValidationRequest,
     ValidationResult,
     ValidationScenario,
+    extract_target_appearance,
 )
 from vision2grasp.simulation.native_panda_validation import RecordingPlaybackRenderer
 from vision2grasp.simulation.recording import load_recording, save_recording
@@ -257,13 +258,27 @@ class MuJoCoValidationStateTests(unittest.TestCase):
 
     def test_state_transitions_stream_frames_and_succeed(self) -> None:
         service = MuJoCoValidationService(lambda request, director: _FakeValidationBackend(request, director))
-        started = service.start(self._ready_plan())
+        started = service.start(self._ready_plan(), snapshot=make_snapshot())
         self.assertIn(started["status"], {"INITIALIZING", "HOME", "PRE_GRASP", "APPROACH", "ALIGN", "CLOSE", "LIFT", "VERIFY", "SUCCESS"})
+        self.assertEqual(
+            started["request"]["target_appearance"]["source"],
+            "LOCKED_SCENE_SNAPSHOT_RGB_PLUS_TARGET_MASK",
+        )
         finished = self._wait(service)
         self.assertEqual(finished["status"], "SUCCESS")
         self.assertEqual(finished["result"]["validation_result"], "Simulation Validation SUCCESS")
         self.assertTrue(finished["media"]["stream_available"])
         self.assertIsNotNone(service.wait_for_frame(-1, timeout=0.1))
+
+    def test_validation_rejects_appearance_from_a_different_snapshot(self) -> None:
+        service = MuJoCoValidationService(
+            lambda request, director: _FakeValidationBackend(request, director)
+        )
+        original = make_snapshot()
+        mismatched = TargetSceneSnapshot("snapshot-other", original.frame, original.target)
+        with self.assertRaisesRegex(ValueError, "Snapshot"):
+            service.start(self._ready_plan(), snapshot=mismatched)
+        service.close()
 
     def test_failure_fallback_preserves_real_reason(self) -> None:
         service = MuJoCoValidationService(lambda request, director: _FakeValidationBackend(request, director, fail=True))
@@ -362,7 +377,10 @@ class MuJoCoValidationStateTests(unittest.TestCase):
 
 class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
     def test_dynamic_contact_lifts_target_without_pose_binding(self) -> None:
-        request = ValidationRequest.from_grasp_plan(GeometricGraspPlanner().plan(make_observation())[0])
+        request = ValidationRequest.from_grasp_plan(
+            GeometricGraspPlanner().plan(make_observation())[0],
+            target_appearance=extract_target_appearance(make_snapshot()),
+        )
         backend = NativePandaValidation(
             request,
             CameraDirector(),
@@ -388,6 +406,46 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
         self.assertIsNotNone(recording)
         assert recording is not None
         self.assertIsNone(recording.saved_path)
+        self.assertIn("target_appearance.png", recording.model_assets)
+        self.assertEqual(
+            recording.request_metadata["target_appearance"]["storage"],
+            "SESSION_MEMORY",
+        )
+        collision_id = __import__("mujoco").mj_name2id(
+            backend.model, __import__("mujoco").mjtObj.mjOBJ_GEOM, "bottle_target_collision"
+        )
+        visual_id = __import__("mujoco").mj_name2id(
+            backend.model, __import__("mujoco").mjtObj.mjOBJ_GEOM, "bottle_target_visual"
+        )
+        self.assertEqual(int(backend.model.geom_contype[collision_id]), 1)
+        self.assertGreater(float(backend.model.geom_friction[collision_id, 0]), 1.0)
+        self.assertEqual(int(backend.model.geom_contype[visual_id]), 0)
+        self.assertEqual(int(backend.model.geom_conaffinity[visual_id]), 0)
+        self.assertGreater(int(backend.model.ntex), 0)
+        self.assertGreaterEqual(int(backend.model.geom_matid[visual_id]), 0)
+        # Probe the actual MuJoCo render, not only XML metadata. The frozen
+        # snapshot target is green, so target pixels must no longer be the
+        # historical fixed blue proxy colour.
+        mujoco_module = __import__("mujoco")
+        probe = mujoco_module.Renderer(backend.model, height=180, width=320)
+        try:
+            camera = backend.camera_director.camera(
+                SimulationState.CLOSE,
+                backend.data.xpos[backend._target_body].copy(),
+                backend.data.site_xpos[backend._eef_site].copy(),
+            )
+            probe.update_scene(backend.data, camera=camera, scene_option=backend._render_option)
+            rendered = probe.render().copy()
+            probe.enable_segmentation_rendering()
+            probe.update_scene(backend.data, camera=camera, scene_option=backend._render_option)
+            segmentation = probe.render().copy()
+        finally:
+            probe.close()
+        target_pixels = segmentation[:, :, 0] == visual_id
+        self.assertGreater(int(np.count_nonzero(target_pixels)), 20)
+        target_mean = np.mean(rendered[target_pixels], axis=0)
+        self.assertGreater(float(target_mean[1]), float(target_mean[0]))
+        self.assertGreater(float(target_mean[1]), float(target_mean[2]))
         self.assertGreater(len(recording.timestamps), 300)
         self.assertAlmostEqual(recording.sample_hz, 60.0)
         self.assertEqual(recording.qpos.shape[0], len(recording.timestamps))
@@ -399,9 +457,13 @@ class NativeMuJoCoPhysicsSmokeTest(unittest.TestCase):
             self.assertEqual(list(root.iterdir()), [])
             save_recording(recording, root)
             self.assertTrue((root / recording.recording_id / "manifest.json").is_file())
+            self.assertTrue(
+                (root / recording.recording_id / "assets" / "target_appearance.png").is_file()
+            )
             restored = load_recording(recording.recording_id, root)
             np.testing.assert_allclose(restored.qpos, recording.qpos)
             self.assertEqual(restored.result.state, SimulationState.SUCCESS)
+            self.assertEqual(restored.model_assets, recording.model_assets)
 
         # State restoration and camera changes must not advance physics.
         playback = RecordingPlaybackRenderer(recording, CameraDirector(), width=320, height=180)

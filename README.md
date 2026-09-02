@@ -8,7 +8,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 
 - **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
 - **Gongshu Workspace v0.6**：在 v0.5 同一 Scene Snapshot 空间链之上运行官方 GR-ConvNet RGB-D 抓取检测，输出真实 Quality / Angle / Width maps、Top-K 候选、逐候选可执行性与透明排名，并只在存在可执行候选时进入 `GRASP_READY`。
-- **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学验证；真实状态以 60 Hz 形成会话内 Recording，动画结束后可立即 Replay、Scrub、逐帧、慢放和切换四种相机，且不重新运行 Vision / Depth / Grasp / Physics。
+- **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学验证；锁定 Snapshot 的 RGB+Mask 会形成会话内真实外观贴图，并映射到 box / cylinder / capsule / ellipsoid 简化物理代理。真实状态以 60 Hz 形成会话内 Recording，动画结束后可立即 Replay、Scrub、逐帧、慢放和切换四种相机，且不重新运行 Vision / Depth / Grasp / Physics。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -98,6 +98,8 @@ Phone Mode 的 Camera Intrinsics 优先级预留为 `CALIBRATED → SENSOR_METAD
 v0.6 已按 `Grasp Detection → Top-K Candidates → Feasibility Filtering → Candidate Ranking → Best Executable Grasp` 完成。默认 `Top-K=8`，候选逐一检查 target binding、quality、边缘余量、有效深度、几何置信度、异常尺度与 Panda 夹爪宽度；最高 quality 候选被拒绝时会继续评估其余候选。Panda 宽度直接复用 `[control]` 的 `0.01–0.08 m` 权威配置，`maximum_object_extent_m = 0.35` 没有放宽。由于尚无 Camera→Robot 外参，workspace reachability 与 collision feasibility 明确为 `UNKNOWN`，不伪造成可达或无碰撞。
 
 v0.7 已将动态物理、Recording 与 Playback 解耦。`NOMINAL` 执行当前 GraspPlan 的标称验证；`TARGET_OFFSET_STRESS` 只把仿真目标相对原计划偏移 `0.14 m`，Panda 仍执行同一轨迹，最终 SUCCESS / FAILED 继续由真实接触、碰撞、抬升高度和稳定窗口决定。运行时以 60 Hz 记录 qpos/qvel、夹爪、目标位姿/速度、接触、碰撞、抬升量、验证状态和事件。回放只恢复 Recording 的 MuJoCo 状态并调用 `mj_forward` 渲染，不执行 `mj_step`，因此 Replay / Timeline / Step / 0.25×–2× / Auto Cinematic / Technical / Target Follow / Free Camera 都不会重跑 Phone、Depth、Grasp 或 Physics；SUCCESS 与失败 Recording 使用同一播放器。规划阶段的 `WIDTH_LIMIT / OUT_OF_REACH / ABNORMAL_SCALE / LOW_GEOMETRY_CONFIDENCE` 只形成非物理 Visualization Record，不伪造 Dynamic Simulation。
+
+目标表示采用 `Physics Proxy + Real Appearance Mapping`：只从与 GraspPlan 严格关联的冻结 RGB 和 Target Mask 提取前景，移除场景背景后生成内存 PNG，并依据可用语义与轮廓指标选择 box/package、bottle/cup、banana/elongated、apple/rounded 对应的低复杂度 proxy。碰撞 geom 继续独立持有 density、friction、contact 与自由体物理；贴图 geom 明确为 `contype=0 / conaffinity=0`，只负责渲染。贴图通过 MuJoCo 内存 assets 参与真实 Simulation 和 Replay，默认不写磁盘；只有显式保存 Recording 时才和模型兼容性指纹一起进入用户数据包。这不是单目 3D 重建，也不会让外观层修改物理结果。
 
 Recording 默认只存在于当前应用进程的有界 Session History，状态明确显示 `Replay Available · Unsaved`；关闭应用后未保存记录自动丢弃。只有用户点击 `保存记录 Save Recording` 才写入 `%LOCALAPPDATA%\XUANSHU-LAB\Gongshu\recordings\`，只有点击 `导出视频 Export Video` 才按当前镜头、速度和 Overlay 生成 MP4 到独立 `exports` 目录。运行一次仿真不会自动生成 Recording 文件、视频、JPEG 序列或仓库内状态转储。
 

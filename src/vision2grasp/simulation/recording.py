@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -127,6 +128,7 @@ class SimulationRecording:
     request_metadata: dict[str, Any]
     compatibility: dict[str, Any]
     model_xml: str = field(repr=False)
+    model_assets: dict[str, bytes] = field(default_factory=dict, repr=False)
     saved_path: str | None = None
 
     def __post_init__(self) -> None:
@@ -152,6 +154,29 @@ class SimulationRecording:
             value = np.ascontiguousarray(np.asarray(getattr(self, name)).copy())
             value.setflags(write=False)
             object.__setattr__(self, name, value)
+        assets: dict[str, bytes] = {}
+        for name, payload in self.model_assets.items():
+            safe_name = str(name)
+            if (
+                not safe_name
+                or Path(safe_name).name != safe_name
+                or safe_name in {".", ".."}
+                or not isinstance(payload, (bytes, bytearray))
+                or not payload
+            ):
+                raise ValueError("model assets must use safe flat names and non-empty bytes")
+            assets[safe_name] = bytes(payload)
+        object.__setattr__(self, "model_assets", assets)
+        compatibility = dict(self.compatibility)
+        asset_hashes = {
+            name: hashlib.sha256(payload).hexdigest()
+            for name, payload in assets.items()
+        }
+        configured_hashes = compatibility.get("asset_sha256")
+        if configured_hashes is not None and dict(configured_hashes) != asset_hashes:
+            raise ValueError("model asset compatibility fingerprint mismatch")
+        compatibility["asset_sha256"] = asset_hashes
+        object.__setattr__(self, "compatibility", compatibility)
 
     @property
     def duration_s(self) -> float:
@@ -187,6 +212,7 @@ class SimulationRecording:
             "storage": "SAVED" if self.saved else "SESSION_ONLY",
             "saved_path": self.saved_path,
             "compatibility": dict(self.compatibility),
+            "target_appearance": self.request_metadata.get("target_appearance"),
         }
 
     def manifest(self) -> dict[str, Any]:
@@ -201,7 +227,13 @@ class SimulationRecording:
                 [contact.public_metadata() for contact in sample]
                 for sample in self.contacts
             ],
-            "files": {"states": "states.npz", "model": "model.xml"},
+            "files": {
+                "states": "states.npz",
+                "model": "model.xml",
+                "assets": {
+                    name: f"assets/{name}" for name in sorted(self.model_assets)
+                },
+            },
         }
 
 
@@ -278,6 +310,11 @@ def save_recording(recording: SimulationRecording, root: Path | None = None) -> 
             json.dumps(recording.manifest(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
         (temporary / "model.xml").write_text(recording.model_xml, encoding="utf-8")
+        if recording.model_assets:
+            assets_root = temporary / "assets"
+            assets_root.mkdir()
+            for name, payload in recording.model_assets.items():
+                (assets_root / name).write_bytes(payload)
         np.savez_compressed(
             temporary / "states.npz",
             timestamps=recording.timestamps,
@@ -346,11 +383,26 @@ def load_recording(recording_id: str, root: Path | None = None) -> SimulationRec
         raise ValueError("unsupported saved recording schema")
     model_xml = (location / "model.xml").read_text(encoding="utf-8")
     expected_hash = str(manifest.get("compatibility", {}).get("model_sha256", ""))
-    import hashlib
-
     actual_hash = hashlib.sha256(model_xml.encode("utf-8")).hexdigest()
     if not expected_hash or actual_hash != expected_hash:
         raise ValueError("saved MuJoCo model fingerprint mismatch")
+    model_assets: dict[str, bytes] = {}
+    asset_files = manifest.get("files", {}).get("assets", {})
+    expected_assets = manifest.get("compatibility", {}).get("asset_sha256", {})
+    if not isinstance(asset_files, dict) or not isinstance(expected_assets, dict):
+        raise ValueError("saved MuJoCo asset manifest is invalid")
+    for name, relative_path in asset_files.items():
+        safe_name = str(name)
+        if Path(safe_name).name != safe_name:
+            raise ValueError("saved MuJoCo asset name is unsafe")
+        asset_path = (location / str(relative_path)).resolve()
+        if not asset_path.is_relative_to(location.resolve()):
+            raise ValueError("saved MuJoCo asset path escapes the recording")
+        payload = asset_path.read_bytes()
+        expected_asset_hash = str(expected_assets.get(safe_name, ""))
+        if not expected_asset_hash or hashlib.sha256(payload).hexdigest() != expected_asset_hash:
+            raise ValueError("saved MuJoCo asset fingerprint mismatch")
+        model_assets[safe_name] = payload
     with np.load(location / "states.npz", allow_pickle=False) as states:
         result_data = manifest["result"]
         result = ValidationResult(
@@ -390,6 +442,7 @@ def load_recording(recording_id: str, root: Path | None = None) -> SimulationRec
             contacts=contacts, events=events, result=result,
             request_metadata=dict(manifest["request"]),
             compatibility=dict(manifest["compatibility"]), model_xml=model_xml,
+            model_assets=model_assets,
             saved_path=str(location),
         )
 

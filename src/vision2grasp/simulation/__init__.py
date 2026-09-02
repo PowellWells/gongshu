@@ -1,6 +1,11 @@
 """Simulation boundary with lazy heavy-runtime imports."""
 
 from .interfaces import RGBDSimulator
+from .appearance import (
+    ProxyGeometry,
+    TargetAppearance,
+    extract_target_appearance,
+)
 from .validation_contracts import (
     CameraMode,
     SimulationState,
@@ -21,6 +26,7 @@ __all__ = [
     "CameraMode",
     "MuJoCoValidationService",
     "PlaybackSession",
+    "ProxyGeometry",
     "NativePandaValidation",
     "NativePandaValidationConfig",
     "RGBDSimulator",
@@ -28,12 +34,14 @@ __all__ = [
     "RobosuiteSimulationConfig",
     "SimulationState",
     "SimulationRecording",
+    "TargetAppearance",
     "VALIDATION_SCHEMA_VERSION",
     "ValidationRequest",
     "ValidationResult",
     "ValidationRun",
     "ValidationScenario",
     "ValidationSceneTransform",
+    "extract_target_appearance",
 ]
 
 

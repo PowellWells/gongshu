@@ -154,6 +154,7 @@
     simulationCollision: byId("simulationCollision"),
     simulationLift: byId("simulationLift"),
     simulationTarget: byId("simulationTarget"),
+    simulationAppearance: byId("simulationAppearance"),
     simulationResult: byId("simulationResult"),
     simulationPlaybackControls: byId("simulationPlaybackControls"),
     recordingAvailability: byId("recordingAvailability"),
@@ -554,6 +555,7 @@
     els.simulationCollision.textContent = "CLEAR";
     els.simulationLift.textContent = "0.000 m";
     els.simulationTarget.textContent = "—";
+    els.simulationAppearance.textContent = "WAITING";
     els.simulationResult.textContent = "SIMULATION ONLY";
     els.simulationResult.className = "simulation-result";
     els.startValidationButton.disabled = true;
@@ -1400,6 +1402,10 @@
     els.simulationCollision.textContent = telemetry.collision ? "COLLISION" : "CLEAR";
     els.simulationCollision.classList.toggle("is-alert", Boolean(telemetry.collision));
     els.simulationTarget.textContent = telemetry.target_id || state.request?.grasp_plan?.target_id || "—";
+    const appearance = state.request?.target_appearance || recording?.target_appearance;
+    els.simulationAppearance.textContent = appearance
+      ? `${String(appearance.proxy_geometry || "proxy").toUpperCase()} · REAL RGB`
+      : "PROXY COLOR";
     const initialZ = Number(state.request?.scene_transform?.target_position_world?.[2]);
     const currentZ = Number(telemetry.target_position_world?.[2]);
     const liveLift = Number.isFinite(initialZ) && Number.isFinite(currentZ) ? Math.max(0, currentZ - initialZ) : 0;

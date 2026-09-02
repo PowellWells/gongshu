@@ -12,7 +12,9 @@ import cv2
 import numpy as np
 
 from vision2grasp.grasp_planning import GraspPlan
+from vision2grasp.target_perception import TargetSceneSnapshot
 
+from .appearance import extract_target_appearance
 from .recording import (
     PlaybackSession,
     PlanningVisualizationRecording,
@@ -92,12 +94,25 @@ class MuJoCoValidationService:
         plan: GraspPlan,
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
+        snapshot: TargetSceneSnapshot | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 raise RuntimeError("MuJoCo validation is already running")
+            appearance = None
+            if snapshot is not None:
+                if snapshot.snapshot_id != plan.snapshot_id:
+                    raise ValueError("Validation Scene Snapshot does not match GraspPlan")
+                if snapshot.frame.frame_id != plan.source_frame_id:
+                    raise ValueError("Validation source frame does not match GraspPlan")
+                if snapshot.target.instance_id != plan.target_id:
+                    raise ValueError("Validation target does not match GraspPlan")
+                appearance = extract_target_appearance(snapshot)
             self._request = ValidationRequest.from_grasp_plan(
-                plan, scenario=scenario, failure_target_offset_m=self._failure_target_offset_m
+                plan,
+                scenario=scenario,
+                failure_target_offset_m=self._failure_target_offset_m,
+                target_appearance=appearance,
             )
             self._result = None
             self._reason = None

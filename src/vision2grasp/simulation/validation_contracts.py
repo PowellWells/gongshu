@@ -11,6 +11,8 @@ from numpy.typing import NDArray
 
 from vision2grasp.grasp_planning import GraspPlan
 
+from .appearance import TargetAppearance
+
 
 VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v2"
 
@@ -167,10 +169,19 @@ class ValidationSceneTransform:
 class ValidationRequest:
     grasp_plan: GraspPlan
     scene_transform: ValidationSceneTransform
+    target_appearance: TargetAppearance | None = None
 
     def __post_init__(self) -> None:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
             raise ValueError("ValidationRequest requires normalized validation scene")
+        appearance = self.target_appearance
+        if appearance is not None:
+            if appearance.snapshot_id != self.grasp_plan.snapshot_id:
+                raise ValueError("target appearance snapshot does not match GraspPlan")
+            if appearance.source_frame_id != self.grasp_plan.source_frame_id:
+                raise ValueError("target appearance frame does not match GraspPlan")
+            if appearance.target_instance_id != self.grasp_plan.target_id:
+                raise ValueError("target appearance instance does not match GraspPlan")
 
     @classmethod
     def from_grasp_plan(
@@ -179,6 +190,7 @@ class ValidationRequest:
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
+        target_appearance: TargetAppearance | None = None,
     ) -> "ValidationRequest":
         selected = (
             scenario
@@ -186,12 +198,13 @@ class ValidationRequest:
             else ValidationScenario(str(scenario).upper())
         )
         return cls(
-            plan,
-            ValidationSceneTransform.from_grasp_plan(
+            grasp_plan=plan,
+            scene_transform=ValidationSceneTransform.from_grasp_plan(
                 plan,
                 scenario=selected,
                 failure_target_offset_m=failure_target_offset_m,
             ),
+            target_appearance=target_appearance,
         )
 
     @property
@@ -203,6 +216,9 @@ class ValidationRequest:
             "schema_version": VALIDATION_REQUEST_SCHEMA_VERSION,
             "grasp_plan": self.grasp_plan.public_metadata(),
             "scene_transform": self.scene_transform.public_metadata(),
+            "target_appearance": (
+                None if self.target_appearance is None else self.target_appearance.public_metadata()
+            ),
         }
 
 

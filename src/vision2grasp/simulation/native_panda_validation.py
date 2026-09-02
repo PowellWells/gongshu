@@ -17,6 +17,7 @@ import numpy as np
 
 from vision2grasp.simulation.bottle_lift import BottleLift
 
+from .appearance import ProxyGeometry, TARGET_TEXTURE_ASSET_NAME, TargetAppearance
 from .validation_contracts import (
     CameraMode,
     SimulationState,
@@ -120,7 +121,9 @@ class RecordingPlaybackRenderer:
         self.camera_director = camera_director
         self.width = width
         self.height = height
-        self.model = mujoco.MjModel.from_xml_string(recording.model_xml)
+        self.model = mujoco.MjModel.from_xml_string(
+            recording.model_xml, assets=recording.model_assets
+        )
         if self.model.nq != recording.qpos.shape[1] or self.model.nv != recording.qvel.shape[1]:
             raise RuntimeError("recording is incompatible with its MuJoCo model")
         self.data = mujoco.MjData(self.model)
@@ -237,12 +240,14 @@ class NativePandaValidation:
         self.request = request
         self.camera_director = camera_director
         self.config = config or NativePandaValidationConfig()
-        self.model_xml = self._build_model_xml(
+        self.model_xml, self.model_assets = self._build_model(
             request,
             offscreen_width=self.config.width,
             offscreen_height=self.config.height,
         )
-        self.model = mujoco.MjModel.from_xml_string(self.model_xml)
+        self.model = mujoco.MjModel.from_xml_string(
+            self.model_xml, assets=self.model_assets
+        )
         self.data = mujoco.MjData(self.model)
         self._arm_joint_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{i}") for i in range(1, 8)]
         self._arm_qpos = np.array([self.model.jnt_qposadr[j] for j in self._arm_joint_ids], dtype=np.int32)
@@ -604,10 +609,15 @@ class NativePandaValidation:
             compatibility={
                 "mujoco_version": mujoco.__version__,
                 "model_sha256": hashlib.sha256(self.model_xml.encode("utf-8")).hexdigest(),
+                "asset_sha256": {
+                    name: hashlib.sha256(payload).hexdigest()
+                    for name, payload in self.model_assets.items()
+                },
                 "nq": int(self.model.nq),
                 "nv": int(self.model.nv),
             },
             model_xml=self.model_xml,
+            model_assets=self.model_assets,
         )
 
     def _solve_ik(self, target_position: np.ndarray, target_rotation: np.ndarray, seed_q: np.ndarray) -> np.ndarray:
@@ -689,13 +699,13 @@ class NativePandaValidation:
         return value * value * (3.0 - 2.0 * value)
 
     @classmethod
-    def _build_model_xml(
+    def _build_model(
         cls,
         request: ValidationRequest,
         *,
         offscreen_width: int,
         offscreen_height: int,
-    ) -> str:
+    ) -> tuple[str, dict[str, bytes]]:
         environment = BottleLift(
             robots="Panda",
             has_renderer=False,
@@ -736,36 +746,68 @@ class NativePandaValidation:
                 target.remove(child)
         extents = request.scene_transform.target_extents_world
         half = extents / 2.0
+        appearance = request.target_appearance
+        proxy_geometry = (
+            ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        )
         ET.SubElement(
             target,
             "geom",
             {
                 "name": "bottle_target_collision",
-                "type": "box",
-                "size": " ".join(f"{value:.8f}" for value in half),
+                **cls._target_proxy_attributes(half, proxy_geometry, scale=1.0),
                 "density": "220",
                 "friction": "1.35 0.08 0.002",
                 "solref": "0.008 1",
                 "solimp": "0.95 0.99 0.001",
                 "group": "0",
-                "rgba": "0.08 0.70 0.86 1",
+                # Physics remains a simple proxy with the existing density,
+                # friction and contact parameters. It is transparent only so
+                # the separate appearance shell can be rendered cleanly.
+                "rgba": "0 0 0 0",
             },
         )
+        visual_attributes = cls._target_visual_attributes(half, appearance)
         ET.SubElement(
             target,
             "geom",
             {
                 "name": "bottle_target_visual",
-                "type": "box",
-                "size": " ".join(f"{value:.8f}" for value in half * 1.012),
                 "mass": "0.00000001",
                 "contype": "0",
                 "conaffinity": "0",
                 "group": "1",
-                "rgba": "0.05 0.82 1.0 0.96",
-                "material": "",
+                **visual_attributes,
             },
         )
+        model_assets: dict[str, bytes] = {}
+        if appearance is not None:
+            asset = root.find("asset")
+            if asset is None:
+                asset = ET.SubElement(root, "asset")
+            ET.SubElement(
+                asset,
+                "texture",
+                {
+                    "name": "target_appearance_texture",
+                    "type": "2d",
+                    "file": TARGET_TEXTURE_ASSET_NAME,
+                },
+            )
+            ET.SubElement(
+                asset,
+                "material",
+                {
+                    "name": "target_appearance_material",
+                    "texture": "target_appearance_texture",
+                    "texuniform": "true",
+                    "texrepeat": "1 1",
+                    "rgba": "1 1 1 1",
+                    "specular": "0.16",
+                    "shininess": "0.24",
+                },
+            )
+            model_assets = appearance.model_assets()
         worldbody = root.find("worldbody")
         if worldbody is None:
             raise RuntimeError("Panda model is missing worldbody")
@@ -787,7 +829,65 @@ class NativePandaValidation:
             if texture.attrib.get("type") == "skybox":
                 texture.attrib["rgb1"] = "0.015 0.025 0.045"
                 texture.attrib["rgb2"] = "0.07 0.10 0.14"
-        return ET.tostring(root, encoding="unicode")
+        return ET.tostring(root, encoding="unicode"), model_assets
+
+    @staticmethod
+    def _target_visual_attributes(
+        half: np.ndarray, appearance: TargetAppearance | None
+    ) -> dict[str, str]:
+        """Build a collision-disabled shell that stays inside the physics proxy."""
+
+        geometry = ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        common = {
+            "rgba": "0.05 0.82 1.0 0.96" if appearance is None else "1 1 1 1",
+            "material": "" if appearance is None else "target_appearance_material",
+        }
+        return {
+            **common,
+            **NativePandaValidation._target_proxy_attributes(half, geometry, scale=0.992),
+        }
+
+    @staticmethod
+    def _target_proxy_attributes(
+        half: np.ndarray,
+        geometry: ProxyGeometry,
+        *,
+        scale: float,
+    ) -> dict[str, str]:
+        """Map extents to one low-complexity proxy used by physics or rendering."""
+
+        padded = np.maximum(np.asarray(half, dtype=np.float64) * scale, 0.0015)
+        if geometry is ProxyGeometry.BOX:
+            return {
+                "type": "box",
+                "size": " ".join(f"{value:.8f}" for value in padded),
+            }
+        if geometry is ProxyGeometry.CYLINDER:
+            radius = max(min(float(padded[0]), float(padded[1])), 0.0015)
+            return {
+                "type": "cylinder",
+                "size": f"{radius:.8f} {float(padded[2]):.8f}",
+            }
+        if geometry is ProxyGeometry.CAPSULE:
+            axis = int(np.argmax(padded))
+            other = [index for index in range(3) if index != axis]
+            radius = max(min(float(padded[other[0]]), float(padded[other[1]])), 0.0015)
+            half_length = max(float(padded[axis]) - radius, 0.0015)
+            attributes = {
+                "type": "capsule",
+                "size": f"{radius:.8f} {half_length:.8f}",
+            }
+            if axis == 0:
+                attributes["quat"] = "0.70710678 0 0.70710678 0"
+            elif axis == 1:
+                attributes["quat"] = "0.70710678 -0.70710678 0 0"
+            return attributes
+        # Ellipsoid is also the stable visual fallback for an irregular mask;
+        # v0.7 does not invent a high-resolution mesh from monocular RGB.
+        return {
+            "type": "ellipsoid",
+            "size": " ".join(f"{value:.8f}" for value in padded),
+        }
 
     @staticmethod
     def _add_showcase_geometry(worldbody: ET.Element, request: ValidationRequest) -> None:
