@@ -49,10 +49,19 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "conditionSelect",
             "conditionStatus",
             "conditionVisualValue",
+            "conditionLevelValue",
             "conditionQualityValue",
             "conditionEnhancementValue",
             "conditionReliabilityValue",
             "conditionDetail",
+            "conditionSettingsButton",
+            "conditionDialog",
+            "stressStrategySelect",
+            "stressLevelSelect",
+            "stressBlurTypeSelect",
+            "stressSeedInput",
+            "conditionRawPreview",
+            "conditionPipelinePreview",
             "robotSelect",
             "viewModeSelect",
             "graspModeSelect",
@@ -118,6 +127,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "抓取结果 <b>Grasp</b>",
             "系统状态 <b>Status</b>",
             "观测条件 <b>Condition</b>",
+            "视觉条件压力测试 Condition Stress Test",
+            "原始图像 Raw Frame",
+            "流程图像 Pipeline Frame",
         ):
             self.assertIn(label, self.html)
         for forbidden in (
@@ -159,6 +171,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/target-perception/reset",
             "/api/target-perception/overlay.jpg",
             "/api/target-perception/scene-snapshot.jpg",
+            "/api/target-perception/condition-frame/",
             "/api/spatial-perception/analyze",
             "/api/spatial-perception/retry",
             "/api/spatial-perception/state",
@@ -192,6 +205,11 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("await runGraspPlanning();", self.controller)
         self.assertIn('mode: els.graspModeSelect.value', self.controller)
         self.assertIn('condition: els.conditionSelect.value', self.controller)
+        self.assertIn('strategy: els.stressStrategySelect.value', self.controller)
+        self.assertIn('level: els.stressLevelSelect.value', self.controller)
+        self.assertIn('blur_type: els.stressBlurTypeSelect.value', self.controller)
+        self.assertIn('random_seed:', self.controller)
+        self.assertIn('liveConditionUrl("pipeline")', self.controller)
         self.assertIn('value="LOW_LIGHT_BLUR"', self.html)
         self.assertIn('value="OCCLUSION" disabled', self.html)
         self.assertIn('"GRASP_READY", "PLANNING_REJECTED", "GRASP_ERROR"', self.controller)

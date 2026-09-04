@@ -39,6 +39,7 @@ class TargetPerceptionService:
         self._selected_target_id: str | None = None
         self._overlay_jpeg: bytes | None = None
         self._snapshot_jpeg: bytes | None = None
+        self._condition_jpegs: dict[str, bytes] = {}
 
     def analyze(self, frame: RGBFrame | ConditionedFrame) -> dict[str, object]:
         if not self._analysis_guard.acquire(blocking=False):
@@ -62,6 +63,7 @@ class TargetPerceptionService:
                 self._selected_target_id = None
                 self._overlay_jpeg = None
                 self._snapshot_jpeg = encode_jpeg(frozen_frame.rgb)
+                self._condition_jpegs = self._encode_condition_frames(frame, frozen_frame)
                 self._revision += 1
             instances = tuple(self._segmenter.predict(frozen_frame))
             for instance in instances:
@@ -192,6 +194,7 @@ class TargetPerceptionService:
             self._selected_target_id = None
             self._overlay_jpeg = None
             self._snapshot_jpeg = None
+            self._condition_jpegs = {}
             self._revision += 1
             return self.snapshot()
 
@@ -264,6 +267,13 @@ class TargetPerceptionService:
                 return None
             return bytes(self._snapshot_jpeg)
 
+    def condition_frame_jpeg(self, kind: str) -> bytes | None:
+        """Return an immutable experiment frame preview for Raw/Processed comparison."""
+
+        with self._lock:
+            payload = self._condition_jpegs.get(kind.strip().lower())
+            return None if payload is None else bytes(payload)
+
     def selected_scene_snapshot(self) -> TargetSceneSnapshot:
         """Return a copy of the exact frozen RGB frame associated with selection."""
 
@@ -293,7 +303,17 @@ class TargetPerceptionService:
             raw_frame=(
                 frame
                 if self._conditioned_frame is None
-                else self._conditioned_frame.raw_frame
+                else self._conditioned_frame.source_frame
+            ),
+            degraded_frame=(
+                frame
+                if self._conditioned_frame is None
+                else self._conditioned_frame.degraded_frame
+            ),
+            enhanced_frame=(
+                None
+                if self._conditioned_frame is None
+                else self._conditioned_frame.enhanced_frame
             ),
             condition_report=(
                 None
@@ -302,3 +322,19 @@ class TargetPerceptionService:
             ),
             perception_uncertainty=self._perception_uncertainty,
         )
+
+    @staticmethod
+    def _encode_condition_frames(
+        value: RGBFrame | ConditionedFrame, processed: RGBFrame
+    ) -> dict[str, bytes]:
+        if not isinstance(value, ConditionedFrame):
+            payload = encode_jpeg(processed.rgb)
+            return {"raw": payload, "degraded": payload, "pipeline": payload}
+        frames = {
+            "raw": value.source_frame,
+            "degraded": value.degraded_frame,
+            "pipeline": value.processed_frame,
+        }
+        if value.enhanced_frame is not None:
+            frames["enhanced"] = value.enhanced_frame
+        return {name: encode_jpeg(frame.rgb) for name, frame in frames.items()}

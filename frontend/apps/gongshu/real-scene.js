@@ -49,6 +49,52 @@
     rgbd: "RGB-D 相机 RGB-D Camera",
   });
 
+  const CONDITION_LABELS = Object.freeze({
+    NORMAL: "正常条件 Normal",
+    BLUR: "模糊条件 Blur",
+    LOW_LIGHT: "低光条件 Low-Light",
+    LOW_LIGHT_BLUR: "低光与模糊 Low-Light + Blur",
+  });
+  const STRESS_LEVEL_LABELS = Object.freeze({
+    MILD: "轻度 Mild",
+    MODERATE: "中度 Moderate",
+    SEVERE: "严重 Severe",
+  });
+  const STRESS_STRATEGY_LABELS = Object.freeze({
+    STRESS_ONLY: "仅压力测试 Stress Only",
+    STRESS_PLUS_RECOVERY: "压力测试与恢复 Stress + Recovery",
+  });
+  const ENHANCEMENT_LABELS = Object.freeze({
+    NOT_REQUIRED: "无需增强 Not Required",
+    ASSESSMENT_ONLY: "仅评估 Assessment Only",
+    APPLIED: "已应用 Applied",
+    REVERTED: "已回退 Reverted",
+    FAILED: "处理失败 Failed",
+    PENDING_NOT_IMPLEMENTED: "待实现 Pending",
+  });
+  const RELIABILITY_LABELS = Object.freeze({
+    HIGH: "高 High",
+    MEDIUM: "中 Medium",
+    LOW: "低 Low",
+  });
+  const CONDITION_CHAIN_LABELS = Object.freeze({
+    BRIGHTNESS_REDUCTION: "亮度降低 Brightness Reduction",
+    CONTRAST_REDUCTION: "对比度降低 Contrast Reduction",
+    SHADOW_NOISE: "暗部噪声 Shadow Noise",
+    GAUSSIAN_BLUR: "高斯模糊 Gaussian Blur",
+    MOTION_BLUR: "运动模糊 Motion Blur",
+    EXPOSURE_RECOVERY_CLAHE: "曝光恢复 Exposure Recovery",
+    MILD_DENOISE_BILATERAL: "轻量降噪 Mild Denoise",
+    UNSHARP_MASK: "反锐化增强 Unsharp Mask",
+  });
+  const CONDITION_WARNING_LABELS = Object.freeze({
+    BLUR_TOO_SEVERE: "严重模糊 Blur Too Severe",
+    LOW_LIGHT_TOO_SEVERE: "严重低光 Low-Light Too Severe",
+    LOW_IMAGE_QUALITY: "图像质量不足 Low Image Quality",
+    PERCEPTION_UNCERTAIN: "感知不确定 Perception Uncertain",
+    DEPTH_UNRELIABLE: "深度可靠性不足 Depth Unreliable",
+  });
+
   const SPATIAL_ERROR_MESSAGES = Object.freeze({
     DEPTH_UNAVAILABLE: "深度不可用 DEPTH UNAVAILABLE",
     MODEL_NOT_FOUND: "未找到深度模型 MODEL NOT FOUND",
@@ -94,10 +140,21 @@
     conditionSelect: byId("conditionSelect"),
     conditionStatus: byId("conditionStatus"),
     conditionVisualValue: byId("conditionVisualValue"),
+    conditionLevelValue: byId("conditionLevelValue"),
     conditionQualityValue: byId("conditionQualityValue"),
     conditionEnhancementValue: byId("conditionEnhancementValue"),
     conditionReliabilityValue: byId("conditionReliabilityValue"),
     conditionDetail: byId("conditionDetail"),
+    conditionSettingsButton: byId("conditionSettingsButton"),
+    conditionDialog: byId("conditionDialog"),
+    stressStrategySelect: byId("stressStrategySelect"),
+    stressLevelSelect: byId("stressLevelSelect"),
+    stressBlurTypeSelect: byId("stressBlurTypeSelect"),
+    stressSeedInput: byId("stressSeedInput"),
+    conditionRawPreview: byId("conditionRawPreview"),
+    conditionPipelinePreview: byId("conditionPipelinePreview"),
+    conditionCompareStatus: byId("conditionCompareStatus"),
+    conditionFrameChain: byId("conditionFrameChain"),
     robotSelect: byId("robotSelect"),
     viewModeSelect: byId("viewModeSelect"),
     graspModeSelect: byId("graspModeSelect"),
@@ -312,6 +369,49 @@
     return document;
   }
 
+  function conditionExperimentSettings(view = "pipeline") {
+    const seed = Number(els.stressSeedInput.value);
+    return {
+      condition: els.conditionSelect.value,
+      strategy: els.stressStrategySelect.value,
+      level: els.stressLevelSelect.value,
+      blur_type: els.stressBlurTypeSelect.value,
+      random_seed: Number.isInteger(seed) && seed >= 0 && seed <= 4294967295 ? seed : 7,
+      mode: els.graspModeSelect.value,
+      view,
+    };
+  }
+
+  function liveConditionUrl(view = "pipeline") {
+    const query = new URLSearchParams(conditionExperimentSettings(view));
+    query.set("opened", String(Date.now()));
+    return `/api/camera/live.mjpeg?${query.toString()}`;
+  }
+
+  function restartLiveConditionPreview() {
+    if (!analysisFrozen && workspaceMode === "phone" && cameraShouldStream) {
+      stopLiveView();
+      startLiveView();
+    }
+    if (els.conditionDialog.open) renderConditionComparison();
+  }
+
+  function renderConditionComparison() {
+    const frozen = analysisFrozen && targetPerceptionState?.condition_report;
+    const revision = targetPerceptionState?.revision || Date.now();
+    els.conditionRawPreview.hidden = false;
+    els.conditionPipelinePreview.hidden = false;
+    if (frozen) {
+      els.conditionRawPreview.src = `/api/target-perception/condition-frame/raw.jpg?revision=${revision}`;
+      els.conditionPipelinePreview.src = `/api/target-perception/condition-frame/pipeline.jpg?revision=${revision}`;
+      els.conditionCompareStatus.textContent = "冻结实验帧 Frozen Experiment Frames";
+    } else {
+      els.conditionRawPreview.src = liveConditionUrl("raw");
+      els.conditionPipelinePreview.src = liveConditionUrl("pipeline");
+      els.conditionCompareStatus.textContent = "实时对比 Live Comparison";
+    }
+  }
+
   function formatResolution(resolution) {
     return resolution ? `${resolution.width} × ${resolution.height}` : "—";
   }
@@ -457,31 +557,48 @@
 
   function renderConditionReport(report) {
     if (!report) {
-      els.conditionStatus.textContent = "WAITING";
-      els.conditionVisualValue.textContent = "NOT ASSESSED";
-      els.conditionQualityValue.textContent = "NOT AVAILABLE";
-      els.conditionEnhancementValue.textContent = "NOT AVAILABLE";
-      els.conditionReliabilityValue.textContent = "NOT AVAILABLE";
-      els.conditionDetail.textContent = "Protocol 尚未执行；选择条件不会向真实图像合成退化。";
+      els.conditionStatus.textContent = "等待评估 Waiting";
+      els.conditionVisualValue.textContent = "尚未评估 Not Assessed";
+      els.conditionLevelValue.textContent = "未启用 Disabled";
+      els.conditionQualityValue.textContent = "暂无数据 Unavailable";
+      els.conditionEnhancementValue.textContent = "暂无数据 Unavailable";
+      els.conditionReliabilityValue.textContent = "暂无数据 Unavailable";
+      els.conditionDetail.textContent = "等待运行视觉条件实验 Waiting for Condition Experiment。";
+      els.conditionFrameChain.textContent = "原始图像 Raw Frame → 退化图像 Degraded Frame → 增强图像 Enhanced Frame → 流程图像 Pipeline Frame";
       return;
     }
     const quality = Number(report.image_quality_score);
     const blur = Number(report.blur_score);
     const brightness = Number(report.brightness_score);
-    const chain = Array.isArray(report.enhancement_chain) && report.enhancement_chain.length
-      ? report.enhancement_chain.join(" → ")
-      : "RAW ASSESSED";
+    const stress = report.stress_test;
+    const degradationChain = Array.isArray(stress?.degradation_chain)
+      ? stress.degradation_chain.map((item) => CONDITION_CHAIN_LABELS[item] || item)
+      : [];
+    const enhancementChain = Array.isArray(report.enhancement_chain)
+      ? report.enhancement_chain.map((item) => CONDITION_CHAIN_LABELS[item] || item)
+      : [];
+    const chain = [...degradationChain, ...enhancementChain].length
+      ? [...degradationChain, ...enhancementChain].join(" → ")
+      : "原始图像评估 Raw Assessment";
     const warnings = Array.isArray(report.uncertainty_hint) && report.uncertainty_hint.length
-      ? ` · Warnings ${report.uncertainty_hint.join(" + ")}`
+      ? ` · 风险提示 Warnings ${report.uncertainty_hint.map((item) => CONDITION_WARNING_LABELS[item] || item).join(" + ")}`
       : "";
-    els.conditionStatus.textContent = report.visual_condition || "ASSESSED";
-    els.conditionVisualValue.textContent = `${report.condition_type} / ${report.visual_condition}`;
-    els.conditionQualityValue.textContent = Number.isFinite(quality) ? quality.toFixed(2) : "NOT AVAILABLE";
-    els.conditionEnhancementValue.textContent = report.enhancement_status || "NOT AVAILABLE";
-    els.conditionReliabilityValue.textContent = report.reliability || report.confidence_hint || "NOT AVAILABLE";
+    const rawId = stress?.frames?.raw?.frame_id ?? report.raw_frame_id;
+    const degradedId = stress?.frames?.degraded?.frame_id ?? report.degraded_frame_id;
+    const enhancedId = stress?.frames?.enhanced?.frame_id ?? "—";
+    const pipelineId = stress?.frames?.pipeline?.frame_id ?? report.processed_frame_id;
+    els.conditionStatus.textContent = "已评估 Assessed";
+    els.conditionVisualValue.textContent = CONDITION_LABELS[report.condition_type] || report.condition_type;
+    els.conditionLevelValue.textContent = stress?.stress_applied
+      ? `${STRESS_LEVEL_LABELS[stress.level] || stress.level} · ${STRESS_STRATEGY_LABELS[stress.strategy] || stress.strategy}`
+      : "未启用 Disabled";
+    els.conditionQualityValue.textContent = Number.isFinite(quality) ? quality.toFixed(2) : "暂无数据 Unavailable";
+    els.conditionEnhancementValue.textContent = ENHANCEMENT_LABELS[report.enhancement_status] || report.enhancement_status;
+    els.conditionReliabilityValue.textContent = RELIABILITY_LABELS[report.reliability] || report.confidence_hint || "暂无数据 Unavailable";
     els.conditionDetail.textContent = els.graspModeSelect.value === "RESEARCH"
-      ? `Blur ${blur.toFixed(2)} · Brightness ${brightness.toFixed(2)} · ${chain} · Raw ${report.raw_frame_id} → Processed ${report.processed_frame_id}${warnings}`
-      : `${report.visual_condition} · Quality ${quality.toFixed(2)} · ${report.reliability}`;
+      ? `模糊评分 Blur ${blur.toFixed(2)} · 亮度评分 Brightness ${brightness.toFixed(2)} · ${chain} · 原始 Raw ${rawId} → 退化 Degraded ${degradedId} → 增强 Enhanced ${enhancedId} → 流程 Pipeline ${pipelineId}${warnings}`
+      : `${CONDITION_LABELS[report.visual_condition] || report.visual_condition} · 图像质量 Quality ${quality.toFixed(2)} · ${RELIABILITY_LABELS[report.reliability] || report.reliability}`;
+    els.conditionFrameChain.textContent = `原始图像 Raw Frame ${rawId} → 退化图像 Degraded Frame ${degradedId} → 增强图像 Enhanced Frame ${enhancedId} → 流程图像 Pipeline Frame ${pipelineId}`;
   }
 
   function setPrimaryView(view) {
@@ -641,7 +758,7 @@
   function startLiveView() {
     if (analysisFrozen || liveStreamStarted || workspaceMode !== "phone" || els.sourceSelect.value !== "phone") return;
     liveStreamStarted = true;
-    els.liveMedia.src = `/api/camera/live.mjpeg?opened=${Date.now()}`;
+    els.liveMedia.src = liveConditionUrl("pipeline");
     els.liveMedia.onload = () => {
       if (workspaceMode !== "phone" || analysisFrozen) return;
       els.liveMedia.hidden = false;
@@ -787,6 +904,7 @@
     els.liveState.textContent = state.status === "TARGET_LOCKED" ? "TARGET LOCKED" : "FRAME FROZEN";
     els.liveState.classList.add("is-live");
     renderTargetPerception(state);
+    if (els.conditionDialog.open) renderConditionComparison();
   }
 
   async function analyzeTargets() {
@@ -800,7 +918,7 @@
     updateActionButtons();
     try {
       const state = await apiPost("/api/target-perception/analyze", {
-        condition: els.conditionSelect.value,
+        ...conditionExperimentSettings(),
       });
       if (requestRevision !== targetAnalysisRequest) return;
       showFrozenTargetFrame(state);
@@ -1925,8 +2043,16 @@
   els.conditionSelect.addEventListener("change", () => {
     const protocol = els.conditionSelect.value;
     showNotice(protocol === "NORMAL"
-      ? "NORMAL 为评估模式：保留原始像素，不执行增强。"
-      : `已选择 ${protocol} 处理协议：只检测真实退化并执行可回退增强，不会合成退化。`, "success");
+      ? "已选择正常条件 Normal：保持原始 RGB 像素完全不变。"
+      : `已选择${CONDITION_LABELS[protocol] || protocol}：研究模式 Research Mode 将实时模拟可复现视觉退化。`, "success");
+    restartLiveConditionPreview();
+  });
+  [els.stressStrategySelect, els.stressLevelSelect, els.stressBlurTypeSelect, els.stressSeedInput].forEach((control) => {
+    control.addEventListener("change", () => {
+      const settings = conditionExperimentSettings();
+      showNotice(`压力测试参数已更新 Stress settings updated：${STRESS_LEVEL_LABELS[settings.level]} · 种子 Seed ${settings.random_seed}`);
+      restartLiveConditionPreview();
+    });
   });
   els.robotSelect.addEventListener("change", () => {
     const pending = els.robotSelect.value !== "panda";
@@ -1935,9 +2061,14 @@
   });
   els.viewModeSelect.addEventListener("change", () => setViewMode(els.viewModeSelect.value));
   els.graspModeSelect.addEventListener("change", () => {
-    const label = els.graspModeSelect.value === "DEMO" ? "Demo" : "Research";
-    showNotice(`抓取规划已切换为 ${label} Mode；两种模式使用同一真实算法。`);
+    const research = els.graspModeSelect.value === "RESEARCH";
+    const label = research ? "研究模式 Research Mode" : "演示模式 Demo Mode";
+    [els.stressStrategySelect, els.stressLevelSelect, els.stressBlurTypeSelect, els.stressSeedInput].forEach((control) => {
+      control.disabled = !research;
+    });
+    showNotice(`抓取规划已切换为${label}；视觉压力测试仅在研究模式 Research Mode 生效。`);
     renderConditionReport(targetPerceptionState?.condition_report || null);
+    restartLiveConditionPreview();
   });
   els.validationScenarioSelect.addEventListener("change", () => {
     const stress = els.validationScenarioSelect.value === "TARGET_OFFSET_STRESS";
@@ -2062,6 +2193,20 @@
     }
   });
   els.cameraSetupButton.addEventListener("click", () => openDialog(els.cameraSetupDialog));
+  els.conditionSettingsButton.addEventListener("click", () => {
+    openDialog(els.conditionDialog);
+    renderConditionComparison();
+  });
+  document.querySelector("[data-close-condition]").addEventListener("click", () => closeDialog(els.conditionDialog));
+  els.conditionDialog.addEventListener("click", (event) => {
+    if (event.target === els.conditionDialog) closeDialog(els.conditionDialog);
+  });
+  els.conditionDialog.addEventListener("close", () => {
+    [els.conditionRawPreview, els.conditionPipelinePreview].forEach((image) => {
+      image.removeAttribute("src");
+      image.hidden = true;
+    });
+  });
   document.querySelector("[data-close-camera-setup]").addEventListener("click", () => closeDialog(els.cameraSetupDialog));
   els.cameraSetupDialog.addEventListener("click", (event) => {
     if (event.target === els.cameraSetupDialog) closeDialog(els.cameraSetupDialog);

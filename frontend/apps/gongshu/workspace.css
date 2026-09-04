@@ -1186,6 +1186,61 @@
   backdrop-filter: blur(3px);
 }
 
+.condition-dialog { width: min(1060px, calc(100vw - 42px)); }
+
+.condition-dialog-content {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 12px;
+  max-height: calc(100vh - 115px);
+  padding: 12px;
+  overflow: auto;
+}
+
+.condition-settings-card,
+.condition-comparison-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.condition-settings-card { display: grid; align-content: start; gap: 11px; }
+.condition-settings-card h3,
+.condition-comparison-card h3 { margin: 0; color: var(--navy-900); font-size: 12px; }
+.condition-settings-card label { display: grid; gap: 4px; color: var(--muted); font-size: 8px; font-weight: 800; }
+.condition-settings-card select,
+.condition-settings-card input {
+  width: 100%;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--navy-900);
+  font-size: 10px;
+  font-weight: 700;
+}
+.condition-settings-card p,
+.condition-comparison-card p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.condition-comparison-card { display: grid; gap: 10px; }
+.condition-comparison-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.condition-comparison-card > header strong { color: var(--blue-600); font-size: 8px; }
+.condition-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.condition-comparison-grid figure { display: grid; grid-template-rows: auto minmax(220px, 1fr); gap: 5px; min-width: 0; margin: 0; }
+.condition-comparison-grid figcaption { color: var(--navy-800); font-size: 9px; font-weight: 800; }
+.condition-comparison-grid img {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #071421;
+}
+
 .dialog-header {
   justify-content: space-between;
   padding: 13px 16px;

@@ -101,6 +101,8 @@ class TargetSceneSnapshot:
     frame: RGBFrame
     target: TargetInstance
     raw_frame: RGBFrame | None = None
+    degraded_frame: RGBFrame | None = None
+    enhanced_frame: RGBFrame | None = None
     condition_report: ConditionReport | None = None
     perception_uncertainty: PerceptionUncertainty | None = None
 
@@ -126,6 +128,29 @@ class TargetSceneSnapshot:
             rgb=raw_rgb,
         )
         object.__setattr__(self, "raw_frame", immutable_raw)
+        degraded_source = self.degraded_frame or self.frame
+        degraded_rgb = np.ascontiguousarray(degraded_source.rgb.copy(), dtype=np.uint8)
+        degraded_rgb.setflags(write=False)
+        immutable_degraded = RGBFrame(
+            degraded_source.frame_id,
+            degraded_source.timestamp_s,
+            degraded_source.camera_name,
+            degraded_rgb,
+        )
+        object.__setattr__(self, "degraded_frame", immutable_degraded)
+        if self.enhanced_frame is not None:
+            enhanced_rgb = np.ascontiguousarray(self.enhanced_frame.rgb.copy(), dtype=np.uint8)
+            enhanced_rgb.setflags(write=False)
+            object.__setattr__(
+                self,
+                "enhanced_frame",
+                RGBFrame(
+                    self.enhanced_frame.frame_id,
+                    self.enhanced_frame.timestamp_s,
+                    self.enhanced_frame.camera_name,
+                    enhanced_rgb,
+                ),
+            )
         if self.target.source_frame_id != self.frame.frame_id:
             raise ValueError("target source_frame_id does not match snapshot frame")
         if self.target.source_timestamp_s != self.frame.timestamp_s:
@@ -135,10 +160,21 @@ class TargetSceneSnapshot:
         if immutable_raw.timestamp_s != self.frame.timestamp_s:
             raise ValueError("raw and processed snapshot timestamps do not match")
         if self.condition_report is not None:
-            if self.condition_report.raw_frame_id != immutable_raw.frame_id:
+            stress = self.condition_report.stress_test
+            expected_raw_id = (
+                self.condition_report.raw_frame_id if stress is None else stress.raw_frame_id
+            )
+            if expected_raw_id != immutable_raw.frame_id:
                 raise ValueError("ConditionReport raw frame does not match snapshot")
-            if self.condition_report.processed_frame_id != self.frame.frame_id:
+            expected_pipeline_id = (
+                self.condition_report.processed_frame_id
+                if stress is None
+                else stress.pipeline_frame_id
+            )
+            if expected_pipeline_id != self.frame.frame_id:
                 raise ValueError("ConditionReport processed frame does not match snapshot")
+            if stress is not None and stress.degraded_frame_id != immutable_degraded.frame_id:
+                raise ValueError("ConditionReport degraded frame does not match snapshot")
 
     def public_metadata(self) -> dict[str, object]:
         height, width = self.frame.rgb.shape[:2]
@@ -149,6 +185,10 @@ class TargetSceneSnapshot:
             "source_frame_id": self.frame.frame_id,
             "raw_frame_id": self.raw_frame.frame_id,
             "processed_frame_id": self.frame.frame_id,
+            "degraded_frame_id": self.degraded_frame.frame_id,
+            "enhanced_frame_id": (
+                None if self.enhanced_frame is None else self.enhanced_frame.frame_id
+            ),
             "source_timestamp_s": self.frame.timestamp_s,
             "target_id": self.target.instance_id,
             "snapshot_size": {"width": width, "height": height},

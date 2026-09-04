@@ -26,10 +26,15 @@ import numpy as np
 
 from vision2grasp.camera import PhoneLANConfig, PhoneLANProvider
 from vision2grasp.condition_processing import (
+    ConditionExperimentProcessor,
     ConditionProcessingConfig,
     ConditionProcessor,
     ConditionProtocol,
+    StressBlurType,
+    StressLevel,
+    StressStrategy,
 )
+from vision2grasp.contracts import RGBFrame
 from vision2grasp.grasp_planning import (
     GRConvNetDetector,
     GRConvNetDetectorConfig,
@@ -244,6 +249,7 @@ class Vision2GraspApp:
         self._simulation_lock = threading.Lock()
         self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
         self.condition_processor = build_condition_processor()
+        self.condition_experiment = ConditionExperimentProcessor(self.condition_processor)
         spatial_config = _spatial_perception_config()
         watchdog = build_spatial_watchdog(spatial_config)
         self.spatial_perception = SpatialPerceptionService(
@@ -306,11 +312,92 @@ class Vision2GraspApp:
         self.spatial_perception.reset()
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
-        protocol = ConditionProtocol(
-            str((request or {}).get("condition", "NORMAL")).upper().replace("-", "_")
+        body = request or {}
+        conditioned = self.condition_experiment.process(
+            self.camera.capture(),
+            self._condition_protocol(body),
+            strategy=self._stress_strategy(body),
+            level=self._stress_level(body),
+            blur_type=self._stress_blur_type(body),
+            random_seed=self._stress_seed(body),
+            research_mode=str(body.get("mode", "RESEARCH")).upper() == "RESEARCH",
         )
-        conditioned = self.condition_processor.process(self.camera.capture(), protocol)
         return self.target_perception.analyze(conditioned)
+
+    def process_live_condition_jpeg(
+        self, jpeg: bytes, revision: int, request: dict[str, Any]
+    ) -> bytes:
+        """Render the final research Pipeline Frame for the Live RGB stream."""
+
+        if (
+            str(request.get("view", "pipeline")).lower() == "raw"
+            or str(request.get("mode", "RESEARCH")).upper() != "RESEARCH"
+            or self._condition_protocol(request) is ConditionProtocol.NORMAL
+        ):
+            return jpeg
+        bgr = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError("无法解码实时视觉帧 Live RGB frame decode failed")
+        frame = RGBFrame(
+            frame_id=max(0, int(revision)),
+            timestamp_s=float(max(0, int(revision))),
+            camera_name="phone-live-preview",
+            rgb=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB),
+        )
+        conditioned = self.condition_experiment.process(
+            frame,
+            self._condition_protocol(request),
+            strategy=self._stress_strategy(request),
+            level=self._stress_level(request),
+            blur_type=self._stress_blur_type(request),
+            random_seed=self._stress_seed(request),
+            research_mode=True,
+        )
+        encoded, output = cv2.imencode(
+            ".jpg",
+            cv2.cvtColor(conditioned.processed_frame.rgb, cv2.COLOR_RGB2BGR),
+            [cv2.IMWRITE_JPEG_QUALITY, 88],
+        )
+        if not encoded:
+            raise RuntimeError("无法编码条件预览 Condition preview encode failed")
+        return output.tobytes()
+
+    @staticmethod
+    def _condition_protocol(body: dict[str, Any]) -> ConditionProtocol:
+        try:
+            return ConditionProtocol(
+                str(body.get("condition", "NORMAL")).upper().replace("-", "_")
+            )
+        except ValueError as error:
+            raise ValueError("视觉条件无效 Invalid visual condition") from error
+
+    @staticmethod
+    def _stress_strategy(body: dict[str, Any]) -> StressStrategy:
+        try:
+            return StressStrategy(str(body.get("strategy", "STRESS_ONLY")).upper())
+        except ValueError as error:
+            raise ValueError("实验策略无效 Invalid stress strategy") from error
+
+    @staticmethod
+    def _stress_level(body: dict[str, Any]) -> StressLevel:
+        try:
+            return StressLevel(str(body.get("level", "MODERATE")).upper())
+        except ValueError as error:
+            raise ValueError("压力等级无效 Invalid stress level") from error
+
+    @staticmethod
+    def _stress_blur_type(body: dict[str, Any]) -> StressBlurType:
+        try:
+            return StressBlurType(str(body.get("blur_type", "GAUSSIAN")).upper())
+        except ValueError as error:
+            raise ValueError("模糊类型无效 Invalid blur type") from error
+
+    @staticmethod
+    def _stress_seed(body: dict[str, Any]) -> int:
+        try:
+            return int(body.get("random_seed", 7))
+        except (TypeError, ValueError) as error:
+            raise ValueError("随机种子无效 Invalid random seed") from error
 
     def analyze_spatial(self, request: dict[str, Any]) -> dict[str, object]:
         """Analyze only the already-selected frozen Scene Snapshot."""
@@ -485,6 +572,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "camera.lan-capture/original",
                         "target-perception.instance-mask/v1",
                         "condition-processing.classical/v1",
+                        "condition-stress-simulation.reproducible/v1",
                         "condition-report.provenance/v1",
                         "pipeline-uncertainty-interface/v1",
                         "target-selection.manual/v1",
@@ -539,6 +627,18 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND, "locked target snapshot not ready")
                 return
             self._send_binary(snapshot, "image/jpeg")
+            return
+        condition_frame_prefix = "/api/target-perception/condition-frame/"
+        if path.startswith(condition_frame_prefix) and path.endswith(".jpg"):
+            kind = path[len(condition_frame_prefix) : -4]
+            if kind not in {"raw", "degraded", "enhanced", "pipeline"}:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            payload = self.app.target_perception.condition_frame_jpeg(kind)
+            if payload is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "条件实验帧不可用 Condition frame unavailable")
+                return
+            self._send_binary(payload, "image/jpeg")
             return
         if path == "/api/spatial-perception/state":
             self._send_json(self.app.spatial_perception.snapshot())
@@ -821,12 +921,23 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         revision = -1
+        query = {
+            name: values[0]
+            for name, values in parse_qs(urlparse(self.path).query).items()
+            if values
+        }
         try:
             while True:
                 frame = self.app.camera.wait_for_live_jpeg(revision, timeout=2.0)
                 if frame is None:
                     continue
                 revision, jpeg = frame
+                try:
+                    jpeg = self.app.process_live_condition_jpeg(jpeg, revision, query)
+                except (TypeError, ValueError, RuntimeError):
+                    # Keep the live transport available; invalid settings are
+                    # reported by the Analyze endpoint before experiment data is recorded.
+                    pass
                 self.wfile.write(b"--" + boundary + b"\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
                 self.wfile.write(f"Content-Length: {len(jpeg)}\r\n\r\n".encode("ascii"))

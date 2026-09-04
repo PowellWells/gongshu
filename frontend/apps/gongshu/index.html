@@ -30,6 +30,7 @@
       </div>
 
       <div class="workspace-header-actions">
+        <button id="conditionSettingsButton" class="quiet-button" type="button">压力测试 Stress Test</button>
         <button id="legacyButton" class="quiet-button" type="button">历史运行 History</button>
         <button id="cameraSetupButton" class="quiet-button" type="button">连接设置 Camera Setup</button>
         <a class="icon-button" href="../../index.html" title="返回玄枢门户" aria-label="返回玄枢门户">
@@ -49,7 +50,7 @@
         </select>
       </label>
       <label class="control-field">
-        <span>测试条件 Condition</span>
+        <span>视觉条件 Condition</span>
         <select id="conditionSelect">
           <option value="NORMAL">正常 Normal</option>
           <option value="BLUR">模糊 Blur</option>
@@ -287,12 +288,13 @@
 
       <aside class="workspace-inspector" aria-label="抓取任务状态">
         <section class="inspector-block condition-block">
-          <header><div><span>00</span><h2>观测条件 <b>Condition</b></h2></div><strong id="conditionStatus">WAITING</strong></header>
+          <header><div><span>00</span><h2>观测条件 <b>Condition</b></h2></div><strong id="conditionStatus">等待评估 Waiting</strong></header>
           <dl class="target-summary">
-            <div><dt>观测退化 Visual</dt><dd id="conditionVisualValue">NOT ASSESSED</dd></div>
-            <div><dt>图像质量 Image Quality</dt><dd id="conditionQualityValue">NOT AVAILABLE</dd></div>
-            <div><dt>增强处理 Enhancement</dt><dd id="conditionEnhancementValue">NOT AVAILABLE</dd></div>
-            <div><dt>可靠性 Reliability</dt><dd id="conditionReliabilityValue">NOT AVAILABLE</dd></div>
+            <div><dt>观测退化 Visual</dt><dd id="conditionVisualValue">尚未评估 Not Assessed</dd></div>
+            <div><dt>压力等级 Stress Level</dt><dd id="conditionLevelValue">未启用 Disabled</dd></div>
+            <div><dt>图像质量 Image Quality</dt><dd id="conditionQualityValue">暂无数据 Unavailable</dd></div>
+            <div><dt>增强处理 Enhancement</dt><dd id="conditionEnhancementValue">暂无数据 Unavailable</dd></div>
+            <div><dt>可靠性 Reliability</dt><dd id="conditionReliabilityValue">暂无数据 Unavailable</dd></div>
           </dl>
           <p id="conditionDetail">Protocol 尚未执行；选择条件不会向真实图像合成退化。</p>
         </section>
@@ -343,6 +345,31 @@
     </main>
 
     <div id="notice" class="workspace-notice" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="conditionDialog" class="workspace-dialog condition-dialog" aria-labelledby="conditionDialogTitle">
+      <header class="dialog-header">
+        <div><span>研究实验 Research Experiment</span><h2 id="conditionDialogTitle">视觉条件压力测试 Condition Stress Test</h2></div>
+        <button type="button" class="dialog-close-button" data-close-condition aria-label="关闭视觉条件压力测试 Close Condition Stress Test">×</button>
+      </header>
+      <div class="condition-dialog-content">
+        <section class="condition-settings-card">
+          <h3>实验参数 Experiment Parameters</h3>
+          <label><span>实验策略 Strategy</span><select id="stressStrategySelect"><option value="STRESS_ONLY">仅压力测试 Stress Only</option><option value="STRESS_PLUS_RECOVERY">压力测试与恢复 Stress + Recovery</option></select></label>
+          <label><span>压力等级 Stress Level</span><select id="stressLevelSelect"><option value="MILD">轻度 Mild</option><option value="MODERATE" selected>中度 Moderate</option><option value="SEVERE">严重 Severe</option></select></label>
+          <label><span>模糊类型 Blur Type</span><select id="stressBlurTypeSelect"><option value="GAUSSIAN">高斯模糊 Gaussian Blur</option><option value="MOTION">运动模糊 Motion Blur</option></select></label>
+          <label><span>随机种子 Random Seed</span><input id="stressSeedInput" type="number" min="0" max="4294967295" step="1" value="7" /></label>
+          <p>仅研究模式 Research Mode 生效；参数和种子将进入实验记录 Experiment Record。</p>
+        </section>
+        <section class="condition-comparison-card">
+          <header><h3>原始与流程输入对比 Raw / Pipeline Comparison</h3><strong id="conditionCompareStatus">等待视觉输入 Waiting</strong></header>
+          <div class="condition-comparison-grid">
+            <figure><figcaption>原始图像 Raw Frame</figcaption><img id="conditionRawPreview" alt="原始图像 Raw Frame" hidden /></figure>
+            <figure><figcaption>流程图像 Pipeline Frame</figcaption><img id="conditionPipelinePreview" alt="流程图像 Pipeline Frame" hidden /></figure>
+          </div>
+          <p id="conditionFrameChain">原始图像 Raw Frame → 退化图像 Degraded Frame → 增强图像 Enhanced Frame → 流程图像 Pipeline Frame</p>
+        </section>
+      </div>
+    </dialog>
 
     <dialog id="cameraSetupDialog" class="workspace-dialog camera-setup-dialog" aria-labelledby="cameraSetupTitle">
       <header class="dialog-header">

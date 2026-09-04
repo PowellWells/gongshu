@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,7 @@ from vision2grasp.contracts import RGBFrame
 
 
 CONDITION_REPORT_SCHEMA_VERSION = "gongshu.condition-report/v1"
+CONDITION_STRESS_REPORT_SCHEMA_VERSION = "gongshu.condition-stress-report/v1"
 UNCERTAINTY_SCHEMA_VERSION = "gongshu.pipeline-uncertainty/v1"
 
 
@@ -28,6 +30,22 @@ class VisualCondition(str, Enum):
     BLUR = "BLUR"
     LOW_LIGHT = "LOW_LIGHT"
     LOW_LIGHT_BLUR = "LOW_LIGHT_BLUR"
+
+
+class StressStrategy(str, Enum):
+    STRESS_ONLY = "STRESS_ONLY"
+    STRESS_PLUS_RECOVERY = "STRESS_PLUS_RECOVERY"
+
+
+class StressLevel(str, Enum):
+    MILD = "MILD"
+    MODERATE = "MODERATE"
+    SEVERE = "SEVERE"
+
+
+class StressBlurType(str, Enum):
+    GAUSSIAN = "GAUSSIAN"
+    MOTION = "MOTION"
 
 
 class BlurLevel(str, Enum):
@@ -82,6 +100,69 @@ class ConditionMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class ConditionStressReport:
+    condition: ConditionProtocol
+    strategy: StressStrategy
+    level: StressLevel
+    blur_type: StressBlurType
+    random_seed: int
+    raw_frame_id: int
+    degraded_frame_id: int
+    enhanced_frame_id: int | None
+    pipeline_frame_id: int
+    raw_sha256: str
+    degraded_sha256: str
+    enhanced_sha256: str | None
+    pipeline_sha256: str
+    degradation_chain: tuple[str, ...]
+    parameters: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if self.random_seed < 0:
+            raise ValueError("stress random_seed must be non-negative")
+        if min(self.raw_frame_id, self.degraded_frame_id, self.pipeline_frame_id) < 0:
+            raise ValueError("stress frame identifiers must be non-negative")
+        if self.enhanced_frame_id is not None and self.enhanced_frame_id < 0:
+            raise ValueError("enhanced_frame_id must be non-negative")
+        object.__setattr__(self, "degradation_chain", tuple(self.degradation_chain))
+        object.__setattr__(self, "parameters", dict(self.parameters))
+
+    @property
+    def applied(self) -> bool:
+        return self.degraded_frame_id != self.raw_frame_id
+
+    def public_metadata(self) -> dict[str, Any]:
+        return {
+            "schema_version": CONDITION_STRESS_REPORT_SCHEMA_VERSION,
+            "condition": self.condition.value,
+            "strategy": self.strategy.value,
+            "level": self.level.value,
+            "blur_type": self.blur_type.value,
+            "random_seed": self.random_seed,
+            "stress_applied": self.applied,
+            "degradation_chain": list(self.degradation_chain),
+            "parameters": dict(self.parameters),
+            "frames": {
+                "raw": {"frame_id": self.raw_frame_id, "sha256": self.raw_sha256},
+                "degraded": {
+                    "frame_id": self.degraded_frame_id,
+                    "sha256": self.degraded_sha256,
+                },
+                "enhanced": (
+                    None
+                    if self.enhanced_frame_id is None
+                    else {"frame_id": self.enhanced_frame_id, "sha256": self.enhanced_sha256}
+                ),
+                "pipeline": {
+                    "frame_id": self.pipeline_frame_id,
+                    "sha256": self.pipeline_sha256,
+                },
+            },
+            "scope": "RESEARCH_VISUAL_INPUT_ONLY",
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ConditionReport:
     report_id: str
     protocol: ConditionProtocol
@@ -106,6 +187,7 @@ class ConditionReport:
     processed_metrics: ConditionMetrics
     raw_sha256: str
     processed_sha256: str
+    stress_test: ConditionStressReport | None = None
 
     def __post_init__(self) -> None:
         if not self.report_id.strip():
@@ -126,13 +208,29 @@ class ConditionReport:
         object.__setattr__(self, "uncertainty_hints", tuple(dict.fromkeys(self.uncertainty_hints)))
 
     def public_metadata(self) -> dict[str, Any]:
+        stress = None if self.stress_test is None else self.stress_test.public_metadata()
         return {
             "schema_version": CONDITION_REPORT_SCHEMA_VERSION,
             "report_id": self.report_id,
             "condition_type": self.protocol.value,
             "visual_condition": self.visual_condition.value,
-            "raw_frame_id": self.raw_frame_id,
-            "processed_frame_id": self.processed_frame_id,
+            "raw_frame_id": (
+                self.raw_frame_id if self.stress_test is None else self.stress_test.raw_frame_id
+            ),
+            "condition_input_frame_id": self.raw_frame_id,
+            "degraded_frame_id": (
+                self.raw_frame_id
+                if self.stress_test is None
+                else self.stress_test.degraded_frame_id
+            ),
+            "enhanced_frame_id": (
+                None if self.stress_test is None else self.stress_test.enhanced_frame_id
+            ),
+            "processed_frame_id": (
+                self.processed_frame_id
+                if self.stress_test is None
+                else self.stress_test.pipeline_frame_id
+            ),
             "blur_score": self.blur_score,
             "brightness_score": self.brightness_score,
             "blur_level": self.blur_level.value,
@@ -149,9 +247,22 @@ class ConditionReport:
             "uncertainty_hint": list(self.uncertainty_hints),
             "raw_metrics": self.raw_metrics.public_metadata(),
             "processed_metrics": self.processed_metrics.public_metadata(),
-            "raw_sha256": self.raw_sha256,
+            "raw_sha256": (
+                self.raw_sha256 if self.stress_test is None else self.stress_test.raw_sha256
+            ),
+            "condition_input_sha256": self.raw_sha256,
+            "degraded_sha256": (
+                self.raw_sha256
+                if self.stress_test is None
+                else self.stress_test.degraded_sha256
+            ),
             "processed_sha256": self.processed_sha256,
-            "provenance": "RAW_IMMUTABLE_TO_OPTIONAL_ACCEPTED_ENHANCEMENT",
+            "stress_test": stress,
+            "provenance": (
+                "RAW_IMMUTABLE_TO_OPTIONAL_ACCEPTED_ENHANCEMENT"
+                if self.stress_test is None
+                else "RAW_TO_DEGRADED_TO_OPTIONAL_ENHANCED_TO_PIPELINE"
+            ),
             "extension_interfaces": {
                 "occlusion_condition": "PENDING",
                 "domain_shift": {
@@ -168,6 +279,9 @@ class ConditionedFrame:
     raw_frame: RGBFrame
     processed_frame: RGBFrame
     report: ConditionReport
+    source_frame: RGBFrame | None = None
+    degraded_frame: RGBFrame | None = None
+    enhanced_frame: RGBFrame | None = None
 
     def __post_init__(self) -> None:
         raw_rgb = np.ascontiguousarray(self.raw_frame.rgb.copy(), dtype=np.uint8)
@@ -187,6 +301,47 @@ class ConditionedFrame:
             raise ValueError("ConditionReport frame provenance does not match frames")
         object.__setattr__(self, "raw_frame", raw)
         object.__setattr__(self, "processed_frame", processed)
+        source_value = self.source_frame or raw
+        degraded_value = self.degraded_frame or raw
+        source = self._immutable_frame(source_value)
+        degraded = self._immutable_frame(degraded_value)
+        enhanced = None if self.enhanced_frame is None else self._immutable_frame(self.enhanced_frame)
+        if source.timestamp_s != processed.timestamp_s or degraded.timestamp_s != processed.timestamp_s:
+            raise ValueError("condition experiment frames must describe the same capture")
+        if enhanced is not None and enhanced.timestamp_s != processed.timestamp_s:
+            raise ValueError("enhanced frame must describe the same capture")
+        stress = self.report.stress_test
+        if stress is not None:
+            if source.frame_id != stress.raw_frame_id or degraded.frame_id != stress.degraded_frame_id:
+                raise ValueError("stress frame provenance does not match ConditionedFrame")
+            if processed.frame_id != stress.pipeline_frame_id:
+                raise ValueError("pipeline frame does not match stress provenance")
+            if (enhanced is None) != (stress.enhanced_frame_id is None):
+                raise ValueError("enhanced frame availability does not match stress provenance")
+            if enhanced is not None and enhanced.frame_id != stress.enhanced_frame_id:
+                raise ValueError("enhanced frame does not match stress provenance")
+            hashes = {
+                "raw": hashlib.sha256(source.rgb.tobytes()).hexdigest(),
+                "degraded": hashlib.sha256(degraded.rgb.tobytes()).hexdigest(),
+                "pipeline": hashlib.sha256(processed.rgb.tobytes()).hexdigest(),
+            }
+            if hashes["raw"] != stress.raw_sha256:
+                raise ValueError("raw frame hash does not match stress provenance")
+            if hashes["degraded"] != stress.degraded_sha256:
+                raise ValueError("degraded frame hash does not match stress provenance")
+            if hashes["pipeline"] != stress.pipeline_sha256:
+                raise ValueError("pipeline frame hash does not match stress provenance")
+            if enhanced is not None and hashlib.sha256(enhanced.rgb.tobytes()).hexdigest() != stress.enhanced_sha256:
+                raise ValueError("enhanced frame hash does not match stress provenance")
+        object.__setattr__(self, "source_frame", source)
+        object.__setattr__(self, "degraded_frame", degraded)
+        object.__setattr__(self, "enhanced_frame", enhanced)
+
+    @staticmethod
+    def _immutable_frame(frame: RGBFrame) -> RGBFrame:
+        rgb = np.ascontiguousarray(frame.rgb.copy(), dtype=np.uint8)
+        rgb.setflags(write=False)
+        return RGBFrame(frame.frame_id, frame.timestamp_s, frame.camera_name, rgb)
 
 
 @dataclass(frozen=True, slots=True)

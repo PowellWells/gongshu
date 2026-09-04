@@ -2,10 +2,12 @@
 
 from .contracts import (
     CONDITION_REPORT_SCHEMA_VERSION,
+    CONDITION_STRESS_REPORT_SCHEMA_VERSION,
     BlurLevel,
     ConditionMetrics,
     ConditionProtocol,
     ConditionReport,
+    ConditionStressReport,
     ConditionedFrame,
     EnhancementStatus,
     GraspUncertainty,
@@ -13,19 +15,31 @@ from .contracts import (
     PerceptionUncertainty,
     PipelineUncertainty,
     ReliabilityLevel,
+    StressBlurType,
+    StressLevel,
+    StressStrategy,
     SpatialUncertainty,
     VisualCondition,
 )
 from .processor import ConditionProcessingConfig, ConditionProcessor
+from .stress import (
+    STRESS_PROFILES,
+    ConditionExperimentProcessor,
+    ConditionStressSimulator,
+    StressProfile,
+    StressSimulationResult,
+)
 
 __all__ = [
     "CONDITION_REPORT_SCHEMA_VERSION",
+    "CONDITION_STRESS_REPORT_SCHEMA_VERSION",
     "BlurLevel",
     "ConditionMetrics",
     "ConditionProcessingConfig",
     "ConditionProcessor",
     "ConditionProtocol",
     "ConditionReport",
+    "ConditionStressReport",
     "ConditionedFrame",
     "EnhancementStatus",
     "GraspUncertainty",
@@ -33,6 +47,14 @@ __all__ = [
     "PerceptionUncertainty",
     "PipelineUncertainty",
     "ReliabilityLevel",
+    "STRESS_PROFILES",
     "SpatialUncertainty",
+    "StressBlurType",
+    "StressLevel",
+    "StressProfile",
+    "StressSimulationResult",
+    "StressStrategy",
+    "ConditionExperimentProcessor",
+    "ConditionStressSimulator",
     "VisualCondition",
 ]
