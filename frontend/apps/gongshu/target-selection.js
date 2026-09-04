@@ -58,16 +58,9 @@
       && targetState.candidates.length > 0;
   }
 
-  function formatOptionalConfidence(value) {
-    if (value === null || value === undefined || value === "") return null;
-    const confidence = Number(value);
-    return Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : null;
-  }
-
   return Object.freeze({
     objectFitContainTransform,
     clientPointToSource,
     canSelectFrozenTarget,
-    formatOptionalConfidence,
   });
 });

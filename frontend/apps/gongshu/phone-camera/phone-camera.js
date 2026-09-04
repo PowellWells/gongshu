@@ -84,8 +84,8 @@
       audio: false,
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
         frameRate: { ideal: 30, max: 30 },
       },
     });
@@ -146,6 +146,14 @@
       if (peerConnection && ["connected", "connecting"].includes(peerConnection.connectionState)) return;
       peerConnection = new RTCPeerConnection({ iceServers: [] });
       mediaStream.getVideoTracks().forEach((track) => peerConnection.addTrack(track, mediaStream));
+      for (const sender of peerConnection.getSenders()) {
+        if (sender.track?.kind !== "video") continue;
+        const parameters = sender.getParameters();
+        parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
+        parameters.encodings[0].maxBitrate = 8_000_000;
+        parameters.encodings[0].maxFramerate = 30;
+        sender.setParameters(parameters).catch(() => {});
+      }
       telemetryChannel = peerConnection.createDataChannel("xuanshu-telemetry", { ordered: true });
       telemetryChannel.addEventListener("open", () => startTelemetry(telemetryChannel));
       telemetryChannel.addEventListener("message", (event) => {

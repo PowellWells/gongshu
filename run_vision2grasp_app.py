@@ -61,7 +61,11 @@ from vision2grasp.spatial_perception import (
     SpatialPerceptionService,
     SpatialWatchdogConfig,
 )
-from vision2grasp.target_perception import FastSAMTargetSegmenter, TargetPerceptionService
+from vision2grasp.target_perception import (
+    FastSAMTargetSegmenter,
+    FastSAMTargetSegmenterConfig,
+    TargetPerceptionService,
+)
 from vision2grasp.simulation import MuJoCoValidationService
 from vision2grasp.visualization import make_run_id
 
@@ -247,7 +251,9 @@ class Vision2GraspApp:
         self._real_scene: RealSceneProcessor | None = None
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
-        self.target_perception = TargetPerceptionService(FastSAMTargetSegmenter())
+        self.target_perception = TargetPerceptionService(
+            FastSAMTargetSegmenter(FastSAMTargetSegmenterConfig(device="auto"))
+        )
         self.condition_processor = build_condition_processor()
         self.condition_experiment = ConditionExperimentProcessor(self.condition_processor)
         spatial_config = _spatial_perception_config()
@@ -323,6 +329,28 @@ class Vision2GraspApp:
             research_mode=str(body.get("mode", "RESEARCH")).upper() == "RESEARCH",
         )
         return self.target_perception.analyze(conditioned)
+
+    def track_phone_target(
+        self, request: dict[str, Any] | None = None
+    ) -> dict[str, object]:
+        """Update only the high-resolution overlay for a locked demo target."""
+
+        body = request or {}
+        frame = self.camera.capture()
+        if (
+            str(body.get("mode", "RESEARCH")).upper() == "RESEARCH"
+            and self._condition_protocol(body) is not ConditionProtocol.NORMAL
+        ):
+            frame = self.condition_experiment.process(
+                frame,
+                self._condition_protocol(body),
+                strategy=self._stress_strategy(body),
+                level=self._stress_level(body),
+                blur_type=self._stress_blur_type(body),
+                random_seed=self._stress_seed(body),
+                research_mode=True,
+            ).processed_frame
+        return self.target_perception.track(frame)
 
     def process_live_condition_jpeg(
         self, jpeg: bytes, revision: int, request: dict[str, Any]
@@ -576,6 +604,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "condition-report.provenance/v1",
                         "pipeline-uncertainty-interface/v1",
                         "target-selection.manual/v1",
+                        "target-tracking.short-horizon/v1",
+                        "target-lock-metadata/v1",
                         "spatial-perception.monocular/v1",
                         "spatial-observation.camera-frame/v1",
                         "grasp-planning.geometric-pca/v1",
@@ -724,6 +754,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     if body
                     else self.app.analyze_phone_targets()
                 )
+                return
+            if path == "/api/target-perception/track":
+                self._send_json(self.app.track_phone_target(body))
                 return
             if path == "/api/target-perception/select":
                 result = self.app.target_perception.select(

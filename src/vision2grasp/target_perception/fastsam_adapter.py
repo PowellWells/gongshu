@@ -77,8 +77,8 @@ class FastSAMTargetSegmenterConfig:
             raise ValueError("image_size must be positive")
         if self.maximum_candidates <= 0:
             raise ValueError("maximum_candidates must be positive")
-        if self.device != "cpu":
-            raise ValueError("Gongshu v0.4 target perception is frozen to device='cpu'")
+        if self.device not in {"cpu", "auto"}:
+            raise ValueError("target perception device must be 'cpu' or 'auto'")
         if self.weights_sha256 is not None:
             digest = self.weights_sha256.strip().lower()
             if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
@@ -162,7 +162,7 @@ class FastSAMTargetSegmenter:
             conf=self._config.confidence_threshold,
             iou=0.90,
             imgsz=self._config.image_size,
-            device=self._config.device,
+            device=None if self._config.device == "auto" else self._config.device,
             retina_masks=True,
             verbose=False,
             save=False,

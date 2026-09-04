@@ -17,11 +17,12 @@ from vision2grasp.condition_processing import (
 )
 
 from vision2grasp.grasp_planning import GraspCandidate, GraspPlan
+from vision2grasp.target_perception import TargetLockMetadata
 
 from .appearance import TargetAppearance
 
 
-VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v3"
+VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v4"
 SIMULATION_ATTEMPT_SCHEMA_VERSION = "gongshu.simulation-attempt/v1"
 
 
@@ -342,6 +343,7 @@ class ValidationRequest:
     perception_uncertainty: PerceptionUncertainty | None = None
     spatial_uncertainty: SpatialUncertainty | None = None
     grasp_uncertainty: GraspUncertainty | None = None
+    target_lock_metadata: TargetLockMetadata | None = None
 
     def __post_init__(self) -> None:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
@@ -356,6 +358,11 @@ class ValidationRequest:
                 raise ValueError("target appearance frame does not match GraspPlan")
             if appearance.target_instance_id != self.grasp_plan.target_id:
                 raise ValueError("target appearance instance does not match GraspPlan")
+        if self.target_lock_metadata is not None:
+            if self.target_lock_metadata.frame_id != self.grasp_plan.source_frame_id:
+                raise ValueError("target lock frame does not match GraspPlan")
+            if self.target_lock_metadata.target_id != self.grasp_plan.target_id:
+                raise ValueError("target lock id does not match GraspPlan")
 
     @classmethod
     def from_grasp_plan(
@@ -370,6 +377,7 @@ class ValidationRequest:
         perception_uncertainty: PerceptionUncertainty | None = None,
         spatial_uncertainty: SpatialUncertainty | None = None,
         grasp_uncertainty: GraspUncertainty | None = None,
+        target_lock_metadata: TargetLockMetadata | None = None,
     ) -> "ValidationRequest":
         selected = (
             scenario
@@ -389,6 +397,7 @@ class ValidationRequest:
             perception_uncertainty=perception_uncertainty,
             spatial_uncertainty=spatial_uncertainty,
             grasp_uncertainty=grasp_uncertainty,
+            target_lock_metadata=target_lock_metadata,
         )
 
     @property
@@ -414,6 +423,11 @@ class ValidationRequest:
             "scene_transform": self.scene_transform.public_metadata(),
             "target_appearance": self.appearance_metadata(),
             "condition_context": condition_context,
+            "target_lock_metadata": (
+                None
+                if self.target_lock_metadata is None
+                else self.target_lock_metadata.public_metadata()
+            ),
         }
 
     def condition_context_metadata(self) -> dict[str, Any]:

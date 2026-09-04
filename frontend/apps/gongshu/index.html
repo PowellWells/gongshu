@@ -81,7 +81,7 @@
         </select>
       </label>
       <button id="analyzeTargetsButton" class="analyze-targets-button" type="button" disabled>
-        <span>分析目标</span><small>Analyze Targets</small>
+        <span>立即扫描</span><small>Scan Now</small>
       </button>
       <button id="startGraspButton" class="start-grasp-button" type="button" disabled>
         <span id="startGraspLabel">请选择目标</span><small id="startGraspHint">Select Target</small>
@@ -94,7 +94,7 @@
           <header class="workspace-view-header">
             <div><span>01</span><h2>实时视觉 <b>Live RGB</b></h2></div>
             <div class="view-header-actions">
-              <strong id="liveState" class="module-state">DISCONNECTED</strong>
+              <strong id="liveState" class="module-state">未连接 Disconnected</strong>
               <button class="pin-view-button" type="button" data-pin-view="live" aria-label="固定实时视觉为主视图">Pin</button>
             </div>
           </header>
@@ -107,15 +107,19 @@
             </div>
             <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
             <svg id="targetOverlay" class="target-overlay" role="group" aria-label="目标候选 Object Candidates" hidden></svg>
+            <div id="visionScanFx" class="vision-scan-fx" aria-hidden="true"></div>
+            <div id="targetLockBanner" class="target-lock-banner" hidden>
+              <span>目标已锁定</span><strong>Target Locked</strong>
+            </div>
             <div id="analysisControls" class="analysis-controls" hidden>
-              <span id="analysisStatus">等待目标分析 WAITING</span>
-              <button id="resumeLiveButton" type="button">返回实时画面 Resume Live</button>
+              <span id="analysisStatus">扫描中 Scanning</span>
+              <button id="resumeLiveButton" type="button">重新扫描 Scan Again</button>
             </div>
             <div class="frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           </div>
           <footer class="workspace-view-footer">
             <span id="liveSourceLabel">手机 Phone · 等待连接</span>
-            <div><b id="liveResolution">—</b><b id="liveConnection">Disconnected</b></div>
+            <div><b id="liveResolution">—</b><b id="liveConnection">未连接 Disconnected</b></div>
           </footer>
         </article>
 
@@ -303,10 +307,9 @@
           <dl class="target-summary">
             <div><dt>目标编号 Target ID</dt><dd id="targetValue">等待选择 WAITING</dd></div>
             <div><dt>语义类别 Class</dt><dd id="targetClassValue">NOT AVAILABLE</dd></div>
-            <div><dt>置信度 Confidence</dt><dd id="targetConfidenceValue">NOT AVAILABLE</dd></div>
             <div><dt>锁定状态 Selection</dt><dd id="targetLockValue">WAITING</dd></div>
           </dl>
-          <p id="targetDetail">连接手机后分析真实 RGB 帧，再手动选择目标。</p>
+          <p id="targetDetail">连接手机后自动扫描实时 RGB 画面。</p>
         </section>
         <section class="inspector-block">
           <header><div><span>02</span><h2>空间信息 <b>Spatial</b></h2></div><strong id="spatialInspectorStatus">WAITING</strong></header>

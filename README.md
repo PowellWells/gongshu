@@ -11,6 +11,7 @@ XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平�
 - **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学验证；锁定 Snapshot 的 RGB+Mask 会形成会话内真实外观贴图，并映射到 box / cylinder / capsule / ellipsoid 简化物理代理。真实状态以 60 Hz 形成会话内 Recording，动画结束后可立即 Replay、Scrub、逐帧、慢放和切换四种相机，且不重新运行 Vision / Depth / Grasp / Physics。
 - **Gongshu Condition Robustness v0.8**：在 Target Perception 之前增加独立、可解释的 Condition Processing Layer。它评估真实观测，在 `BLUR / LOW_LIGHT / LOW_LIGHT_BLUR` 协议下按需尝试经典增强并按质量增益决定接受或回退；`NORMAL` 始终只评估、不改像素。ConditionReport 贯穿 Target、Spatial、Grasp、Validation 与 Recording，但不修改 GR-ConvNet 评分、Panda 限制或 MuJoCo 成败判定。
 - **Gongshu Condition Stress Test v0.8.1**：Research Mode 新增独立、确定性的视觉压力模拟器，提供 `STRESS_ONLY / STRESS_PLUS_RECOVERY`、`MILD / MODERATE / SEVERE`、Gaussian/Motion Blur、低光亮度/对比度/暗部噪声与随机种子。Live RGB 显示最终 Pipeline Frame，并可查看 Raw/Pipeline 对比；Raw → Degraded → Enhanced → Pipeline 的 ID、参数、处理链与 SHA-256 全部进入 ConditionReport 和 Recording。Demo Mode 与 Normal 路径保持原图不变。
+- **Gongshu Real-time Interactive Vision v0.9**：Live RGB 保持高清 WebRTC/MJPEG 展示流，FastSAM 以独立 `640` 推理尺寸生成 Unknown Object 实例框与 Mask，并把坐标叠加回高清画面。点击目标后显示双语 Target Locked/Tracking，保存点击帧、bbox、target id 与时间戳，自动推进同一不可变 Snapshot 的 Depth 与 Grasp Planning；MuJoCo 仍沿用原有手动启动、Panda 与真实 Physics 流程。
 - **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
 - **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
 - **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
@@ -45,7 +46,7 @@ Target Perception 只输出与同一冻结帧绑定的实例掩膜、边界框�
 3. Windows 首次询问防火墙权限时，只允许“专用网络”。
 4. 用手机扫描 `LOCAL CA SETUP` 二维码，安装本地 CA，并核对手机页面与 PC 显示的 SHA-256 指纹。
 5. 完全关闭并重新打开 Chrome，再扫描 `PAIRING` 二维码。
-6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`；真实画面会进入 `01 实时视觉 Live RGB`。
+6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`；高清真实画面会进入 `01 实时视觉 Live RGB`，并自动扫描目标区域。
 7. 如需高清照片，切换到 `CAPTURE`；PC 端收到预览后，再由用户决定是否保存原图。
 
 配对页默认使用 TCP `8766`（HTTPS）和 `8767`（首次证书设置）；WebRTC 会在同一私网内协商临时 UDP 端口。LAN IP 改变后，服务会在下次启动时为当前私网地址重新签发服务端证书。
@@ -92,7 +93,7 @@ py -3.12 -m venv .venv
 
 启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
 
-进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后先点击 `分析目标 Analyze Targets`：本地服务冻结一帧、生成实例候选并在原图上显示掩膜；点击候选后才进入 `TARGET_SELECTED` 并启用空间链。v0.6 严格复用同一个 Scene Snapshot，依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING → GRASP_READY / PLANNING_REJECTED`。空间与抓取主视图显示真实 backend stage、elapsed time 和模型冷/热状态，没有虚假百分比或固定成功。Research Mode 显示完整 Top-K、Reject 原因和诊断图层；Demo Mode 调用同一真实算法，并通过 Graspability Preflight 优先提示可执行候选。Quality / Angle / Width / Candidates 四层可直接切换。
+进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后，本地服务在独立 `640` 推理尺寸自动生成实例候选，高清展示流保持原始分辨率，SVG Overlay 把 Mask、目标框与双语标签映射回原始坐标。点击候选后进入 `TARGET_SELECTED`，短时模板跟踪只更新 Live Overlay；Depth 与 Grasp 严格复用点击瞬间的不可变 Scene Snapshot，并自动依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING → GRASP_READY / PLANNING_REJECTED`。MuJoCo 仍由现有按钮启动。空间与抓取主视图显示真实 backend stage、elapsed time 和模型冷/热状态，没有虚假百分比或固定成功。Research Mode 显示完整 Top-K、Reject 原因和诊断图层；Demo Mode 调用同一真实算法，并通过 Graspability Preflight 优先提示可执行候选。Quality / Angle / Width / Candidates 四层可直接切换。
 
 v0.8 的 Condition Processing Layer 本身是评估/恢复协议而不是退化生成器。每次 Analyze 都保留不可变 Raw Frame；只有增强被重新评估为质量提升且没有过度高光时才采用 Enhanced Frame，否则 Pipeline Frame 回退到 Degraded Frame。Workspace 的 Condition 卡显示实际观测条件、图像质量、增强状态与可靠性；Research Mode 还显示 blur/brightness 分数、完整处理链和 Raw → Degraded → Enhanced → Pipeline 来源。`BLUR_TOO_SEVERE / LOW_LIGHT_TOO_SEVERE / LOW_IMAGE_QUALITY / PERCEPTION_UNCERTAIN / DEPTH_UNRELIABLE` 是上下文证据，不会覆盖 Planning Result 或 `NO_LIFT / SLIP / CONTACT_LOSS` 等物理结果。
 

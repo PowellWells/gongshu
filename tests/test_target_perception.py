@@ -195,6 +195,7 @@ class TargetPerceptionServiceTests(unittest.TestCase):
         target = candidates["candidates"][0]
         self.assertEqual(target["class_name"], UNKNOWN_TARGET_LABEL)
         self.assertTrue(target["selectable"])
+        self.assertGreaterEqual(len(target["mask_polygon"]), 3)
         self.assertIsNone(service.scene_snapshot_jpeg())
 
         selected = service.select(str(target["id"]), source_frame_id=frame.frame_id)
@@ -203,6 +204,10 @@ class TargetPerceptionServiceTests(unittest.TestCase):
         self.assertEqual(selected["scene_snapshot"]["source_frame_id"], frame.frame_id)
         self.assertEqual(selected["scene_snapshot"]["source_timestamp_s"], frame.timestamp_s)
         self.assertEqual(selected["scene_snapshot"]["target_id"], target["id"])
+        lock_metadata = selected["scene_snapshot"]["target_lock_metadata"]
+        self.assertEqual(lock_metadata["frame_id"], frame.frame_id)
+        self.assertEqual(lock_metadata["target_id"], target["id"])
+        self.assertEqual(lock_metadata["selected_bbox"], [14.0, 8.0, 42.0, 30.0])
         self.assertTrue(selected["scene_snapshot"]["snapshot_id"].startswith("snapshot-"))
         scene_snapshot = service.selected_scene_snapshot()
         self.assertEqual(scene_snapshot.snapshot_id, selected["scene_snapshot"]["snapshot_id"])
@@ -217,6 +222,22 @@ class TargetPerceptionServiceTests(unittest.TestCase):
         self.assertIsNotNone(snapshot)
         decoded = cv2.imdecode(np.frombuffer(snapshot, dtype=np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(decoded.shape[:2], frame.rgb.shape[:2])
+
+    def test_locked_snapshot_stays_immutable_while_live_overlay_tracks(self) -> None:
+        frame = make_frame()
+        service = TargetPerceptionService(_UnknownSegmenter())
+        analyzed = service.analyze(frame)
+        service.select(analyzed["candidates"][0]["id"], source_frame_id=frame.frame_id)
+        tracked_frame = make_frame(frame_id=18, timestamp_s=4.45)
+        state = service.track(tracked_frame)
+        self.assertEqual(state["status"], "TARGET_LOCKED")
+        self.assertEqual(state["tracking"]["state"], "TRACKING")
+        self.assertEqual(state["tracking"]["frame_id"], tracked_frame.frame_id)
+        self.assertEqual(state["overlay_frame"]["id"], tracked_frame.frame_id)
+        self.assertEqual(state["scene_snapshot"]["source_frame_id"], frame.frame_id)
+        snapshot = service.selected_scene_snapshot()
+        self.assertEqual(snapshot.frame.frame_id, frame.frame_id)
+        self.assertEqual(snapshot.target_lock_metadata.frame_id, frame.frame_id)
 
     def test_selection_rejects_frame_mismatch(self) -> None:
         frame = make_frame()

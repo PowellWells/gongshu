@@ -228,6 +228,7 @@ class SimulationRecording:
             "compatibility": dict(self.compatibility),
             "target_appearance": self.request_metadata.get("target_appearance"),
             "condition_context": self.request_metadata.get("condition_context"),
+            "target_lock_metadata": self.request_metadata.get("target_lock_metadata"),
         }
 
     def manifest(self) -> dict[str, Any]:

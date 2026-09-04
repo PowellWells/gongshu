@@ -406,6 +406,29 @@
   vector-effect: non-scaling-stroke;
 }
 
+.target-candidate polygon {
+  fill: rgba(43, 210, 220, .13);
+  stroke: rgba(111, 236, 242, .42);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.target-candidate .target-label-bg {
+  fill: rgba(3, 20, 32, .88);
+  stroke: rgba(103, 245, 255, .8);
+  stroke-width: 1;
+}
+
+.target-candidate text {
+  fill: #effeff;
+  font: 700 14px/1 "Microsoft YaHei UI", sans-serif;
+  letter-spacing: .02em;
+  paint-order: stroke;
+  stroke: rgba(3, 20, 32, .7);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
 .target-candidate:hover rect,
 .target-candidate:focus rect {
   fill: rgba(43, 191, 203, .14);
@@ -418,6 +441,11 @@
   stroke-width: 4;
 }
 
+.target-candidate.is-selected polygon {
+  fill: rgba(33, 238, 229, .22);
+  stroke: rgba(132, 255, 250, .9);
+}
+
 .target-candidate.is-dimmed rect {
   fill: transparent;
   stroke: rgba(186, 203, 216, .38);
@@ -426,6 +454,68 @@
 
 .target-overlay.is-selecting {
   cursor: progress;
+}
+
+.vision-scan-fx {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+.vision-scan-fx::after {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(83, 237, 246, .9), transparent);
+  box-shadow: 0 0 14px rgba(83, 237, 246, .58);
+  content: "";
+  animation: vision-scan-line 2.4s linear infinite;
+}
+
+.vision-scan-fx.is-scanning { opacity: .72; }
+
+@keyframes vision-scan-line {
+  from { top: 8%; }
+  to { top: 92%; }
+}
+
+.target-lock-banner {
+  position: absolute;
+  z-index: 5;
+  top: 14px;
+  left: 50%;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid rgba(103, 245, 255, .82);
+  border-radius: 4px;
+  background: rgba(3, 25, 37, .84);
+  box-shadow: 0 0 24px rgba(42, 218, 229, .24);
+  color: #dfffff;
+  font-size: 10px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.target-lock-banner strong {
+  color: #67f5ff;
+  font: 800 9px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.target-lock-banner:not([hidden]) { animation: target-lock-in .42s ease-out both; }
+
+@keyframes target-lock-in {
+  from { opacity: 0; transform: translate(-50%, -7px) scale(.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 
 .analysis-controls {

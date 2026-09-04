@@ -567,7 +567,7 @@ class PhoneLANProvider:
         ok, encoded = cv2.imencode(
             ".jpg",
             cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
-            [cv2.IMWRITE_JPEG_QUALITY, 86],
+            [cv2.IMWRITE_JPEG_QUALITY, 92],
         )
         if not ok:
             raise RuntimeError("failed to encode live RGB frame")

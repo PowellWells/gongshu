@@ -68,10 +68,11 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "analyzeTargetsButton",
             "startGraspButton",
             "targetOverlay",
+            "visionScanFx",
+            "targetLockBanner",
             "resumeLiveButton",
             "targetStatus",
             "targetClassValue",
-            "targetConfidenceValue",
             "targetLockValue",
             "spatialInspectorStatus",
             "spatialMediaLabels",
@@ -142,6 +143,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "Pinhole Camera",
             "针孔相机",
             "超微型相机",
+            "置信度 Confidence",
         ):
             self.assertNotIn(forbidden.lower(), self.html.lower())
             self.assertNotIn(forbidden.lower(), self.controller.lower())
@@ -163,13 +165,13 @@ class GongshuWorkspaceTests(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', self.html)
 
-    def test_target_analysis_uses_frozen_backend_frame_and_manual_selection(self) -> None:
+    def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (
             "/api/target-perception/analyze",
             "/api/target-perception/select",
             "/api/target-perception/select-at",
+            "/api/target-perception/track",
             "/api/target-perception/reset",
-            "/api/target-perception/overlay.jpg",
             "/api/target-perception/scene-snapshot.jpg",
             "/api/target-perception/condition-frame/",
             "/api/spatial-perception/analyze",
@@ -194,6 +196,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('addEventListener("pointerdown", selectTargetAtPointer)', self.controller)
         self.assertIn('preserveAspectRatio", "xMidYMid meet"', self.controller)
         self.assertIn('targetOverlay.removeAttribute("hidden")', self.controller)
+        self.assertIn("mask_polygon", self.controller)
+        self.assertIn("目标已锁定 Target Locked", self.controller)
+        self.assertIn("scheduleLiveVision", self.controller)
+        self.assertIn("window.setTimeout(() => startGrasp(), 650);", self.controller)
         self.assertNotIn("targetOverlay.hidden = false", self.controller)
         self.assertNotIn("captureLiveFrame", self.controller)
         self.assertNotIn("canvas.toBlob", self.controller)
@@ -377,7 +383,7 @@ process.stdout.write(JSON.stringify({
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frozen-frame geometry tests")
     def test_portrait_frozen_frame_remains_selectable_when_phone_disconnects(self) -> None:
         script = r"""
-const { clientPointToSource, canSelectFrozenTarget, formatOptionalConfidence } = require(process.argv[1]);
+const { clientPointToSource, canSelectFrozenTarget } = require(process.argv[1]);
 const targetState = {
   status: "CANDIDATES",
   frame: { id: 2386, width: 540, height: 960 },
@@ -390,8 +396,6 @@ process.stdout.write(JSON.stringify({
   disconnectedStillSelectable: canSelectFrozenTarget("LIVE", targetState),
   center,
   letterbox,
-  missingConfidence: formatOptionalConfidence(null),
-  realConfidence: formatOptionalConfidence(0.937),
 }));
 """
         completed = subprocess.run(
@@ -405,8 +409,6 @@ process.stdout.write(JSON.stringify({
         self.assertAlmostEqual(result["center"]["x"], 270.0)
         self.assertAlmostEqual(result["center"]["y"], 480.0)
         self.assertIsNone(result["letterbox"])
-        self.assertIsNone(result["missingConfidence"])
-        self.assertEqual(result["realConfidence"], "93.7%")
         self.assertNotIn("const mayStart = phoneLive", self.controller)
 
 

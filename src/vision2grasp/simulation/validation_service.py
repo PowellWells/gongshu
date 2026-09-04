@@ -155,6 +155,9 @@ class MuJoCoValidationService:
                     if grasp_uncertainty is not None
                     else getattr(plan, "grasp_uncertainty", None)
                 ),
+                target_lock_metadata=(
+                    None if snapshot is None else snapshot.target_lock_metadata
+                ),
             )
             self._result = None
             self._reason = None

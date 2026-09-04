@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -13,6 +15,40 @@ from vision2grasp.condition_processing import ConditionReport, PerceptionUncerta
 
 
 UNKNOWN_TARGET_LABEL = "未知目标 Unknown Object"
+
+
+@dataclass(frozen=True, slots=True)
+class TargetLockMetadata:
+    """Small, replay-safe record of the user's target selection."""
+
+    frame_id: int
+    selected_bbox_xyxy: tuple[float, float, float, float]
+    target_id: str
+    lock_timestamp: str
+
+    def __post_init__(self) -> None:
+        if self.frame_id < 0:
+            raise ValueError("target lock frame_id must be non-negative")
+        if not self.target_id.strip():
+            raise ValueError("target lock target_id must not be empty")
+        x1, y1, x2, y2 = self.selected_bbox_xyxy
+        if not all(np.isfinite(value) for value in self.selected_bbox_xyxy):
+            raise ValueError("target lock bbox must contain only finite values")
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError("target lock bbox must have positive width and height")
+        try:
+            datetime.fromisoformat(self.lock_timestamp)
+        except ValueError as error:
+            raise ValueError("target lock timestamp must be ISO-8601") from error
+
+    def public_metadata(self) -> dict[str, Any]:
+        return {
+            "schema_version": "gongshu.target-lock-metadata/v1",
+            "frame_id": self.frame_id,
+            "selected_bbox": [round(value, 2) for value in self.selected_bbox_xyxy],
+            "target_id": self.target_id,
+            "lock_timestamp": self.lock_timestamp,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +141,7 @@ class TargetSceneSnapshot:
     enhanced_frame: RGBFrame | None = None
     condition_report: ConditionReport | None = None
     perception_uncertainty: PerceptionUncertainty | None = None
+    target_lock_metadata: TargetLockMetadata | None = None
 
     def __post_init__(self) -> None:
         if not self.snapshot_id.strip():
@@ -157,6 +194,11 @@ class TargetSceneSnapshot:
             raise ValueError("target timestamp does not match snapshot frame")
         if self.target.mask.shape != self.frame.rgb.shape[:2]:
             raise ValueError("target mask does not match snapshot frame")
+        if self.target_lock_metadata is not None:
+            if self.target_lock_metadata.frame_id != self.frame.frame_id:
+                raise ValueError("target lock frame does not match snapshot frame")
+            if self.target_lock_metadata.target_id != self.target.instance_id:
+                raise ValueError("target lock id does not match snapshot target")
         if immutable_raw.timestamp_s != self.frame.timestamp_s:
             raise ValueError("raw and processed snapshot timestamps do not match")
         if self.condition_report is not None:
@@ -200,6 +242,11 @@ class TargetSceneSnapshot:
                 None
                 if self.perception_uncertainty is None
                 else self.perception_uncertainty.public_metadata()
+            ),
+            "target_lock_metadata": (
+                None
+                if self.target_lock_metadata is None
+                else self.target_lock_metadata.public_metadata()
             ),
         }
 

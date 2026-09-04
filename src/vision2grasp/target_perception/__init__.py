@@ -1,6 +1,11 @@
 """Object-agnostic target perception for manual target selection."""
 
-from .contracts import UNKNOWN_TARGET_LABEL, TargetInstance, TargetSceneSnapshot
+from .contracts import (
+    UNKNOWN_TARGET_LABEL,
+    TargetInstance,
+    TargetLockMetadata,
+    TargetSceneSnapshot,
+)
 from .fastsam_adapter import (
     FASTSAM_MODEL_ASSET,
     FastSAMTargetSegmenter,
@@ -35,6 +40,7 @@ __all__ = [
     "ResolvedFastSAMModel",
     "TARGET_PERCEPTION_SCHEMA_VERSION",
     "TargetInstance",
+    "TargetLockMetadata",
     "TargetSceneSnapshot",
     "TargetInstanceSegmenter",
     "TargetPerceptionService",

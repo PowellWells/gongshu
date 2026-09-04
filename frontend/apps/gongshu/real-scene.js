@@ -19,7 +19,6 @@
   const {
     clientPointToSource,
     canSelectFrozenTarget,
-    formatOptionalConfidence,
   } = window.GongshuTargetSelection;
 
   const PIPELINE_MESSAGES = Object.freeze({
@@ -167,6 +166,8 @@
     liveEmpty: byId("liveEmpty"),
     liveMedia: byId("liveMedia"),
     targetOverlay: byId("targetOverlay"),
+    visionScanFx: byId("visionScanFx"),
+    targetLockBanner: byId("targetLockBanner"),
     analysisControls: byId("analysisControls"),
     analysisStatus: byId("analysisStatus"),
     resumeLiveButton: byId("resumeLiveButton"),
@@ -241,7 +242,6 @@
     targetStatus: byId("targetStatus"),
     targetValue: byId("targetValue"),
     targetClassValue: byId("targetClassValue"),
-    targetConfidenceValue: byId("targetConfidenceValue"),
     targetLockValue: byId("targetLockValue"),
     targetDetail: byId("targetDetail"),
     spatialInspectorStatus: byId("spatialInspectorStatus"),
@@ -325,6 +325,8 @@
   let analysisFrozen = false;
   let targetAnalysisRunning = false;
   let targetAnalysisRequest = 0;
+  let liveVisionTimer = 0;
+  let liveVisionRunning = false;
   let historicalObjectUrls = [];
 
   function showNotice(message, type = "success") {
@@ -425,6 +427,17 @@
     return latestCameraState?.connection?.status === "LIVE";
   }
 
+  function cameraConnectionLabel(status) {
+    return {
+      LIVE: "实时 Live",
+      CONNECTED: "已连接 Connected",
+      PAIRED: "已配对 Paired",
+      WAITING: "等待连接 Waiting",
+      DISCONNECTED: "已断开 Disconnected",
+      STOPPED: "已停止 Stopped",
+    }[status] || "未连接 Disconnected";
+  }
+
   function updateActionButtons() {
     const phoneLive = workspaceMode === "phone"
       && els.sourceSelect.value === "phone"
@@ -473,8 +486,16 @@
 
   function renderTargetHitboxes(state) {
     els.targetOverlay.replaceChildren();
-    const frame = state?.frame;
-    const candidates = Array.isArray(state?.candidates) ? state.candidates : [];
+    const frame = state?.overlay_frame || state?.frame;
+    const tracking = state?.tracking;
+    const candidates = tracking && state?.selected_target
+      ? [{
+          id: tracking.target_id,
+          bbox_xyxy: tracking.bbox_xyxy,
+          mask_polygon: tracking.mask_polygon,
+          class_name: state.selected_target.class_name,
+        }]
+      : Array.isArray(state?.candidates) ? state.candidates : [];
     if (!frame || !candidates.length) {
       setTargetOverlayVisible(false);
       return;
@@ -492,8 +513,9 @@
       const [x1, y1, x2, y2] = candidate.bbox_xyxy;
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
       const box = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const polygonPoints = Array.isArray(candidate.mask_polygon) ? candidate.mask_polygon : [];
       group.classList.add("target-candidate");
-      if (candidate.id === state.selected_target_id) group.classList.add("is-selected");
+      if (candidate.id === state.selected_target_id || tracking) group.classList.add("is-selected");
       else if (state.selected_target_id) group.classList.add("is-dimmed");
       group.setAttribute("role", "button");
       group.setAttribute("tabindex", "0");
@@ -503,7 +525,29 @@
       box.setAttribute("width", String(x2 - x1));
       box.setAttribute("height", String(y2 - y1));
       box.setAttribute("rx", "4");
+      if (polygonPoints.length >= 3) {
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", polygonPoints.map(([x, y]) => `${x},${y}`).join(" "));
+        group.append(polygon);
+      }
       group.append(box);
+      const label = candidate.class_name || "未知目标 Unknown Object";
+      const displayLabel = tracking ? `${label} · 目标跟踪 Tracking` : label;
+      const fontSize = Math.max(18, frame.width * 0.018);
+      const labelY = Math.max(fontSize * 1.8, y1);
+      const labelBackground = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      labelBackground.classList.add("target-label-bg");
+      labelBackground.setAttribute("x", String(x1));
+      labelBackground.setAttribute("y", String(labelY - fontSize * 1.45));
+      labelBackground.setAttribute("width", String(Math.min(frame.width - x1, displayLabel.length * fontSize * 0.61 + 18)));
+      labelBackground.setAttribute("height", String(fontSize * 1.55));
+      labelBackground.setAttribute("rx", "3");
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.textContent = displayLabel;
+      text.setAttribute("x", String(x1 + 9));
+      text.setAttribute("y", String(labelY - fontSize * 0.3));
+      text.style.fontSize = `${fontSize}px`;
+      group.append(labelBackground, text);
       group.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -526,31 +570,32 @@
     const selected = state.selected_target;
     const frame = state.frame;
     renderTargetHitboxes(state);
-    els.analysisControls.hidden = !analysisFrozen;
-    els.analysisStatus.textContent = state.message || "等待目标分析 WAITING";
+    els.analysisControls.hidden = !cameraShouldStream && !selected;
+    els.analysisStatus.textContent = state.message || "扫描中 Scanning";
+    els.visionScanFx.classList.toggle("is-scanning", !selected && cameraShouldStream);
+    els.targetLockBanner.hidden = !selected;
     if (selected) {
-      const confidenceLabel = formatOptionalConfidence(selected.confidence);
-      els.targetStatus.textContent = "TARGET LOCKED";
+      els.liveState.textContent = state.tracking ? "目标跟踪 Tracking" : "目标已锁定 Target Locked";
+      els.targetStatus.textContent = "目标已锁定 Target Locked";
       els.targetValue.textContent = selected.id;
       els.targetClassValue.textContent = selected.class_name || "未知目标 Unknown Object";
-      els.targetConfidenceValue.textContent = confidenceLabel || "NOT AVAILABLE";
-      els.targetLockValue.textContent = "已锁定 LOCKED";
-      els.targetDetail.textContent = `源帧 Frame ${selected.source_frame_id} · 手动选择 Manual Selection`;
+      els.targetLockValue.textContent = state.tracking ? "目标跟踪 Tracking" : "目标已锁定 Target Locked";
+      els.targetDetail.textContent = `源帧 Frame ${selected.source_frame_id} · 手动选择 Manual Selection · 高清叠加 HD Overlay`;
     } else {
-      els.targetStatus.textContent = state.status === "NO_CANDIDATES" ? "NO CANDIDATES" : candidates.length ? "SELECTABLE" : "WAITING";
+      els.liveState.textContent = "扫描中 Scanning";
+      els.targetStatus.textContent = state.status === "NO_CANDIDATES" ? "未发现目标 No Candidates" : candidates.length ? "可选择 Selectable" : "扫描中 Scanning";
       els.targetValue.textContent = candidates.length ? `${candidates.length} 个候选 Candidates` : "等待选择 WAITING";
-      els.targetClassValue.textContent = "NOT AVAILABLE";
-      els.targetConfidenceValue.textContent = "NOT AVAILABLE";
-      els.targetLockValue.textContent = candidates.length ? "等待选择 SELECTABLE" : "WAITING";
+      els.targetClassValue.textContent = candidates.length ? "未知目标 Unknown Object" : "暂无目标 No Target";
+      els.targetLockValue.textContent = candidates.length ? "等待选择 Selectable" : "扫描中 Scanning";
       els.targetDetail.textContent = candidates.length
-        ? "点击真实帧中的任一候选区域以锁定目标。"
+        ? "点击高清实时画面中的目标框以锁定目标。"
         : state.status === "NO_CANDIDATES"
-          ? "当前冻结帧未发现有效目标候选；可返回实时画面后重新分析。"
-          : "连接手机后分析真实 RGB 帧，再手动选择目标。";
+          ? "当前实时画面未发现有效目标，系统将继续扫描。"
+          : "连接手机后自动扫描实时 RGB 画面。";
     }
-    if (frame && analysisFrozen) {
+    if (frame) {
       els.liveResolution.textContent = `${frame.width} × ${frame.height}`;
-      els.liveSourceLabel.textContent = `手机 Phone · 冻结帧 Frame ${frame.id}`;
+      els.liveSourceLabel.textContent = `手机 Phone · 高清实时视觉 HD Live RGB`;
     }
     updateActionButtons();
   }
@@ -688,9 +733,8 @@
     els.targetStatus.textContent = "WAITING";
     els.targetValue.textContent = "等待选择 WAITING";
     els.targetClassValue.textContent = "NOT AVAILABLE";
-    els.targetConfidenceValue.textContent = "NOT AVAILABLE";
     els.targetLockValue.textContent = "WAITING";
-    els.targetDetail.textContent = "连接手机后分析真实 RGB 帧，再手动选择目标。";
+    els.targetDetail.textContent = "连接手机后自动扫描实时 RGB 画面。";
     renderConditionReport(null);
     els.spatialInspectorStatus.textContent = "WAITING";
     els.spatialDepthValue.textContent = "等待计算 WAITING";
@@ -750,8 +794,10 @@
     targetAnalysisRequest += 1;
     els.targetOverlay.replaceChildren();
     setTargetOverlayVisible(false);
+    els.visionScanFx.classList.remove("is-scanning");
+    els.targetLockBanner.hidden = true;
     els.analysisControls.hidden = true;
-    els.analysisStatus.textContent = "等待目标分析 WAITING";
+    els.analysisStatus.textContent = "扫描中 Scanning";
     updateActionButtons();
   }
 
@@ -781,6 +827,62 @@
     els.liveMedia.removeAttribute("src");
     els.liveMedia.hidden = true;
     els.liveEmpty.hidden = false;
+  }
+
+  function stopLiveVisionLoop() {
+    window.clearTimeout(liveVisionTimer);
+    liveVisionTimer = 0;
+    els.visionScanFx.classList.remove("is-scanning");
+  }
+
+  function scheduleLiveVision(delay = 0) {
+    if (
+      liveVisionTimer
+      || liveVisionRunning
+      || targetAnalysisRunning
+      || !cameraShouldStream
+      || workspaceMode !== "phone"
+      || els.sourceSelect.value !== "phone"
+    ) return;
+    liveVisionTimer = window.setTimeout(() => {
+      liveVisionTimer = 0;
+      refreshLiveVision().catch(() => {});
+    }, delay);
+  }
+
+  async function refreshLiveVision({ forceScan = false } = {}) {
+    if (liveVisionRunning || targetAnalysisRunning || !cameraShouldStream || workspaceMode !== "phone") return;
+    const locked = targetPerceptionState?.status === "TARGET_LOCKED";
+    if (!locked && pipeline.state !== "LIVE") return;
+    liveVisionRunning = true;
+    targetAnalysisRunning = !locked;
+    const requestRevision = targetAnalysisRequest;
+    if (!locked) {
+      els.analysisControls.hidden = false;
+      els.analysisStatus.textContent = "扫描中 Scanning";
+      els.visionScanFx.classList.add("is-scanning");
+    }
+    updateActionButtons();
+    try {
+      const state = locked && !forceScan
+        ? await apiPost("/api/target-perception/track", conditionExperimentSettings())
+        : await apiPost("/api/target-perception/analyze", conditionExperimentSettings());
+      if (requestRevision !== targetAnalysisRequest) return;
+      analysisFrozen = false;
+      renderTargetPerception(state);
+    } catch (error) {
+      if (!locked) {
+        els.analysisStatus.textContent = `扫描暂不可用 Scan Unavailable · ${error.message}`;
+        els.visionScanFx.classList.remove("is-scanning");
+      }
+    } finally {
+      liveVisionRunning = false;
+      targetAnalysisRunning = false;
+      updateActionButtons();
+      const remainsLocked = targetPerceptionState?.status === "TARGET_LOCKED";
+      if (remainsLocked) scheduleLiveVision(180);
+      else if (targetPerceptionState?.status !== "CANDIDATES") scheduleLiveVision(650);
+    }
   }
 
   function renderCameraState(state) {
@@ -815,22 +917,26 @@
     }
 
     if (workspaceMode === "phone" && els.sourceSelect.value === "phone") {
-      const frozenFrame = analysisFrozen ? targetPerceptionState?.frame : null;
-      els.liveState.textContent = frozenFrame
-        ? targetPerceptionState?.status === "TARGET_LOCKED" ? "TARGET LOCKED" : "FRAME FROZEN"
-        : live ? "LIVE" : paired ? "PAIRED" : "DISCONNECTED";
-      els.liveState.classList.toggle("is-live", live || Boolean(frozenFrame));
-      els.liveSourceLabel.textContent = frozenFrame
-        ? `手机 Phone · 冻结帧 Frame ${frozenFrame.id}`
-        : live ? "手机 Phone · WebRTC LAN Live" : "手机 Phone · 等待连接";
-      els.liveResolution.textContent = frozenFrame
-        ? `${frozenFrame.width} × ${frozenFrame.height}`
-        : resolution;
-      els.liveConnection.textContent = live ? "Live" : connection.status || "Disconnected";
-      els.statusConnection.textContent = live ? "Live" : paired ? "Paired" : "Disconnected";
+      const locked = targetPerceptionState?.status === "TARGET_LOCKED";
+      els.liveState.textContent = locked
+        ? "目标跟踪 Tracking"
+        : live ? "扫描中 Scanning" : paired ? "已配对 Paired" : "未连接 Disconnected";
+      els.liveState.classList.toggle("is-live", live || locked);
+      els.liveSourceLabel.textContent = live
+        ? "手机 Phone · 高清实时视觉 HD Live RGB"
+        : "手机 Phone · 等待连接";
+      els.liveResolution.textContent = resolution;
+      els.liveConnection.textContent = cameraConnectionLabel(connection.status);
+      els.statusConnection.textContent = live ? "实时 Live" : paired ? "已配对 Paired" : "未连接 Disconnected";
       updateActionButtons();
-      if (live && !analysisFrozen) startLiveView();
+      if (live && !analysisFrozen) {
+        startLiveView();
+        if (targetPerceptionState?.status !== "CANDIDATES") {
+          scheduleLiveVision(targetPerceptionState ? 180 : 0);
+        }
+      }
       else if (!live && liveStreamStarted) stopLiveView();
+      if (!live) stopLiveVisionLoop();
     }
 
     if (capture.available) {
@@ -893,15 +999,9 @@
   }
 
   function showFrozenTargetFrame(state) {
-    analysisFrozen = true;
-    stopLiveView();
-    els.liveMedia.onload = () => {
-      els.liveMedia.hidden = false;
-      els.liveEmpty.hidden = true;
-    };
-    els.liveMedia.onerror = () => showNotice("无法显示目标分析叠加图。", "error");
-    els.liveMedia.src = `/api/target-perception/overlay.jpg?revision=${state.revision}`;
-    els.liveState.textContent = state.status === "TARGET_LOCKED" ? "TARGET LOCKED" : "FRAME FROZEN";
+    analysisFrozen = false;
+    if (cameraShouldStream) startLiveView();
+    els.liveState.textContent = state.status === "TARGET_LOCKED" ? "目标已锁定 Target Locked" : "扫描中 Scanning";
     els.liveState.classList.add("is-live");
     renderTargetPerception(state);
     if (els.conditionDialog.open) renderConditionComparison();
@@ -912,31 +1012,32 @@
     const requestRevision = ++targetAnalysisRequest;
     targetAnalysisRunning = true;
     els.analysisControls.hidden = false;
-    els.analysisStatus.textContent = "正在冻结真实帧并分析目标 ANALYZING";
-    els.analyzeTargetsButton.querySelector("span").textContent = "分析中…";
-    els.analyzeTargetsButton.querySelector("small").textContent = "Analyzing";
+    els.analysisStatus.textContent = "扫描中 Scanning";
+    els.visionScanFx.classList.add("is-scanning");
+    els.analyzeTargetsButton.querySelector("span").textContent = "扫描中…";
+    els.analyzeTargetsButton.querySelector("small").textContent = "Scanning";
     updateActionButtons();
     try {
       const state = await apiPost("/api/target-perception/analyze", {
         ...conditionExperimentSettings(),
       });
       if (requestRevision !== targetAnalysisRequest) return;
-      showFrozenTargetFrame(state);
+      analysisFrozen = false;
+      renderTargetPerception(state);
       showNotice(state.status === "NO_CANDIDATES"
-        ? "当前真实帧未发现有效目标候选；未生成任何伪造目标。"
-        : `已冻结真实 RGB 帧，发现 ${state.candidates.length} 个可选目标。`,
+        ? "当前实时画面未发现目标，系统将继续扫描。"
+        : `实时检测已更新，发现 ${state.candidates.length} 个可选目标。`,
       state.status === "NO_CANDIDATES" ? "error" : "success");
     } catch (error) {
       if (requestRevision !== targetAnalysisRequest) return;
       analysisFrozen = false;
-      els.analysisControls.hidden = true;
-      if (cameraShouldStream) startLiveView();
-      showNotice(`目标分析失败：${error.message}`, "error");
+      showNotice(`实时扫描失败：${error.message}`, "error");
     } finally {
       targetAnalysisRunning = false;
-      els.analyzeTargetsButton.querySelector("span").textContent = analysisFrozen ? "再次分析" : "分析目标";
-      els.analyzeTargetsButton.querySelector("small").textContent = analysisFrozen ? "Analyze Again" : "Analyze Targets";
+      els.analyzeTargetsButton.querySelector("span").textContent = "立即扫描";
+      els.analyzeTargetsButton.querySelector("small").textContent = "Scan Now";
       updateActionButtons();
+      if (targetPerceptionState?.status !== "CANDIDATES") scheduleLiveVision(650);
     }
   }
 
@@ -950,7 +1051,8 @@
         source_frame_id: frameId,
       });
       if (requestRevision !== targetAnalysisRequest) return;
-      showFrozenTargetFrame(state);
+      analysisFrozen = false;
+      renderTargetPerception(state);
       if (pipeline.state === "LIVE") {
         pipeline.transition("TARGET_SELECTED", {
           targetId: state.selected_target_id,
@@ -959,7 +1061,8 @@
         });
       }
       updateActionButtons();
-      showNotice(`目标已锁定：${state.selected_target.class_name} · ${state.selected_target_id}`);
+      showNotice(`目标已锁定 Target Locked · ${state.selected_target.class_name}`);
+      window.setTimeout(() => startGrasp(), 650);
     } catch (error) {
       showNotice(`无法选择目标：${error.message}`, "error");
     }
@@ -988,7 +1091,8 @@
         source_frame_id: frameId,
       });
       if (requestRevision !== targetAnalysisRequest) return;
-      showFrozenTargetFrame(state);
+      analysisFrozen = false;
+      renderTargetPerception(state);
       if (pipeline.state === "LIVE") {
         pipeline.transition("TARGET_SELECTED", {
           targetId: state.selected_target_id,
@@ -997,7 +1101,8 @@
         });
       }
       updateActionButtons();
-      showNotice(`目标已锁定：${state.selected_target.class_name} · ${state.selected_target_id}`);
+      showNotice(`目标已锁定 Target Locked · ${state.selected_target.class_name}`);
+      window.setTimeout(() => startGrasp(), 650);
     } catch (error) {
       showNotice(`未选择目标：${error.message}`, "error");
     } finally {
@@ -1594,6 +1699,13 @@
     const simulationAttempt = state.request?.simulation_attempt;
     const recording = state.recording;
     const playback = state.playback;
+    const targetLock = state.request?.target_lock_metadata || recording?.target_lock_metadata;
+    if (targetLock) {
+      els.targetStatus.textContent = "目标已锁定 Target Locked";
+      els.targetValue.textContent = targetLock.target_id;
+      els.targetLockValue.textContent = "记录已关联 Recording Linked";
+      els.targetDetail.textContent = `锁定帧 Frame ${targetLock.frame_id} · 锁定时间 Lock Time ${targetLock.lock_timestamp}`;
+    }
     els.simulationState.textContent = state.status;
     els.simulationState.classList.toggle("has-data", Boolean(state.media?.stream_available));
     els.simulationHud.hidden = !state.media?.stream_available;
@@ -1896,13 +2008,8 @@
       els.targetStatus.textContent = "AVAILABLE";
       els.targetValue.textContent = raw.target.class_name || "真实运行目标";
       els.targetClassValue.textContent = raw.target.class_name || "NOT AVAILABLE";
-      const confidenceLabel = formatOptionalConfidence(raw.target.confidence);
-      const confidence = confidenceLabel ? Number(raw.target.confidence) : Number.NaN;
-      els.targetConfidenceValue.textContent = confidenceLabel || "NOT AVAILABLE";
       els.targetLockValue.textContent = "离线产物 OFFLINE";
-      els.targetDetail.textContent = Number.isFinite(confidence)
-        ? `离线运行公开输出 · 置信度 ${(confidence * 100).toFixed(1)}%`
-        : "离线运行公开目标输出。";
+      els.targetDetail.textContent = "离线运行公开目标输出。";
       els.spatialInspectorStatus.textContent = "AVAILABLE";
       els.spatialValue.textContent = formatVectorMm(raw.target.centroid_world_m);
       els.spatialDetail.textContent = "来自导入的公开离线运行产物；不是 Phone RGB 实时计算结果。";

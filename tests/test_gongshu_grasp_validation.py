@@ -55,6 +55,7 @@ from vision2grasp.spatial_perception import (
     SpatialObservation,
     TargetDepth,
 )
+from vision2grasp.target_perception import TargetLockMetadata
 from vision2grasp.target_perception import TargetInstance, TargetSceneSnapshot
 from vision2grasp.contracts import RGBFrame
 
@@ -252,6 +253,20 @@ class MuJoCoValidationStateTests(unittest.TestCase):
         self.assertNotEqual(
             metadata["scene_transform"]["target_position_world"],
             metadata["grasp_plan"]["grasp_point_xyz"],
+        )
+
+    def test_validation_request_preserves_target_lock_metadata_for_recording(self) -> None:
+        lock = TargetLockMetadata(
+            frame_id=42,
+            selected_bbox_xyxy=(10.0, 20.0, 50.0, 80.0),
+            target_id="target-42-01",
+            lock_timestamp="2026-09-04T10:20:30.000+08:00",
+        )
+        request = ValidationRequest.from_grasp_plan(
+            self._ready_plan(), target_lock_metadata=lock
+        )
+        self.assertEqual(
+            request.public_metadata()["target_lock_metadata"], lock.public_metadata()
         )
 
     def test_target_offset_stress_changes_only_simulated_target_pose(self) -> None:
