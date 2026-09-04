@@ -1,178 +1,151 @@
-# XUANSHU LAB · Jingwei / Vision2Grasp
+# Gongshu / 公输
 
-XUANSHU LAB（玄枢实验室）是一个 Windows AI / 机器人科研桌面平台。本仓库目前包含统一桌面壳、Jingwei Moment 图像理解工作台、Gongshu Vision2Grasp 抓取研究代码，以及 Hetu 预览入口。
+**机器人抓取研究平台 · Vision-Based Robotic Manipulation Platform**
 
-当前版本的目标是提供可运行、可扩展的软件骨架和本地研究工具，不宣称已经完成真实机器人端到端抓取或世界模型能力。PySide6 负责桌面窗口和本地服务生命周期，用户界面由仓库内的 HTML / CSS / JavaScript 提供。
+Gongshu 是一个连接真实视觉输入、空间理解、抓取规划与仿真验证的桌面研究平台。
 
-## 当前实现范围
+![Gongshu 项目概念宣传图](assets/demo-cover.png)
 
-- **Jingwei Moment**：本地图像导入、规则化分析与可视化工作台。
-- **Gongshu Workspace v0.6**：在 v0.5 同一 Scene Snapshot 空间链之上运行官方 GR-ConvNet RGB-D 抓取检测，输出真实 Quality / Angle / Width maps、Top-K 候选、逐候选可执行性与透明排名，并只在存在可执行候选时进入 `GRASP_READY`。
-- **Gongshu Dynamic Validation v0.7**：当前 `GRASP_READY` 计划可进入 Panda/MuJoCo 连续动力学验证；锁定 Snapshot 的 RGB+Mask 会形成会话内真实外观贴图，并映射到 box / cylinder / capsule / ellipsoid 简化物理代理。真实状态以 60 Hz 形成会话内 Recording，动画结束后可立即 Replay、Scrub、逐帧、慢放和切换四种相机，且不重新运行 Vision / Depth / Grasp / Physics。
-- **Gongshu Condition Robustness v0.8**：在 Target Perception 之前增加独立、可解释的 Condition Processing Layer。它评估真实观测，在 `BLUR / LOW_LIGHT / LOW_LIGHT_BLUR` 协议下按需尝试经典增强并按质量增益决定接受或回退；`NORMAL` 始终只评估、不改像素。ConditionReport 贯穿 Target、Spatial、Grasp、Validation 与 Recording，但不修改 GR-ConvNet 评分、Panda 限制或 MuJoCo 成败判定。
-- **Gongshu Condition Stress Test v0.8.1**：Research Mode 新增独立、确定性的视觉压力模拟器，提供 `STRESS_ONLY / STRESS_PLUS_RECOVERY`、`MILD / MODERATE / SEVERE`、Gaussian/Motion Blur、低光亮度/对比度/暗部噪声与随机种子。Live RGB 显示最终 Pipeline Frame，并可查看 Raw/Pipeline 对比；Raw → Degraded → Enhanced → Pipeline 的 ID、参数、处理链与 SHA-256 全部进入 ConditionReport 和 Recording。Demo Mode 与 Normal 路径保持原图不变。
-- **Gongshu Real-time Interactive Vision v0.9**：Live RGB 保持高清 WebRTC/MJPEG 展示流，FastSAM 以独立 `640` 推理尺寸生成 Unknown Object 实例框与 Mask，并把坐标叠加回高清画面。点击目标后显示双语 Target Locked/Tracking，保存点击帧、bbox、target id 与时间戳，自动推进同一不可变 Snapshot 的 Depth 与 Grasp Planning；MuJoCo 仍沿用原有手动启动、Panda 与真实 Physics 流程。
-- **Jingwei Camera v1**：通过 Gongshu 的 Source / Camera Setup 提供手机 LAN 实时 RGB 输入、扫码配对与高清拍照上传。
-- **XUANSHU LAB Desktop**：Windows 上的 PySide6 + Qt WebEngine 桌面容器、统一门户、本地服务和单实例启动。
-- **Hetu Preview**：仅为预览入口，不运行尚未完成的世界模型。
+> 项目概念宣传图 Concept Cover。v0.1.0 的实际能力边界以本文的 Current Status 与 Features 为准。
 
-真实 Camera 主链路目前严格限定为：
+## Overview
+
+Gongshu 面向视觉驱动机器人操作研究，提供从相机输入到 MuJoCo 验证的一体化实验工作区。平台将目标感知、深度与点云、抓取候选以及物理仿真组织在同一套可追踪流程中，便于研究人员观察中间结果、比较视觉条件并复现实验。
+
+当前版本聚焦软件平台和仿真研究：真实视觉可由同一局域网内的手机摄像头输入，抓取执行在 Franka Panda 的 MuJoCo 仿真环境中验证。平台不将仿真结果表述为真实机器人实验结果。
+
+## Pipeline
+
+![Gongshu 研究流程](assets/pipeline.png)
 
 ```text
-Phone Camera → Frozen RGB Frame → Manual Target → Verified Depth
-→ Camera Intrinsics → Target Point Cloud / XYZ → Geometry Sanity → SPATIAL_READY
-→ GR-ConvNet Grasp Maps → Top-K → Feasibility Filtering
-→ Best Executable Grasp → GRASP_READY / PLANNING_REJECTED
-→ Candidate Exists → Simulation Attempt → MuJoCo SUCCESS / FAILED
+Phone Camera / RGB-D Camera
+              ↓
+      Visual Perception
+              ↓
+     Spatial Understanding
+              ↓
+       Grasp Planning
+              ↓
+      MuJoCo Validation
 ```
 
-Camera 实时画面通过私有局域网 WebRTC 传输，只在内存中保留最新 RGB 帧；高清拍照先进入 PC 内存预览，只有用户明确保存时才写入 `artifacts/camera/captures/`。
+v0.1.0 已实现 Phone Camera RGB 输入；RGB-D Camera 是后续扩展方向。当前单目深度输出用于研究与仿真流程，不等同于经过 RGB-D 传感器标定的真实尺度测量。
 
-Target Perception 只输出与同一冻结帧绑定的实例掩膜、边界框、二维中心和可选语义信息。FastSAM-s 未提供可靠语义类别，因此默认显示 `未知目标 Unknown Object`，但仍允许用户选择。v0.5 Spatial 只消费该冻结 Scene Snapshot，不会重新抽取 Live RGB 帧；RGB、Mask、Depth、Intrinsics、Point Cloud 与 XYZ 必须共享同一个 `geometry_chain_id`。
+## Features
 
-## Camera 安全与网络边界
+- **Desktop Research Workspace**：四视图研究工作区集中展示实时视觉、空间感知、抓取规划与 MuJoCo 验证。
+- **Phone Camera RGB Input**：手机通过可信私有局域网向 PC 提供实时 RGB 视频和高清拍照输入。
+- **Camera Setup / QR Pairing**：本地 CA、短时配对令牌与二维码引导的局域网相机连接流程。
+- **Real-time Visual Perception**：FastSAM 实例区域、Mask 与 Bounding Box Overlay，并支持目标点击锁定和轻量跟踪。
+- **Spatial Perception Interface**：同一 Scene Snapshot 上的 Depth、Point Cloud、目标 XYZ 与相机内参状态展示。
+- **Grasp Planning Interface**：GR-ConvNet 抓取图、Top-K 候选、可执行性检查和候选排名。
+- **MuJoCo Validation Interface**：Franka Panda 连续动力学仿真、结果状态、会话内 Recording 与 Replay。
+- **Multi-condition Testing Interface**：Normal、Blur、Low-Light 与组合条件下的可解释处理和 Research Mode 压力测试。
 
-- WebRTC 不配置 STUN / TURN，不使用 Cloudflare；Cloud Relay、Cloud Storage、Internet Upload 和实时录像默认关闭。
-- 配对使用五分钟有效的一次性 Token；成功配对后立即失效，刷新配对会使旧 Session 失效。
-- 本地 CA 私钥和服务端私钥生成在 `artifacts/camera/secrets/`，该目录被 Git 忽略。不要复制、提交或公开这些文件。
-- 手机和 PC 必须位于同一可信私有局域网。程序不会修改 Windows 防火墙规则。
-- CameraProvider 的当前稳定输出边界是 `RGB Frame + Timestamp + Resolution + Camera Source + Camera Status`。
-- 当前正式实现是 `PhoneLANProvider`；USB、Network Stream 和 RGB-D 仅保留接口或状态，不代表已经可用。
+## Demo
 
-### 手机首次连接
+### Demo Video
 
-1. 让手机与电脑连接同一个普通 Wi-Fi，避免开启客户端隔离的访客网络，并临时关闭手机 VPN。
-2. 启动 XUANSHU LAB，从门户进入 Gongshu；页面默认直接显示四视图 Workspace。
-3. Windows 首次询问防火墙权限时，只允许“专用网络”。
-4. 用手机扫描 `LOCAL CA SETUP` 二维码，安装本地 CA，并核对手机页面与 PC 显示的 SHA-256 指纹。
-5. 完全关闭并重新打开 Chrome，再扫描 `PAIRING` 二维码。
-6. 手机允许后置摄像头，点击 `START CAMERA` 和 `START LIVE`；高清真实画面会进入 `01 实时视觉 Live RGB`，并自动扫描目标区域。
-7. 如需高清照片，切换到 `CAPTURE`；PC 端收到预览后，再由用户决定是否保存原图。
+Demo video will be added here after the v0.1.0 recording is finalized.
 
-配对页默认使用 TCP `8766`（HTTPS）和 `8767`（首次证书设置）；WebRTC 会在同一私网内协商临时 UDP 端口。LAN IP 改变后，服务会在下次启动时为当前私网地址重新签发服务端证书。
+### Project Screenshots
 
-## 环境要求
+![Gongshu 桌面研究工作区](assets/overview.png)
 
-- Windows 11（当前已验证平台）
-- Python 3.12.x（`pyproject.toml` 限定 `>=3.12,<3.13`）
-- 支持 Qt WebEngine 的 Windows 桌面环境
-- 同一私有局域网内的手机与 PC（仅 Camera v1 需要）
-- MuJoCo / YOLO 模块需要额外的 CPU、内存和磁盘空间；它们不是 Camera RGB 接入的前置条件
+上图为真实 Gongshu 桌面研究工作区启动状态。相机接入后，Live RGB 会显示实时画面、目标区域和锁定状态，其余视图沿同一目标快照更新。
 
-当前验证环境包括 NVIDIA GeForce RTX 3060 Laptop GPU、PyTorch 2.13.0+cu126、torchvision 0.28.0+cu126、PySide6 6.8.3、OpenCV 4.11、MuJoCo 3.9.0、robosuite 1.5.2、Ultralytics 8.4.128、aiohttp 3.14.3、aiortc 1.15.0 和 cryptography 50.0.1。抓取检测默认 `AUTO`：CUDA 可用时使用 GPU，否则保留 CPU fallback。
+## Quick Start
 
-## 安装
+### Requirements
 
-项目使用 `pyproject.toml` 作为 Python 依赖的唯一来源，不需要额外维护重复的 `requirements.txt`。
+- Windows 11（当前验证平台）
+- Python 3.12.x（`>=3.12,<3.13`）
+- Phone Camera 功能需要手机与 PC 位于同一可信私有局域网
+- CUDA 为可选项；无可用 GPU 时保留 CPU fallback
 
-在项目根目录运行：
+### Installation
 
 ```powershell
+git clone https://github.com/PowellWells/gongshu.git
+cd gongshu
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-模型权重不随 Git 源码仓库发布。FastSAM 运行时查找顺序固定为 `Release Bundle → artifacts/models/FastSAM-s.pt → FastSAM 用户级 Cache → 官方下载`；默认缓存位于 `%LOCALAPPDATA%\Vision2Grasp\model-cache`，可通过 FastSAM 专用的 `VISION2GRASP_FASTSAM_CACHE` 覆盖。Depth Anything 与 GR-ConvNet 各自使用 `Release Bundle → artifacts/models → 用户级 Cache → 官方下载` resolver，并在加载前校验大小和 SHA-256。Depth backend 使用官方 `Depth-Anything-V2` metric runtime（代码 commit `a561b849…`）与 indoor metric Small 权重，保持 CPU persistent worker、`518` 输入尺寸和 lazy load。v0.6 使用官方 `skumra/robotic-grasping` Jacquard RGB-D GR-ConvNet3 checkpoint（revision `epoch_48_iou_0.93`，SHA-256 `adfb2cbb…`，BSD-3-Clause），`224×224` 目标感知 crop、上游 Jacquard RGB-D normalization、AUTO CUDA/CPU 与进程内持久模型；目标 Mask 只约束候选提取，不再擦除模型输入中的真实 RGB-D 上下文。模型解析、下载、校验、加载或推理失败会返回真实错误，不会伪造 READY。完整来源与许可证见 `THIRD_PARTY_NOTICES.md`。
-
-## 启动
-
-双击项目根目录的 `Start-XUANSHU-LAB.cmd` 启动完整桌面平台。
-
-也可以在 PowerShell 中运行：
+`pyproject.toml` 是项目依赖的权威来源；`requirements.txt` 提供常规环境安装入口：
 
 ```powershell
-.\.venv\Scripts\python.exe .\run_xuanshu_lab.py
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-只启动 Gongshu Web 工作台：
+模型权重不随 Git 源码仓库发布。FastSAM、Depth Anything V2 与 GR-ConvNet 会按项目既有的模型解析规则查找本地 Release Bundle、`artifacts/models/`、用户缓存或官方来源；具体来源和许可证边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-```powershell
-.\Start-Vision2Grasp.cmd
-```
+### Launch
 
-启动器全部基于自身所在目录解析项目路径，不要求仓库位于特定盘符。
-
-进入 Gongshu 后不再显示独立 Camera Input 页面。默认 Pipeline State 为 `LIVE`，Live RGB 是主视图；点击辅助视图可进入 Manual Pin，选择 Auto Follow 后恢复阶段跟随。Phone Live RGB 连接后，本地服务在独立 `640` 推理尺寸自动生成实例候选，高清展示流保持原始分辨率，SVG Overlay 把 Mask、目标框与双语标签映射回原始坐标。点击候选后进入 `TARGET_SELECTED`，短时模板跟踪只更新 Live Overlay；Depth 与 Grasp 严格复用点击瞬间的不可变 Scene Snapshot，并自动依次进入 `SCENE_CAPTURED → SPATIAL_ANALYSIS → SPATIAL_READY → GRASP_PLANNING → GRASP_READY / PLANNING_REJECTED`。MuJoCo 仍由现有按钮启动。空间与抓取主视图显示真实 backend stage、elapsed time 和模型冷/热状态，没有虚假百分比或固定成功。Research Mode 显示完整 Top-K、Reject 原因和诊断图层；Demo Mode 调用同一真实算法，并通过 Graspability Preflight 优先提示可执行候选。Quality / Angle / Width / Candidates 四层可直接切换。
-
-v0.8 的 Condition Processing Layer 本身是评估/恢复协议而不是退化生成器。每次 Analyze 都保留不可变 Raw Frame；只有增强被重新评估为质量提升且没有过度高光时才采用 Enhanced Frame，否则 Pipeline Frame 回退到 Degraded Frame。Workspace 的 Condition 卡显示实际观测条件、图像质量、增强状态与可靠性；Research Mode 还显示 blur/brightness 分数、完整处理链和 Raw → Degraded → Enhanced → Pipeline 来源。`BLUR_TOO_SEVERE / LOW_LIGHT_TOO_SEVERE / LOW_IMAGE_QUALITY / PERCEPTION_UNCERTAIN / DEPTH_UNRELIABLE` 是上下文证据，不会覆盖 Planning Result 或 `NO_LIFT / SLIP / CONTACT_LOSS` 等物理结果。
-
-v0.8.1 在该处理层之前加入 `ConditionStressSimulator`，因此 v0.8 原有语义不变：压力模拟负责生成受控 Degraded Frame，Condition Processing 仍只负责评估与可选恢复。`STRESS_ONLY` 直接把 Degraded Frame 作为 Pipeline Frame；`STRESS_PLUS_RECOVERY` 才尝试经典视觉增强，并保留质量保护与自动回退。相同 Raw Frame、压力等级、模糊类型和随机种子会生成相同退化结果；压力只作用于视觉输入，不参与抓取排名、夹爪限制或 MuJoCo Physics 成败判定。
-
-Phone Mode 的 Camera Intrinsics 优先级预留为 `CALIBRATED → SENSOR_METADATA → MODEL_PREDICTED → NOMINAL_FOV`。当前实现支持首尾两项：默认无需标定，直接回退到 Nominal FOV；若存在 `%LOCALAPPDATA%\Vision2Grasp\camera-intrinsics.json`（或 `VISION2GRASP_CAMERA_INTRINSICS` 指定文件），则可按逻辑 `camera_name` 提供 `width / height / fx / fy / cx / cy`。配置不包含 Honor Magic4 或任何具体手机型号参数，且只有宽高比一致时才允许按分辨率缩放已标定内参。
-
-当前默认尺度路径明确为 `scale_mode = DIRECT`：它不使用桌面或已知物体先验，也不会在尺度异常时自动修正结果。单目 metric-scaled 模型跨手机、焦段和近距离小物体时仍可能产生系统性绝对尺度偏差，因此 `ABNORMAL_SCALE` 与 Panda `0.01–0.08 m` 宽度保护继续生效。后续可选的轻量 `Scale Assistance` 方案是不依赖标准桌子的“单一已知长度”：用户可输入当前目标或同平面任意参考物的一条真实长度，系统只计算一个统一尺度因子并同时作用于 Depth / XYZ / Extent；结果仍标记 `APPROX_METRIC + REFERENCE + UNCALIBRATED`，不得升级为严格 Metric。该辅助模式本轮尚未启用，Direct Mode 仍是默认且完整保留。
-
-v0.6 已按 `Grasp Detection → Top-K Candidates → Feasibility Filtering → Candidate Ranking → Best Executable Grasp` 完成。默认 `Top-K=8`，候选逐一检查 target binding、quality、边缘余量、有效深度、几何置信度、异常尺度与 Panda 夹爪宽度；最高 quality 候选被拒绝时会继续评估其余候选。Panda 宽度直接复用 `[control]` 的 `0.01–0.08 m` 权威配置，`maximum_object_extent_m = 0.35` 没有放宽。由于尚无 Camera→Robot 外参，workspace reachability 与 collision feasibility 明确为 `UNKNOWN`，不伪造成可达或无碰撞。
-
-v0.7 已将动态物理、Recording 与 Playback 解耦。`NOMINAL` 执行当前候选的标称 Simulation Attempt；`TARGET_OFFSET_STRESS` 只把仿真目标相对原候选偏移 `0.14 m`，Panda 仍执行同一轨迹，最终 SUCCESS / FAILED 继续由真实接触、碰撞、抬升高度和稳定窗口决定。`GRASP_READY` 与存在候选的 `PLANNING_REJECTED` 都可由用户启动一次尝试；Planning Result 与 Simulation Result 独立保存，规划拒绝不会被改写成可执行计划，仿真也允许产生独立的 SUCCESS。超出 Panda 宽度的候选同时记录 requested/applied width，实际控制继续严格使用 `[0.01, 0.08] m`。失败原因使用 `COLLISION_ABORT / NO_CONTACT / NO_LIFT / CONTACT_LOSS / SLIP / UNSTABLE_GRASP / EXECUTION_ERROR`，其中无效碰撞会中止后续轨迹但仍完成失败终态、Recording 与 Replay。运行时以 60 Hz 记录 qpos/qvel、夹爪、目标位姿/速度、接触、碰撞、抬升量、验证状态和事件。回放只恢复 Recording 的 MuJoCo 状态并调用 `mj_forward` 渲染，不执行 `mj_step`，因此 Replay / Timeline / Step / 0.25×–2× / Auto Cinematic / Technical / Target Follow / Free Camera 都不会重跑 Phone、Depth、Grasp 或 Physics；SUCCESS 与 FAILED Recording 使用同一播放器。零候选、`GRASP_ERROR` 或无法构建有限物理场景的结果不会进入 MuJoCo。
-
-目标表示采用 `Physics Proxy + Real Appearance Mapping`：只从与 GraspPlan 严格关联的冻结 RGB 和 Target Mask 提取前景，移除场景背景后生成内存 PNG，并依据可用语义与轮廓指标选择 box/package、bottle/cup、banana/elongated、apple/rounded 对应的低复杂度 proxy。BOX 的视觉层使用带显式 UV 的低多边形 mesh，正面映射完整真实 crop，背面和侧面只采样 Mask 内目标主色；cylinder 使用环绕 primitive mapping，rounded object 使用简化表面映射。碰撞 geom 继续独立持有 density、friction、contact 与自由体物理；贴图 geom 明确为 `contype=0 / conaffinity=0`，只负责渲染。只有 MuJoCo 实际编译并确认 texture → material → visual geom 绑定后，Workspace 才显示 `Appearance REAL RGB / Texture LOADED / Target Snapshot Frame …`；生成或绑定失败则明确显示 `APPEARANCE FALLBACK / FAILED`。贴图和 BOX visual OBJ 通过 MuJoCo 内存 assets 参与真实 Simulation 和 Replay，默认不写磁盘；只有显式保存 Recording 时才和 asset id、来源帧、appearance metadata 及兼容性指纹一起进入用户数据包。这不是单目 3D 重建，也不会让外观层修改物理结果。
-
-Recording 默认只存在于当前应用进程的有界 Session History，状态明确显示 `Replay Available · Unsaved`；关闭应用后未保存记录自动丢弃。只有用户点击 `保存记录 Save Recording` 才写入 `%LOCALAPPDATA%\XUANSHU-LAB\Gongshu\recordings\`，只有点击 `导出视频 Export Video` 才按当前镜头、速度和 Overlay 生成 MP4 到独立 `exports` 目录。运行一次仿真不会自动生成 Recording 文件、视频、JPEG 序列或仓库内状态转储。
-
-## Windows Release 预留
-
-源码仓库保持轻量；正式 Release 应先用后续冻结工具准备自包含 Windows 应用目录，再运行：
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\build_release.py --verify-only --offline
-.\.venv\Scripts\python.exe .\scripts\build_release.py `
-  --prepared-app .\dist\Vision2Grasp `
-  --output .\artifacts\releases\Vision2Grasp-windows-x64.zip
-```
-
-构建器检查运行依赖与模型完整性，把经过 SHA-256 校验的 FastSAM / Depth Anything V2 / GR-ConvNet 复制到 `models/`，写入 `release-models.json` 和第三方声明后生成 ZIP。`--prepared-app` 必须已经包含可运行 EXE 或源码启动器及 `frontend/`；该脚本不把模型写回 Git，也不把未冻结的源码目录误称为自包含 EXE。
-
-## 项目结构
+直接打开 Gongshu：
 
 ```text
-Vision2Grasp/
-├─ configs/                 研究管线默认配置
-├─ contracts/               公开运行结果数据契约
-├─ frontend/                门户、Jingwei、Gongshu 与 Camera 前端
-├─ scripts/                 Windows 启动脚本
-├─ src/vision2grasp/        感知、几何、抓取、控制、仿真与 Camera 模块
-├─ src/xuanshu_lab/         桌面 Shell、Workspace 注册与服务管理
-├─ tests/                   单元测试与集成测试
-├─ artifacts/               本地权重、密钥、抓拍和实验输出（Git 忽略）
-├─ run_vision2grasp_app.py  本地 Web/API 服务入口
-└─ run_xuanshu_lab.py       XUANSHU LAB 桌面入口
+Start-Vision2Grasp.cmd
 ```
 
-## 验证
+或从 XUANSHU LAB 门户进入：
 
-在项目根目录运行：
+```text
+Start-XUANSHU-LAB.cmd
+```
+
+PowerShell 启动方式：
 
 ```powershell
-.\.venv\Scripts\python.exe -m compileall -q .\src .\tests .\run_xuanshu_lab.py .\run_vision2grasp_app.py
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe .\scripts\benchmark_grasp_v06.py --device auto
-.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe .\run_vision2grasp_app.py
 ```
 
-## 当前限制
+默认工作台地址为 `http://127.0.0.1:8765/apps/gongshu/index.html`。首次连接手机时，在 Gongshu 中打开 **连接设置 Camera Setup**，按本地 CA 与 Pairing 二维码引导完成连接。
 
-- 真实 Camera v0.6 主链路可生成 RGB Frame、手动目标、单目近似深度、相机内参、目标点云、Camera Frame XYZ 与 map-derived Top-K Grasp；它不是标定后的 Camera→Robot / World 坐标闭环。
-- 单目绝对尺度在近距离小目标上可能偏离真实数量级；Nominal FOV 只能提供投影比例，不能纠正深度模型的绝对尺度。系统会保留真实输出并由 `ABNORMAL_SCALE / WIDTH_LIMIT` 拒绝不合理计划，不会通过放宽阈值或静默缩放伪造可执行结果。
-- Physical Phone v0.6 验收仍由用户完成，状态为 `PENDING USER VALIDATION`；Phone Mode 不包含任何具体手机型号硬编码，自动化和静态样本结果不得描述为实体手机精度实测。
-- USB Camera、Network Stream、RGB-D Camera 尚未作为正式输入实现。
-- 尚未接入真实机械臂、外参标定、在线碰撞场景重建或物理执行闭环；当前 SUCCESS 仅表示 Simulation Validation。
-- `TARGET_OFFSET_STRESS` 是可复现的 simulation-only 扰动场景，用于演示真实失败动力学，不代表实体环境发生了同样的目标移动。
-- Hetu 只提供预览入口，没有世界模型算法。
-- 尚未冻结正式自包含 Windows EXE 构建工具链；当前只提供经过测试的 release 模型校验与 ZIP packaging 预留。
-- 运行产物、用户图片、证书私钥和模型权重均为本地数据，不随仓库发布。
+## Project Structure
 
-## 许可证与第三方边界
+```text
+gongshu/
+├── assets/                     GitHub README 展示素材
+├── configs/                    默认实验配置
+├── contracts/                  运行结果数据契约
+├── frontend/                   Gongshu 与 XUANSHU LAB 前端
+├── scripts/                    启动、基准与发布脚本
+├── src/vision2grasp/           感知、空间、抓取、控制与仿真模块
+├── src/xuanshu_lab/            桌面研究平台运行层
+├── tests/                      单元测试与集成测试
+├── requirements.txt            环境安装依赖
+├── VERSION.md                  发布版本信息
+└── run_vision2grasp_app.py     Gongshu 本地服务入口
+```
 
-本仓库目前**尚未选择项目级开源许可证**。公开源代码不等于自动授予复制、修改或分发权；正式发布前应由项目所有者选择并添加合适的 `LICENSE`。
+运行时生成的模型、证书、相机 Session、用户数据、实验输出和日志位于被 Git 忽略的本地目录，不随源码发布。
 
-- PySide6 / Qt 开源版本涉及 LGPLv3；Qt WebEngine 还包含 Chromium 第三方组件。未来分发 EXE 时需完成动态链接、许可证文本和第三方声明审计。
-- v0.4 通过 Ultralytics 运行 FastSAM-s；当前 FastSAM 上游仓库、Ultralytics 运行时与 Ultralytics assets 仓库均声明 AGPL-3.0 系列许可。闭源、内部商业或产品化使用前仍应分别确认运行时、权重及上游代码的适用许可。
-- v0.5 使用 Apache-2.0 的 Depth Anything V2 Small 系列官方 indoor metric `.pth` 权重及固定 commit 的官方 metric runtime；正式分发前仍需保留模型卡、许可证与依赖声明，并评估模型训练数据和用途边界。
-- v0.6 新增的 GR-ConvNet 最小 runtime 与官方 Jacquard RGB-D checkpoint 均固定到 `skumra/robotic-grasping` 同一 revision，并按 BSD-3-Clause 保留许可证和来源；未引入 GPL、AGPL、Non-Commercial 或来源不明的抓取 baseline。
-- Camera v1 直接使用 aiortc、aiohttp、PyAV、cryptography 和 qrcode；发布二进制或安装包前应保留相应许可证和传递依赖声明。
-- MuJoCo、robosuite、PyTorch、torchvision、OpenCV、NumPy 等算法依赖也需要在正式分发前形成完整的第三方清单。
-- 仓库中的 UI 图片作为源代码资产被跟踪；公开发布前仍应由项目所有者确认这些图片的原创性、授权来源和可再分发范围。它们不应与 `artifacts/` 下的实验图片、用户抓拍或模型权重混淆。
+## Validation
 
-以上仅说明当前已识别的许可证边界，不构成法律意见，也没有修改任何第三方许可证。
+```powershell
+.\.venv\Scripts\python.exe -m compileall -q .\src .\tests .\run_vision2grasp_app.py .\run_bottle_pipeline.py .\stage0_lift_smoke.py
+.\.venv\Scripts\python.exe -m unittest discover -s .\tests -v
+.\.venv\Scripts\python.exe -m pip check
+node --check .\frontend\apps\gongshu\gongshu.js
+node --check .\frontend\apps\gongshu\real-scene.js
+node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
+```
+
+## Current Status
+
+**Current version: Research Platform Prototype v0.1.0**
+
+当前已完成软件研究平台、真实 RGB 输入链路与仿真验证工作流。真实机器人部署将在后续实验条件支持下开展；本版本不包含真实机器人端到端部署，也不将单目深度或 MuJoCo 结果表述为真实硬件测量。
+
+## Future Extension
+
+- RGB-D Camera
+- Real Robot Integration
+- 6D Grasp Research
+
+## License and Third-Party Notice
+
+本仓库当前未声明项目级开源许可证。第三方代码、模型与运行时保留各自许可证；使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
