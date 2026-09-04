@@ -1,6 +1,26 @@
 # Gongshu / 公输
 
-**机器人抓取研究平台 · Vision-Based Robotic Manipulation Platform**
+<p align="center">
+  <strong>机器人抓取研究平台 · Vision-Based Robotic Manipulation Platform</strong>
+</p>
+
+<p align="center">
+  <a href="README.md">简体中文</a> ·
+  <a href="README_EN.md">English</a> ·
+  <a href="README_JA.md">日本語</a> ·
+  <a href="README_KO.md">한국어</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/PowellWells/gongshu/tree/v0.1.0"><img alt="版本 v0.1.0" src="https://img.shields.io/badge/release-v0.1.0-2563eb?style=flat-square"></a>
+  <a href="#current-status"><img alt="研究平台原型" src="https://img.shields.io/badge/status-research%20prototype-0f766e?style=flat-square"></a>
+  <a href="pyproject.toml"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white"></a>
+  <a href="#requirements"><img alt="Windows 11" src="https://img.shields.io/badge/platform-Windows%2011-0078D4?style=flat-square&amp;logo=windows11&amp;logoColor=white"></a>
+  <a href="tests"><img alt="197 项测试通过" src="https://img.shields.io/badge/tests-197%20passed-brightgreen?style=flat-square"></a>
+  <a href="https://github.com/PowellWells/gongshu/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
+  <a href="https://github.com/PowellWells/gongshu/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
+  <a href="#license-and-third-party-notice"><img alt="未声明项目许可证" src="https://img.shields.io/badge/license-not%20declared-lightgrey?style=flat-square"></a>
+</p>
 
 Gongshu 是一个连接真实视觉输入、空间理解、抓取规划与仿真验证的桌面研究平台。
 
@@ -47,7 +67,7 @@ v0.1.0 已实现 Phone Camera RGB 输入；RGB-D Camera 是后续扩展方向。
 
 ### Demo Video
 
-Demo video will be added here after the v0.1.0 recording is finalized.
+v0.1.0 演示视频完成录制后将在此补充。
 
 ### Project Screenshots
 
@@ -136,7 +156,7 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## Current Status
 
-**Current version: Research Platform Prototype v0.1.0**
+**当前版本 Current version：Research Platform Prototype v0.1.0**
 
 当前已完成软件研究平台、真实 RGB 输入链路与仿真验证工作流。真实机器人部署将在后续实验条件支持下开展；本版本不包含真实机器人端到端部署，也不将单目深度或 MuJoCo 结果表述为真实硬件测量。
 
