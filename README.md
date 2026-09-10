@@ -67,7 +67,7 @@ v0.1.0 已实现 Phone Camera RGB 输入；RGB-D Camera 是后续扩展方向。
 
 ### Demo Video
 
-v0.1.0 演示视频完成录制后将在此补充。
+[观看或下载 Gongshu v0.1.0 演示视频](https://github.com/PowellWells/gongshu/releases/download/v0.1.0/gongshu-v0.1.0-demo.mp4)
 
 ### Project Screenshots
 
