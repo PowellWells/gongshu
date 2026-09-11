@@ -67,7 +67,7 @@ v0.1.0 implements Phone Camera RGB input and provides RGB-D processing interface
 
 ### Gongshu v0.1.0 Overview
 
-<video src="GITHUB_USER_ATTACHMENT_VIDEO_URL" controls width="100%">
+<video src="https://github.com/user-attachments/assets/12a7abca-c202-45ff-b3dd-485dfb8e599a" controls width="100%">
 </video>
 
 The Gongshu v0.1.0 demo demonstrates the experimental workflow from visual input, target perception, spatial understanding, grasp planning, and MuJoCo-based validation.

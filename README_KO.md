@@ -67,7 +67,7 @@ v0.1.0에는 Phone Camera RGB 입력이 구현되어 있으며, 시뮬레이션 
 
 ### Gongshu v0.1.0 개요
 
-<video src="GITHUB_USER_ATTACHMENT_VIDEO_URL" controls width="100%">
+<video src="https://github.com/user-attachments/assets/12a7abca-c202-45ff-b3dd-485dfb8e599a" controls width="100%">
 </video>
 
 Gongshu v0.1.0 데모는 시각 입력, 대상 인식, 공간 이해, 파지 계획, MuJoCo 기반 검증으로 이어지는 실험 워크플로를 보여 줍니다.
