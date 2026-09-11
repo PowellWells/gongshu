@@ -65,9 +65,14 @@ v0.1.0 已实现 Phone Camera RGB 输入，并提供仿真和兼容数据源的 
 
 ## Demo
 
-### Demo Video
+### Gongshu v0.1.0 概览
 
-[观看或下载 Gongshu v0.1.0 演示视频](https://github.com/PowellWells/gongshu/releases/download/v0.1.0/gongshu-v0.1.0-demo.mp4)
+<video src="GITHUB_USER_ATTACHMENT_VIDEO_URL" controls width="100%">
+</video>
+
+Gongshu v0.1.0 演示视频展示机器人视觉与抓取实验平台的完整流程，包括视觉输入、目标感知、空间理解、抓取规划以及 MuJoCo 仿真验证。
+
+视频文件同时保存在 GitHub Release Assets 中，方便下载查看：[下载 Gongshu v0.1.0 演示视频](https://github.com/PowellWells/gongshu/releases/download/v0.1.0/gongshu-v0.1.0-demo.mp4)。
 
 ### Project Screenshots
 

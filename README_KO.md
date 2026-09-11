@@ -65,9 +65,14 @@ v0.1.0에는 Phone Camera RGB 입력이 구현되어 있으며, 시뮬레이션 
 
 ## Demo
 
-### Demo Video
+### Gongshu v0.1.0 개요
 
-[Gongshu v0.1.0 데모 영상 보기 / 다운로드](https://github.com/PowellWells/gongshu/releases/download/v0.1.0/gongshu-v0.1.0-demo.mp4)
+<video src="GITHUB_USER_ATTACHMENT_VIDEO_URL" controls width="100%">
+</video>
+
+Gongshu v0.1.0 데모는 시각 입력, 대상 인식, 공간 이해, 파지 계획, MuJoCo 기반 검증으로 이어지는 실험 워크플로를 보여 줍니다.
+
+동영상 파일은 다운로드해서 확인할 수 있도록 GitHub Release Assets에도 보관됩니다: [Gongshu v0.1.0 데모 동영상 다운로드](https://github.com/PowellWells/gongshu/releases/download/v0.1.0/gongshu-v0.1.0-demo.mp4).
 
 ### Project Screenshots
 
