@@ -1,0 +1,76 @@
+name: Bug report
+description: Report a reproducible problem in Gongshu
+title: "[Bug]: "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Do not include credentials, private data, certificates, private keys, or unpublished research material.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: This report is within the Gongshu scope described in GONGSHU_SCOPE.md.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or a full commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Windows version, Python version, CPU/GPU, simulator version
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installation or packaging
+        - Visual input or camera
+        - Target perception
+        - Spatial understanding or RGB-D
+        - Grasp planning
+        - MuJoCo or robosuite validation
+        - Workspace or documentation
+        - Other Gongshu component
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that triggers the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Redact secrets, private paths, personal data, and private network details.
+      render: shell

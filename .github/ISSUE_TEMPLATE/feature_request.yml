@@ -1,0 +1,57 @@
+name: Feature request
+description: Propose a reusable Gongshu platform improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gongshu prioritizes reusable platform capabilities over paper-specific experiments. Explain how the proposal fits the frozen project boundary.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched existing issues for related proposals.
+          required: true
+        - label: The proposal is reusable beyond one paper, dataset split, or experiment.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or research workflow is currently blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Describe behavior and boundaries, not only an implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: classification
+    attributes:
+      label: Proposed classification
+      options:
+        - Gongshu core
+        - Optional backend or adapter
+        - Example or documentation
+        - Experimental or research hold
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: implications
+    attributes:
+      label: Maintenance, license, data, and privacy implications
+      description: Identify dependencies, model or data rights, runtime cost, and an expected maintenance owner.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -159,6 +159,10 @@ node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
 
+## Community
+
+欢迎提交可复现的 Bug、文档改进和符合项目边界的平台贡献。参与前请阅读 [贡献指南](CONTRIBUTING.md) 和 [社区行为准则](CODE_OF_CONDUCT.md)；安全问题请按照 [安全策略](SECURITY.md) 私密报告。
+
 ## Current Status
 
 **当前版本 Current version：Open-Source Baseline v0.1.0**

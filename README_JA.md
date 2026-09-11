@@ -159,6 +159,10 @@ node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
 
+## Community
+
+再現可能なバグ報告、ドキュメント改善、プロジェクト境界に沿ったプラットフォームへの貢献を歓迎します。参加前に [コントリビューションガイド](CONTRIBUTING.md) と [コミュニティ行動規範](CODE_OF_CONDUCT.md) を確認してください。セキュリティ上の問題は [セキュリティポリシー](SECURITY.md) に従って非公開で報告してください。
+
 ## Current Status
 
 **現バージョン：Open-Source Baseline v0.1.0**
