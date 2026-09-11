@@ -1,9 +1,9 @@
 (() => {
   'use strict';
 
-  const TOTAL_MS = 5000;
-  const SCENE_MS = 1250;
-  const READY_MS = 4700;
+  const TOTAL_MS = 10000;
+  const SCENE_MS = 2500;
+  const READY_MS = 9400;
   const labels = [
     '01 · BRAND AWAKENING',
     '02 · VISION PERCEPTION',
@@ -71,18 +71,18 @@
   }
 
   function updateInitialization(elapsed) {
-    const vision = interpolate(elapsed, 0, 1000, 0, 100);
-    const spatial = elapsed < 1250
+    const vision = interpolate(elapsed, 0, 2000, 0, 100);
+    const spatial = elapsed < 2500
       ? 0
-      : elapsed < 2500
-        ? interpolate(elapsed, 1250, 2500, 0, 60)
-        : interpolate(elapsed, 2500, 3500, 60, 100);
-    const language = elapsed < 2500
+      : elapsed < 5000
+        ? interpolate(elapsed, 2500, 5000, 0, 60)
+        : interpolate(elapsed, 5000, 7000, 60, 100);
+    const language = elapsed < 5000
       ? 0
-      : elapsed < 3750
-        ? interpolate(elapsed, 2500, 3750, 0, 70)
-        : interpolate(elapsed, 3750, 4600, 70, 100);
-    const action = elapsed < 3750 ? 0 : interpolate(elapsed, 3750, READY_MS, 0, 100);
+      : elapsed < 7500
+        ? interpolate(elapsed, 5000, 7500, 0, 70)
+        : interpolate(elapsed, 7500, 9200, 70, 100);
+    const action = elapsed < 7500 ? 0 : interpolate(elapsed, 7500, READY_MS, 0, 100);
 
     setModuleProgress('vision', vision);
     setModuleProgress('spatial', spatial);

@@ -5,17 +5,9 @@
   </defs>
   <g fill="none" stroke="#0b6fe6" stroke-width="3" opacity="0">
     <path d="M510 278h100M1063 278h101" stroke-dasharray="7 9"><animate attributeName="stroke-dashoffset" from="64" to="0" dur=".45s" repeatCount="indefinite"/></path>
-    <animate attributeName="opacity" values="0;.9;.7" begin="3.92s" dur=".38s" fill="freeze"/>
-  </g>
-  <path d="M1514 342C1406 321 1331 371 1305 500" fill="none" stroke="#0873eb" stroke-width="2" stroke-dasharray="7 9" opacity="0" filter="url(#glow)">
-    <animate attributeName="stroke-dashoffset" from="80" to="0" dur=".6s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0;1;.8" begin="4.12s" dur=".35s" fill="freeze"/>
-  </path>
-  <g fill="#0d6fe8" opacity="0" filter="url(#glow)">
-    <circle cx="1514" cy="342" r="4"/><circle cx="1440" cy="342" r="4"/><circle cx="1376" cy="379" r="4"/><circle cx="1330" cy="430" r="4"/><circle cx="1305" cy="500" r="4"/>
-    <animate attributeName="opacity" values="0;1;.8" begin="4.12s" dur=".35s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;.9;.7" begin="7.72s" dur=".38s" fill="freeze"/>
   </g>
   <rect x="214" y="682" width="1244" height="3" fill="url(#flow)" opacity="0" filter="url(#glow)">
-    <animate attributeName="opacity" values="0;.8;0" begin="4.36s" dur=".45s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;.8;0" begin="8.35s" dur=".45s" fill="freeze"/>
   </rect>
 </svg>

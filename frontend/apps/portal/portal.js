@@ -58,7 +58,7 @@
     window.clearTimeout(introRemovalTimer);
     setPortalInteractive(false);
     window.addEventListener("message", handleIntroMessage);
-    introFallbackTimer = window.setTimeout(dismissIntro, 6200);
+    introFallbackTimer = window.setTimeout(dismissIntro, 11200);
   }
 
   function readMotionPreference() {
