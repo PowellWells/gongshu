@@ -1,7 +1,7 @@
 # Gongshu / 公输
 
 <p align="center">
-  <strong>机器人抓取研究平台 · Vision-Based Robotic Manipulation Platform</strong>
+  <strong>Modular Robot Vision and Grasping Experimentation Platform</strong>
 </p>
 
 <p align="center">
@@ -13,16 +13,16 @@
 
 <p align="center">
   <a href="https://github.com/PowellWells/gongshu/tree/v0.1.0"><img alt="版本 v0.1.0" src="https://img.shields.io/badge/release-v0.1.0-2563eb?style=flat-square"></a>
-  <a href="#current-status"><img alt="研究平台原型" src="https://img.shields.io/badge/status-research%20prototype-0f766e?style=flat-square"></a>
+  <a href="#current-status"><img alt="开源基线" src="https://img.shields.io/badge/status-open--source%20baseline-0f766e?style=flat-square"></a>
   <a href="pyproject.toml"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white"></a>
   <a href="#requirements"><img alt="Windows 11" src="https://img.shields.io/badge/platform-Windows%2011-0078D4?style=flat-square&amp;logo=windows11&amp;logoColor=white"></a>
   <a href="tests"><img alt="197 项测试通过" src="https://img.shields.io/badge/tests-197%20passed-brightgreen?style=flat-square"></a>
   <a href="https://github.com/PowellWells/gongshu/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
   <a href="https://github.com/PowellWells/gongshu/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
-  <a href="#license-and-third-party-notice"><img alt="未声明项目许可证" src="https://img.shields.io/badge/license-not%20declared-lightgrey?style=flat-square"></a>
+  <a href="LICENSE"><img alt="Apache-2.0 开源许可证" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu 是一个连接真实视觉输入、空间理解、抓取规划与仿真验证的桌面研究平台。
+Gongshu 是一个面向机器人视觉与抓取研究的模块化实验平台，连接视觉输入、空间理解、抓取规划与仿真验证。
 
 ![Gongshu 项目概念宣传图](assets/demo-cover.png)
 
@@ -30,9 +30,9 @@ Gongshu 是一个连接真实视觉输入、空间理解、抓取规划与仿真
 
 ## Overview
 
-Gongshu 面向视觉驱动机器人操作研究，提供从相机输入到 MuJoCo 验证的一体化实验工作区。平台将目标感知、深度与点云、抓取候选以及物理仿真组织在同一套可追踪流程中，便于研究人员观察中间结果、比较视觉条件并复现实验。
+Gongshu 为视觉驱动机器人操作实验提供可追踪的工作流，覆盖 RGB 输入、兼容的 RGB-D 数据接口、目标感知、深度与点云处理、空间理解、抓取候选生成，以及 MuJoCo / robosuite 仿真验证。工作台用于检查中间结果、比较处理条件并保存可复现实验产物。
 
-当前版本聚焦软件平台和仿真研究：真实视觉可由同一局域网内的手机摄像头输入，抓取执行在 Franka Panda 的 MuJoCo 仿真环境中验证。平台不将仿真结果表述为真实机器人实验结果。
+v0.1.0 的真实视觉输入由同一可信局域网内的手机摄像头提供；RGB-D 由仿真或兼容数据源接口提供。Franka Panda 抓取在 MuJoCo / robosuite 中验证。本版本不包含经过验证的真实机器人端到端抓取，也不将单目深度或仿真结果表述为真实硬件测量。
 
 ## Pipeline
 
@@ -50,7 +50,7 @@ Phone Camera / RGB-D Camera
       MuJoCo Validation
 ```
 
-v0.1.0 已实现 Phone Camera RGB 输入；RGB-D Camera 是后续扩展方向。当前单目深度输出用于研究与仿真流程，不等同于经过 RGB-D 传感器标定的真实尺度测量。
+v0.1.0 已实现 Phone Camera RGB 输入，并提供仿真和兼容数据源的 RGB-D 处理接口；真实 RGB-D Camera 接入仍是后续扩展方向。当前单目深度输出用于研究与仿真流程，不等同于经过 RGB-D 传感器标定的真实尺度测量。
 
 ## Features
 
@@ -60,7 +60,7 @@ v0.1.0 已实现 Phone Camera RGB 输入；RGB-D Camera 是后续扩展方向。
 - **Real-time Visual Perception**：FastSAM 实例区域、Mask 与 Bounding Box Overlay，并支持目标点击锁定和轻量跟踪。
 - **Spatial Perception Interface**：同一 Scene Snapshot 上的 Depth、Point Cloud、目标 XYZ 与相机内参状态展示。
 - **Grasp Planning Interface**：GR-ConvNet 抓取图、Top-K 候选、可执行性检查和候选排名。
-- **MuJoCo Validation Interface**：Franka Panda 连续动力学仿真、结果状态、会话内 Recording 与 Replay。
+- **MuJoCo / robosuite Validation Interface**：Franka Panda 连续动力学仿真、结果状态、会话内 Recording 与 Replay。
 - **Multi-condition Testing Interface**：Normal、Blur、Low-Light 与组合条件下的可解释处理和 Research Mode 压力测试。
 
 ## Demo
@@ -156,9 +156,9 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## Current Status
 
-**当前版本 Current version：Research Platform Prototype v0.1.0**
+**当前版本 Current version：Open-Source Baseline v0.1.0**
 
-当前已完成软件研究平台、真实 RGB 输入链路与仿真验证工作流。真实机器人部署将在后续实验条件支持下开展；本版本不包含真实机器人端到端部署，也不将单目深度或 MuJoCo 结果表述为真实硬件测量。
+v0.1.0 建立了 Apache-2.0 项目许可、开源范围与治理冻结基线，并保留现有视觉输入、空间理解、抓取规划和仿真验证能力。真实机器人部署仍属于后续方向；本版本不包含经过验证的真实机器人端到端能力。
 
 ## Future Extension
 
@@ -168,4 +168,4 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## License and Third-Party Notice
 
-本仓库当前未声明项目级开源许可证。第三方代码、模型与运行时保留各自许可证；使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+Gongshu 自有源码采用 [Apache License 2.0](LICENSE)。第三方代码、模型、素材与运行时保留各自许可证；Apache-2.0 声明不覆盖这些第三方内容。使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md)。

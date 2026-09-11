@@ -1,7 +1,7 @@
 # Gongshu / 公输
 
 <p align="center">
-  <strong>視覚ベース・ロボットマニピュレーション研究プラットフォーム</strong>
+  <strong>Modular Robot Vision and Grasping Experimentation Platform</strong>
 </p>
 
 <p align="center">
@@ -13,16 +13,16 @@
 
 <p align="center">
   <a href="https://github.com/PowellWells/gongshu/tree/v0.1.0"><img alt="リリース v0.1.0" src="https://img.shields.io/badge/release-v0.1.0-2563eb?style=flat-square"></a>
-  <a href="#current-status"><img alt="研究プラットフォーム・プロトタイプ" src="https://img.shields.io/badge/status-research%20prototype-0f766e?style=flat-square"></a>
+  <a href="#current-status"><img alt="オープンソース・ベースライン" src="https://img.shields.io/badge/status-open--source%20baseline-0f766e?style=flat-square"></a>
   <a href="pyproject.toml"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white"></a>
   <a href="#requirements"><img alt="Windows 11" src="https://img.shields.io/badge/platform-Windows%2011-0078D4?style=flat-square&amp;logo=windows11&amp;logoColor=white"></a>
   <a href="tests"><img alt="197 テスト合格" src="https://img.shields.io/badge/tests-197%20passed-brightgreen?style=flat-square"></a>
   <a href="https://github.com/PowellWells/gongshu/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
   <a href="https://github.com/PowellWells/gongshu/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/PowellWells/gongshu?style=flat-square&amp;logo=github"></a>
-  <a href="#license-and-third-party-notice"><img alt="プロジェクトライセンス未宣言" src="https://img.shields.io/badge/license-not%20declared-lightgrey?style=flat-square"></a>
+  <a href="LICENSE"><img alt="Apache-2.0 ライセンス" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu は、実世界の視覚入力、空間理解、把持計画、シミュレーション検証を接続するデスクトップ研究プラットフォームです。
+Gongshu は、視覚入力、空間理解、把持計画、シミュレーション検証を接続する、ロボットビジョンと把持研究向けのモジュール型実験プラットフォームです。
 
 ![Gongshu コンセプトカバー](assets/demo-cover.png)
 
@@ -30,9 +30,9 @@ Gongshu は、実世界の視覚入力、空間理解、把持計画、シミュ
 
 ## Overview
 
-Gongshu は、カメラ入力から MuJoCo 検証まで、視覚駆動ロボットマニピュレーション研究のための統合ワークスペースを提供します。対象認識、深度・点群処理、把持候補、物理シミュレーションを追跡可能なフローとして整理し、中間結果の確認、視覚条件の比較、実験の再現を支援します。
+Gongshu は、視覚駆動ロボット操作実験のための追跡可能なワークフローを提供し、RGB 入力、互換性のある RGB-D データインターフェース、対象認識、深度・点群処理、空間理解、把持候補生成、MuJoCo / robosuite 検証を扱います。ワークスペースでは、中間結果の確認、処理条件の比較、再現可能な実行成果物の保存が可能です。
 
-現バージョンはソフトウェア基盤とシミュレーション研究に重点を置いています。同一の信頼できる LAN 上のスマートフォンから実 RGB 入力を取得し、Franka Panda の把持動作を MuJoCo で検証します。シミュレーション結果を実機実験の結果として扱うことはありません。
+v0.1.0 の実画像入力は同一の信頼できる LAN 上のスマートフォンカメラから取得し、RGB-D データはシミュレーションまたは互換データソースのインターフェースから取得します。Franka Panda の把持は MuJoCo / robosuite で検証します。本リリースには検証済みの実機ロボットによるエンドツーエンド把持は含まれず、単眼深度やシミュレーション結果を実機計測値として扱いません。
 
 ## Pipeline
 
@@ -50,7 +50,7 @@ Phone Camera / RGB-D Camera
       MuJoCo Validation
 ```
 
-v0.1.0 では Phone Camera の RGB 入力を実装済みです。RGB-D Camera は今後の拡張項目です。現在の単眼深度出力は研究・シミュレーション用であり、校正済み RGB-D センサーの実スケール計測と同等ではありません。
+v0.1.0 では Phone Camera の RGB 入力を実装し、シミュレーションおよび互換データソース向けの RGB-D 処理インターフェースを提供しています。実 RGB-D Camera との統合は今後の拡張項目です。現在の単眼深度出力は研究・シミュレーション用であり、校正済み RGB-D センサーの実スケール計測と同等ではありません。
 
 ## Features
 
@@ -60,7 +60,7 @@ v0.1.0 では Phone Camera の RGB 入力を実装済みです。RGB-D Camera �
 - **Real-time Visual Perception**：FastSAM のインスタンス領域、Mask、Bounding Box Overlay、クリックによる対象ロック、軽量追跡。
 - **Spatial Perception Interface**：同一 Scene Snapshot に対応する Depth、Point Cloud、対象 XYZ、カメラ内部パラメータ状態。
 - **Grasp Planning Interface**：GR-ConvNet の把持マップ、Top-K 候補、実行可能性検査、候補順位付け。
-- **MuJoCo Validation Interface**：Franka Panda の動力学シミュレーション、結果状態、セッション内 Recording と Replay。
+- **MuJoCo / robosuite Validation Interface**：Franka Panda の動力学シミュレーション、結果状態、セッション内 Recording と Replay。
 - **Multi-condition Testing Interface**：Normal、Blur、Low-Light、複合条件の説明可能な処理と Research Mode ストレステスト。
 
 ## Demo
@@ -156,9 +156,9 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## Current Status
 
-**現バージョン：Research Platform Prototype v0.1.0**
+**現バージョン：Open-Source Baseline v0.1.0**
 
-ソフトウェア研究プラットフォーム、実 RGB 入力経路、シミュレーション検証フローは実装済みです。実機ロボットへの展開は、実験設備と条件が整い次第実施します。本リリースには実機ロボットのエンドツーエンド展開は含まれず、単眼深度や MuJoCo の出力を実機計測値として扱いません。
+v0.1.0 では Apache-2.0 プロジェクトライセンス、オープンソース範囲、ガバナンス凍結ベースラインを確立し、既存の視覚入力、空間理解、把持計画、シミュレーション検証機能を維持しています。実機ロボットへの展開は今後の課題であり、本リリースには検証済みの実機エンドツーエンド機能は含まれません。
 
 ## Future Extension
 
@@ -168,4 +168,4 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## License and Third-Party Notice
 
-本リポジトリは現時点でプロジェクトレベルのオープンソースライセンスを宣言していません。第三者コード、モデル、ランタイムには各ライセンスが適用されます。利用・再配布前に [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を確認してください。
+Gongshu が保有するソースコードは [Apache License 2.0](LICENSE) の下で提供されます。第三者コード、モデル、素材、ランタイムにはそれぞれのライセンスが適用され、リポジトリの Apache-2.0 宣言の対象にはなりません。利用・再配布前に [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) と [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md) を確認してください。
