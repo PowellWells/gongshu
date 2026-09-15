@@ -3,7 +3,7 @@ brand = "Gongshu Robotics"
 seed = 7
 
 [gongshu_xiezhi]
-enabled = false
+enabled = true
 algorithm = "rule_based"
 
 [simulation]

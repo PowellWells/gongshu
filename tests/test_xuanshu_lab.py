@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QApplication
 
 from xuanshu_lab.contracts import WorkspaceKind, WorkspaceSpec, WorkspaceStatus
 from xuanshu_lab.registry import WorkspaceRegistry, create_default_registry
-from xuanshu_lab.runtime import LocalServiceController, ServiceHealth
+from xuanshu_lab.runtime import LocalServiceController, ServiceHealth, _service_environment
 from xuanshu_lab.shell import MainWindow
 
 
@@ -76,6 +76,17 @@ class _HealthHandler(BaseHTTPRequestHandler):
 
 
 class LocalServiceControllerTests(unittest.TestCase):
+    def test_service_environment_retains_launcher_xiezhi_path(self) -> None:
+        inherited = {
+            "PYTHONPATH": str(Path("F:/五月花/src")),
+            "XIEZHI_ENABLED": "1",
+        }
+        environment = _service_environment(PROJECT_ROOT, inherited)
+        entries = environment["PYTHONPATH"].split(os.pathsep)
+        self.assertEqual(entries[0], str((PROJECT_ROOT / "src").resolve()))
+        self.assertEqual(entries[1], str(Path("F:/五月花/src")))
+        self.assertEqual(environment["XIEZHI_ENABLED"], "1")
+
     def test_reuses_compatible_running_service_without_owning_it(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), _HealthHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -121,7 +132,7 @@ class DesktopShellTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_shell_hosts_the_original_portal_as_its_only_visible_content(self) -> None:
+    def test_shell_opens_gongshu_with_xiezhi_as_its_only_visible_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             settings = QSettings(
                 str(Path(directory) / "desktop-test.ini"),
@@ -137,7 +148,11 @@ class DesktopShellTests(unittest.TestCase):
                 self.assertIs(window.centralWidget(), window.web_view)
                 self.assertEqual(window.web_view.objectName(), "xuanshuPortal")
                 self.assertEqual(window.portal_url, "http://127.0.0.1:8765/index.html")
-                self.assertEqual(window.web_view.url().toString(), window.portal_url)
+                self.assertEqual(
+                    window.home_url,
+                    "http://127.0.0.1:8765/apps/gongshu/index.html?desktop=1&xiezhi=enabled",
+                )
+                self.assertEqual(window.web_view.url().toString(), window.home_url)
                 self.assertFalse(window.log_dock.isVisible())
                 self.assertEqual(window.home_action.shortcut().toString(), "Alt+Home")
                 self.assertEqual(window.logs_action.shortcut().toString(), "Ctrl+Shift+L")
@@ -145,7 +160,7 @@ class DesktopShellTests(unittest.TestCase):
 
                 window.web_view.setUrl(QUrl("http://127.0.0.1:8765/apps/moment/index.html"))
                 window.go_home()
-                self.assertEqual(window.web_view.url().toString(), window.portal_url)
+                self.assertEqual(window.web_view.url().toString(), window.home_url)
             finally:
                 window.close()
 
@@ -162,6 +177,15 @@ class FrontendPortalTests(unittest.TestCase):
         self.assertIn('href="./apps/gongshu/index.html"', portal)
         self.assertIn('href="../../index.html" aria-label="返回玄枢主页"', moment)
         self.assertIn('href="../../index.html" title="返回玄枢门户"', gongshu)
+
+    def test_launcher_enables_existing_xiezhi_runtime(self) -> None:
+        launcher = (PROJECT_ROOT / "scripts" / "start_xuanshu_lab.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        config = (PROJECT_ROOT / "configs" / "default.toml").read_text(encoding="utf-8")
+        self.assertIn('$env:XIEZHI_ENABLED = "1"', launcher)
+        self.assertIn("default_algorithm_registry", launcher)
+        self.assertIn('[gongshu_xiezhi]\nenabled = true', config)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,20 @@ class ServiceHealth:
     message: str
 
 
+def _service_environment(
+    project_root: Path,
+    inherited: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Prepend Gongshu source while retaining launcher-provided Xiezhi paths."""
+    environment = dict(os.environ if inherited is None else inherited)
+    inherited_pythonpath = environment.get("PYTHONPATH", "")
+    pythonpath_entries = [str(project_root.resolve() / "src")]
+    if inherited_pythonpath:
+        pythonpath_entries.append(inherited_pythonpath)
+    environment["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    return environment
+
+
 class LocalServiceController:
     def __init__(self, project_root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None:
         self.project_root = project_root.resolve()
@@ -65,8 +79,7 @@ class LocalServiceController:
         log_root.mkdir(parents=True, exist_ok=True)
         self._stdout_handle = (log_root / "service.stdout.log").open("w", encoding="utf-8")
         self._stderr_handle = (log_root / "service.stderr.log").open("w", encoding="utf-8")
-        environment = dict(os.environ)
-        environment["PYTHONPATH"] = str(self.project_root / "src")
+        environment = _service_environment(self.project_root)
         self._process = subprocess.Popen(
             [
                 sys.executable,

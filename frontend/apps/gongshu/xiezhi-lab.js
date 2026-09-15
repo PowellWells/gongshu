@@ -11,7 +11,7 @@
 
   function showPlaceholderNotice(action) {
     window.clearTimeout(noticeTimer);
-    notice.textContent = `${action} 已融入 Gongshu 前端框架，当前未连接算法、API 或实验数据。`;
+    notice.textContent = `${action} 已在 Gongshu 内启用；当前等待观测与实验上下文。`;
     notice.className = "workspace-notice is-success";
     notice.hidden = false;
     noticeTimer = window.setTimeout(() => { notice.hidden = true; }, 3600);

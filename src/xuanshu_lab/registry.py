@@ -57,8 +57,8 @@ def create_default_registry() -> WorkspaceRegistry:
                 status=WorkspaceStatus.READY,
                 accent="#10A98E",
                 icon_relative_path="frontend/apps/portal/assets/gongshu-card-icon.png",
-                route="/apps/gongshu/index.html?desktop=1",
-                capabilities=("真实场景", "抓取感知", "MuJoCo 验证"),
+                route="/apps/gongshu/index.html?desktop=1&xiezhi=enabled",
+                capabilities=("真实场景", "抓取感知", "MuJoCo 验证", "Xiezhi 决策"),
             ),
             WorkspaceSpec(
                 workspace_id="hetu",

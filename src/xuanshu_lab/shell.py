@@ -33,6 +33,10 @@ class MainWindow(QMainWindow):
         self.service = service
         self.settings = settings or QSettings("XUANSHU", "XUANSHU LAB")
         self.portal_url = f"{self.service.base_url.rstrip('/')}/index.html"
+        gongshu_route = self.registry.get("gongshu").route
+        if gongshu_route is None:
+            raise RuntimeError("Gongshu workspace route is unavailable")
+        self.home_url = f"{self.service.base_url.rstrip('/')}{gongshu_route}"
         self.service_ready = False
 
         self.setWindowTitle("XUANSHU LAB · 玄枢 AI")
@@ -60,7 +64,7 @@ class MainWindow(QMainWindow):
         self.activation_requested.connect(self.bring_to_front)
 
     def _build_shortcuts(self) -> None:
-        self.home_action = QAction("返回玄枢主页", self)
+        self.home_action = QAction("返回公输工作台", self)
         self.home_action.setShortcut(QKeySequence("Alt+Home"))
         self.home_action.triggered.connect(self.go_home)
 
@@ -86,8 +90,8 @@ class MainWindow(QMainWindow):
         self.log_dock.hide()
 
     def go_home(self) -> None:
-        """Return to the original portal; its own HTML controls the intro animation."""
-        self.web_view.setUrl(QUrl(self.portal_url))
+        """Return to the single Gongshu workspace with Xiezhi enabled."""
+        self.web_view.setUrl(QUrl(self.home_url))
 
     def toggle_logs(self) -> None:
         if self.log_dock.isVisible():

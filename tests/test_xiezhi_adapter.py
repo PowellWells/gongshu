@@ -56,11 +56,11 @@ class FixedBackend:
 
 
 class GongshuXiezhiAdapterTests(unittest.TestCase):
-    def test_default_config_disables_xiezhi(self) -> None:
+    def test_default_config_enables_xiezhi(self) -> None:
         with (ROOT / "configs" / "default.toml").open("rb") as handle:
             values = tomllib.load(handle)["gongshu_xiezhi"]
         config = XiezhiAdapterConfig.from_mapping(values)
-        self.assertFalse(config.enabled)
+        self.assertTrue(config.enabled)
         self.assertEqual(config.algorithm, "rule_based")
 
     def test_disabled_adapter_preserves_legacy_flow(self) -> None:

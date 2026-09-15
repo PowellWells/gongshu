@@ -21,12 +21,12 @@ GongshuObservation
 
 ```toml
 [gongshu_xiezhi]
-enabled = false
+enabled = true
 algorithm = "rule_based"
 ```
 
+- `enabled = true`（当前默认）：加载可选 Xiezhi Runtime，执行 Observation → Decision → Gongshu execution。
 - `enabled = false`：只调用调用方提供的 Gongshu legacy flow；不会导入 Xiezhi，也不会调用 Xiezhi execution。
-- `enabled = true`：加载可选 Xiezhi Runtime，执行 Observation → Decision → Gongshu execution。
 - 显式启用但 Xiezhi 不可导入、算法未注册时明确失败，不静默改变算法或回退。
 
 配置由 Gongshu 应用组装层读取后传入 `XiezhiAdapterConfig`。本轮不修改 `Vision2GraspPipeline`，也不把 Xiezhi 变成 Gongshu 的安装或启动前置条件。
@@ -36,6 +36,6 @@ algorithm = "rule_based"
 - 默认算法：Xiezhi Runtime 已注册的 `rule_based`；
 - 执行方式：调用方注入 Gongshu execution callback；
 - 环境：模块级测试夹具，不连接真实机器人；
-- 前端：继续位于 Gongshu 工作台内部，仅显示 adapter ready 和默认关闭状态。
+- 前端：继续位于 Gongshu 工作台内部，显示 adapter ready 和默认开启状态。
 
 Uncertainty Policy、Prior Policy、Custom Algorithm、真实机器人、后台 HTTP API 和前端实时状态绑定均不属于 v0.1。
