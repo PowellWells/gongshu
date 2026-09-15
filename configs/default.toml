@@ -2,6 +2,10 @@
 brand = "Gongshu Robotics"
 seed = 7
 
+[gongshu_xiezhi]
+enabled = false
+algorithm = "rule_based"
+
 [simulation]
 environment = "Lift"
 robot = "Panda"
