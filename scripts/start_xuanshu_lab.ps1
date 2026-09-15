@@ -33,7 +33,7 @@ $xiezhiSourceAvailable = Test-Path `
 if ($xiezhiSourceAvailable) {
     $pythonPathEntries += $xiezhiSrc
 } else {
-    Write-Warning "Xiezhi runtime was not found; Gongshu will continue without it: $xiezhiSrc"
+    Write-Warning "Gongshu internal intelligence runtime was not found; core robot capabilities remain available: $xiezhiSrc"
 }
 if ($env:PYTHONPATH) {
     $pythonPathEntries += $env:PYTHONPATH
@@ -53,7 +53,7 @@ if ($xiezhiSourceAvailable) {
     $xiezhiReady = $LASTEXITCODE -eq 0
     $ErrorActionPreference = $previousErrorActionPreference
     if (-not $xiezhiReady) {
-        Write-Warning "Xiezhi lifecycle runtime is unavailable; Gongshu will continue normally."
+        Write-Warning "Gongshu internal intelligence runtime is unavailable; core robot capabilities remain available."
     }
 }
 
@@ -73,4 +73,4 @@ Start-Process `
     -ArgumentList $arguments `
     -WorkingDirectory $projectRoot
 
-Write-Host "Gongshu is starting with optional Xiezhi lifecycle support."
+Write-Host "Gongshu is starting and will load its internal Xiezhi intelligence capability when available."

@@ -1,7 +1,7 @@
 # Gongshu / 公输
 
 <p align="center">
-  <strong>Modular Robot Vision and Grasping Experimentation Platform</strong>
+  <strong>Modular Robot Intelligence and Grasping Experimentation Platform</strong>
 </p>
 
 <p align="center">
@@ -22,7 +22,9 @@
   <a href="LICENSE"><img alt="Apache-2.0 ライセンス" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu は、視覚入力、空間理解、把持計画、シミュレーション検証に取り組む、オープンソースのモジュール型ロボットビジョン・把持実験プラットフォームです。
+Gongshu は、視覚入力、空間理解、把持計画、シミュレーション検証、実験、知的意思決定を統合するオープンソースのモジュール型ロボット知能プラットフォームです。Xiezhi は Gongshu 内部の意思決定・アルゴリズム実験機能であり、独立した製品ではありません。
+
+現在の製品アーキテクチャは [XUANSHU AI Architecture Freeze v2.0](XUANSHU_ARCHITECTURE_FREEZE_V2.0.md) に従います。
 
 ![Gongshu コンセプトカバー](assets/demo-cover.png)
 
@@ -30,12 +32,13 @@ Gongshu は、視覚入力、空間理解、把持計画、シミュレーショ
 
 ## Overview
 
-Gongshu は、ロボットビジョンと把持の実験を一つのワークスペースで整理し、入力からシミュレーション検証までの中間結果を確認できるようにします。現在のオープンソース・ベースラインは、次の四つの機能領域に重点を置いています。
+Gongshu は、ロボットビジョン、把持、知的意思決定の実験を一つのワークスペースで整理し、入力からシミュレーション検証までの中間結果を確認できるようにします。プラットフォームは次の五つの機能領域を含みます。
 
 - **RGB / RGB-D 視覚入力**：スマートフォンカメラによる RGB 入力と、シミュレーションまたは互換データソース向けの RGB-D データインターフェース。
 - **空間理解**：深度、点群、対象 XYZ 座標、カメラ内部パラメータなどの空間情報。
 - **把持計画**：把持候補の生成、実行可能性検査、順位付けによる結果比較。
 - **シミュレーション検証**：MuJoCo / robosuite と Franka Panda を使用した実験的な把持検証。
+- **意思決定知能とアルゴリズム実験**：内部 Xiezhi モジュールによるアルゴリズム実験、意思決定分析、戦略進化。
 
 v0.1.0 は Gongshu のオープンソース・ベースラインです。実画像入力は現在、同一の信頼できる LAN 上のスマートフォンカメラから取得します。実 RGB-D カメラとの統合は今後の方向性です。本リリースには検証済みの実機ロボットによるエンドツーエンド把持は含まれず、単眼深度やシミュレーション結果を実機計測値として扱いません。
 
@@ -85,7 +88,7 @@ XUANSHU AI の唯一の公式起動入口：
 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-このファイルをダブルクリックして XUANSHU AI Launcher に入り、Gongshu を開きます。Phone Camera、Local Image、MuJoCo、Gongshu 内部のオプション Xiezhi 機能はすべてメインランチャーから起動されます。サブディレクトリ、開発ブランチ、Git worktree から個別に起動しないでください。スマートフォンを初めて接続する場合は、Gongshu の **Camera Setup** を開き、ローカル CA と Pairing QR の案内に従ってください。
+このファイルをダブルクリックして XUANSHU AI Launcher に入り、Gongshu を開きます。Phone Camera、Local Image、MuJoCo、および Xiezhi の意思決定・アルゴリズム実験機能は Gongshu 内部で読み込まれ、ユーザーが Xiezhi を個別に起動することはありません。サブディレクトリ、開発ブランチ、Git worktree から個別に起動しないでください。スマートフォンを初めて接続する場合は、Gongshu の **Camera Setup** を開き、ローカル CA と Pairing QR の案内に従ってください。
 
 <details>
 <summary>リポジトリ構成</summary>

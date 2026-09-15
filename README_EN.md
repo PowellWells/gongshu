@@ -1,7 +1,7 @@
 # Gongshu / 公输
 
 <p align="center">
-  <strong>Modular Robot Vision and Grasping Experimentation Platform</strong>
+  <strong>Modular Robot Intelligence and Grasping Experimentation Platform</strong>
 </p>
 
 <p align="center">
@@ -22,7 +22,9 @@
   <a href="LICENSE"><img alt="Apache-2.0 License" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu is an open-source, modular experimentation platform for robot vision, spatial understanding, grasp planning, and simulation validation.
+Gongshu is an open-source, modular robot-intelligence platform spanning visual input, spatial understanding, grasp planning, simulation validation, experimentation, and intelligent decision-making. Xiezhi is an internal Gongshu capability for decision intelligence and algorithm experiments, not a separate product.
+
+The current product architecture is governed by [XUANSHU AI Architecture Freeze v2.0](XUANSHU_ARCHITECTURE_FREEZE_V2.0.md).
 
 ![Gongshu concept cover](assets/demo-cover.png)
 
@@ -30,12 +32,13 @@ Gongshu is an open-source, modular experimentation platform for robot vision, sp
 
 ## Overview
 
-Gongshu helps researchers organize robot-vision and grasping experiments in one workspace and inspect intermediate results from input through simulation validation. The current open-source baseline focuses on four capability areas:
+Gongshu helps researchers organize robot-vision, grasping, and intelligent-decision experiments in one workspace and inspect intermediate results from input through simulation validation. The platform contains five capability areas:
 
 - **RGB / RGB-D visual input**: phone-camera RGB input plus RGB-D data interfaces for simulation or compatible data sources.
 - **Spatial understanding**: depth, point clouds, target XYZ coordinates, and camera-intrinsics information.
 - **Grasp planning**: grasp-candidate generation, feasibility checks, and ranking for result comparison.
 - **Simulation validation**: experimental grasp validation with MuJoCo / robosuite and Franka Panda.
+- **Decision intelligence and algorithm experiments**: algorithm experiments, decision analysis, and strategy evolution through the internal Xiezhi module.
 
 v0.1.0 is the Gongshu open-source baseline. Real visual input currently comes from a phone camera on the same trusted LAN; physical RGB-D camera integration remains a future direction. This release does not include validated end-to-end real-robot grasping and does not present monocular depth or simulation results as physical-hardware measurements.
 
@@ -85,7 +88,7 @@ The only official entry point for XUANSHU AI is:
 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-Double-click it to enter XUANSHU AI Launcher, then open Gongshu. Phone Camera, Local Image, MuJoCo, and the optional Xiezhi capability inside Gongshu are all dispatched by the main launcher. Do not launch modules from a subdirectory, development branch, or Git worktree. For the first phone connection, open **Camera Setup** in Gongshu and follow the local CA and pairing QR instructions.
+Double-click it to enter XUANSHU AI Launcher, then open Gongshu. Gongshu internally loads Phone Camera, Local Image, MuJoCo, and its Xiezhi decision-intelligence and algorithm-experiment capabilities; users never start Xiezhi separately. Do not launch modules from a subdirectory, development branch, or Git worktree. For the first phone connection, open **Camera Setup** in Gongshu and follow the local CA and pairing QR instructions.
 
 <details>
 <summary>Repository layout</summary>

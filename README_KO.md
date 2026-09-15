@@ -1,7 +1,7 @@
 # Gongshu / 公输
 
 <p align="center">
-  <strong>Modular Robot Vision and Grasping Experimentation Platform</strong>
+  <strong>Modular Robot Intelligence and Grasping Experimentation Platform</strong>
 </p>
 
 <p align="center">
@@ -22,7 +22,9 @@
   <a href="LICENSE"><img alt="Apache-2.0 라이선스" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu는 시각 입력, 공간 이해, 파지 계획, 시뮬레이션 검증에 초점을 맞춘 오픈 소스 모듈형 로봇 비전 및 파지 실험 플랫폼입니다.
+Gongshu는 시각 입력, 공간 이해, 파지 계획, 시뮬레이션 검증, 실험 체계와 지능형 의사결정을 통합하는 오픈 소스 모듈형 로봇 지능 플랫폼입니다. Xiezhi는 Gongshu 내부의 의사결정 및 알고리즘 실험 기능이며 독립 제품이 아닙니다.
+
+현재 제품 아키텍처는 [XUANSHU AI Architecture Freeze v2.0](XUANSHU_ARCHITECTURE_FREEZE_V2.0.md)을 따릅니다.
 
 ![Gongshu 콘셉트 커버](assets/demo-cover.png)
 
@@ -30,12 +32,13 @@ Gongshu는 시각 입력, 공간 이해, 파지 계획, 시뮬레이션 검증�
 
 ## Overview
 
-Gongshu는 연구자가 하나의 워크스페이스에서 로봇 비전 및 파지 실험을 구성하고 입력부터 시뮬레이션 검증까지의 중간 결과를 확인할 수 있도록 지원합니다. 현재 오픈 소스 베이스라인은 다음 네 가지 기능 영역에 초점을 맞춥니다.
+Gongshu는 연구자가 하나의 워크스페이스에서 로봇 비전, 파지 및 지능형 의사결정 실험을 구성하고 입력부터 시뮬레이션 검증까지의 중간 결과를 확인할 수 있도록 지원합니다. 플랫폼은 다음 다섯 가지 기능 영역을 포함합니다.
 
 - **RGB / RGB-D 시각 입력**: 휴대전화 카메라 RGB 입력과 시뮬레이션 또는 호환 데이터 소스를 위한 RGB-D 데이터 인터페이스.
 - **공간 이해**: 깊이, 포인트 클라우드, 대상 XYZ 좌표, 카메라 내부 파라미터 등의 공간 정보.
 - **파지 계획**: 결과 비교를 위한 파지 후보 생성, 실행 가능성 검사, 순위화.
 - **시뮬레이션 검증**: MuJoCo / robosuite와 Franka Panda를 사용한 실험적 파지 검증.
+- **의사결정 지능 및 알고리즘 실험**: 내부 Xiezhi 모듈을 통한 알고리즘 실험, 의사결정 분석 및 전략 발전.
 
 v0.1.0은 Gongshu의 오픈 소스 베이스라인입니다. 실제 영상 입력은 현재 동일한 신뢰할 수 있는 LAN의 휴대전화 카메라에서 제공되며, 실제 RGB-D 카메라 통합은 향후 방향입니다. 이 릴리스에는 검증된 실제 로봇 엔드투엔드 파지가 포함되지 않으며, 단안 깊이나 시뮬레이션 결과를 실제 하드웨어 측정값으로 표현하지 않습니다.
 
@@ -85,7 +88,7 @@ XUANSHU AI의 유일한 공식 실행 진입점:
 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-이 파일을 두 번 클릭해 XUANSHU AI Launcher로 들어간 뒤 Gongshu를 여십시오. Phone Camera, Local Image, MuJoCo와 Gongshu 내부의 선택적 Xiezhi 기능은 모두 메인 런처가 실행합니다. 하위 디렉터리, 개발 브랜치 또는 Git worktree에서 모듈을 따로 실행하지 마십시오. 휴대전화를 처음 연결할 때는 Gongshu에서 **Camera Setup**을 열고 로컬 CA와 Pairing QR 안내를 따르십시오.
+이 파일을 두 번 클릭해 XUANSHU AI Launcher로 들어간 뒤 Gongshu를 여십시오. Phone Camera, Local Image, MuJoCo와 Xiezhi 의사결정·알고리즘 실험 기능은 Gongshu 내부에서 로드되며 사용자가 Xiezhi를 별도로 실행하지 않습니다. 하위 디렉터리, 개발 브랜치 또는 Git worktree에서 모듈을 따로 실행하지 마십시오. 휴대전화를 처음 연결할 때는 Gongshu에서 **Camera Setup**을 열고 로컬 CA와 Pairing QR 안내를 따르십시오.
 
 <details>
 <summary>저장소 구조</summary>
