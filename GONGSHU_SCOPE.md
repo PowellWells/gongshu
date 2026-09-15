@@ -3,6 +3,11 @@
 Status: Boundary Freeze v0.1
 Effective date: 2026-09-11
 
+Product hierarchy and module-dependency rules are governed by
+`XUANSHU_ARCHITECTURE_FREEZE_V1.0.md`. This document remains the open-source
+and distribution boundary; it does not redefine Xiezhi as a peer platform or a
+required Gongshu core dependency.
+
 ## Purpose
 
 This document defines the open-source boundary of Gongshu. It distinguishes the
