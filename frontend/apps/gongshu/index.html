@@ -375,8 +375,14 @@
             <p id="xiezhiPreviewCopy">为未来算法迭代和机器人行为验证预留统一实验入口。</p>
             <div class="xiezhi-context-placeholder">
               <small>GONGSHU WORKSPACE CONTEXT</small>
-              <strong>可选决策层已就绪</strong>
-              <p>当前随 Gongshu 启动，承接观测并返回 Xiezhi 决策；关闭时仍可保持原工作流。</p>
+              <strong>Xiezhi Runtime</strong>
+              <dl class="xiezhi-runtime-grid" aria-live="polite">
+                <div><dt>Status</dt><dd id="xiezhiRuntimeStatus">CONNECTING</dd></div>
+                <div><dt>Connection</dt><dd id="xiezhiConnectionStatus">WAITING</dd></div>
+                <div><dt>Context</dt><dd id="xiezhiRuntimeContext">Gongshu</dd></div>
+                <div><dt>Latest Event</dt><dd id="xiezhiLatestEvent">NONE</dd></div>
+              </dl>
+              <p>仅同步运行状态与 MuJoCo 生命周期事件，不参与决策或控制。</p>
             </div>
           </section>
 

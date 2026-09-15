@@ -5,6 +5,10 @@
   const copy = document.querySelector("#xiezhiPreviewCopy");
   const notice = document.querySelector("#notice");
   const actions = [...document.querySelectorAll("[data-xiezhi-action]")];
+  const runtimeStatus = document.querySelector("#xiezhiRuntimeStatus");
+  const connectionStatus = document.querySelector("#xiezhiConnectionStatus");
+  const runtimeContext = document.querySelector("#xiezhiRuntimeContext");
+  const latestEvent = document.querySelector("#xiezhiLatestEvent");
   let noticeTimer = 0;
 
   if (!title || !copy || !notice || !actions.length) return;
@@ -26,4 +30,33 @@
       showPlaceholderNotice(button.dataset.xiezhiAction);
     });
   });
+
+  function eventLabel(value) {
+    if (!value) return "NONE";
+    return String(value).split("_").map((part) => (
+      part.charAt(0).toUpperCase() + part.slice(1)
+    )).join(" ");
+  }
+
+  async function refreshRuntimeStatus() {
+    if (!runtimeStatus || !connectionStatus || !runtimeContext || !latestEvent) return;
+    try {
+      const response = await fetch("/api/xiezhi/status", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const state = await response.json();
+      runtimeStatus.textContent = String(state.status || "unknown").toUpperCase();
+      connectionStatus.textContent = state.connected ? "CONNECTED" : "OFFLINE";
+      const context = state.context || {};
+      runtimeContext.textContent = context.simulation
+        ? `Gongshu ${eventLabel(context.simulation)}`
+        : "Gongshu";
+      latestEvent.textContent = eventLabel(state.last_event);
+    } catch (_error) {
+      runtimeStatus.textContent = "UNAVAILABLE";
+      connectionStatus.textContent = "OFFLINE";
+    }
+  }
+
+  refreshRuntimeStatus();
+  window.setInterval(refreshRuntimeStatus, 1000);
 })();

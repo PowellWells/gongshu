@@ -4,7 +4,6 @@ seed = 7
 
 [gongshu_xiezhi]
 enabled = true
-algorithm = "rule_based"
 
 [simulation]
 environment = "Lift"

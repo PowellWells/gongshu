@@ -211,6 +211,33 @@
 .xiezhi-context-placeholder strong { color: var(--navy-800); font-size: 12px; }
 .xiezhi-context-placeholder p { margin: 0; color: var(--muted-light); font-size: 8px; line-height: 1.5; }
 
+.xiezhi-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.xiezhi-runtime-grid div {
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 105, 171, 0.16);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.xiezhi-runtime-grid dt {
+  color: var(--muted-light);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.xiezhi-runtime-grid dd {
+  margin: 3px 0 0;
+  color: var(--blue-700);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .xiezhi-capability-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

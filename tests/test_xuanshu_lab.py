@@ -184,8 +184,25 @@ class FrontendPortalTests(unittest.TestCase):
         )
         config = (PROJECT_ROOT / "configs" / "default.toml").read_text(encoding="utf-8")
         self.assertIn('$env:XIEZHI_ENABLED = "1"', launcher)
-        self.assertIn("default_algorithm_registry", launcher)
+        self.assertIn("XiezhiLifecycleRuntime", launcher)
+        self.assertNotIn("default_algorithm_registry", launcher)
         self.assertIn('[gongshu_xiezhi]\nenabled = true', config)
+
+    def test_gongshu_page_displays_live_xiezhi_lifecycle_status(self) -> None:
+        html = (PROJECT_ROOT / "frontend" / "apps" / "gongshu" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        script = (
+            PROJECT_ROOT / "frontend" / "apps" / "gongshu" / "xiezhi-lab.js"
+        ).read_text(encoding="utf-8")
+        for element_id in (
+            "xiezhiRuntimeStatus",
+            "xiezhiConnectionStatus",
+            "xiezhiRuntimeContext",
+            "xiezhiLatestEvent",
+        ):
+            self.assertIn(f'id="{element_id}"', html)
+        self.assertIn('fetch("/api/xiezhi/status"', script)
 
 
 if __name__ == "__main__":

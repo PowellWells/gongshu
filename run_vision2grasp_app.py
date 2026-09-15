@@ -35,6 +35,10 @@ from vision2grasp.condition_processing import (
     StressStrategy,
 )
 from vision2grasp.contracts import RGBFrame
+from vision2grasp.extensions.xiezhi.lifecycle import (
+    GongshuRuntimeContext,
+    GongshuXiezhiLifecycleAdapter,
+)
 from vision2grasp.grasp_planning import (
     GRConvNetDetector,
     GRConvNetDetectorConfig,
@@ -83,6 +87,15 @@ def _spatial_perception_config() -> dict[str, Any]:
     with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
         document = tomllib.load(stream)
     return dict(document["spatial_perception"])
+
+
+def _xiezhi_enabled() -> bool:
+    with (PROJECT_ROOT / "configs" / "default.toml").open("rb") as stream:
+        values = tomllib.load(stream).get("gongshu_xiezhi", {})
+    enabled = values.get("enabled", False)
+    if type(enabled) is not bool:
+        raise TypeError("gongshu_xiezhi.enabled must be bool")
+    return enabled
 
 
 def build_condition_processor() -> ConditionProcessor:
@@ -251,6 +264,9 @@ class Vision2GraspApp:
         self._real_scene: RealSceneProcessor | None = None
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
+        self._xiezhi_watch_lock = threading.Lock()
+        self._xiezhi_watch_generation = 0
+        self.xiezhi = GongshuXiezhiLifecycleAdapter.connect(enabled=_xiezhi_enabled())
         self.target_perception = TargetPerceptionService(
             FastSAMTargetSegmenter(FastSAMTargetSegmenterConfig(device="auto"))
         )
@@ -290,6 +306,8 @@ class Vision2GraspApp:
             return self._real_scene
 
     def stop(self) -> None:
+        with self._xiezhi_watch_lock:
+            self._xiezhi_watch_generation += 1
         self.mujoco_validation.close()
         self.spatial_perception.close()
         self.camera.stop()
@@ -485,11 +503,78 @@ class Vision2GraspApp:
             raise ValueError("Validation request does not match the selected simulation candidate")
         scenario = str(body.get("scenario", "NOMINAL"))
         if outcome.plan is not None:
-            return self.mujoco_validation.start(
+            response = self.mujoco_validation.start(
                 outcome.plan, scenario=scenario, snapshot=snapshot
             )
-        return self.mujoco_validation.start_rejected_attempt(
-            outcome, scenario=scenario, snapshot=snapshot
+        else:
+            response = self.mujoco_validation.start_rejected_attempt(
+                outcome, scenario=scenario, snapshot=snapshot
+            )
+        self._start_xiezhi_lifecycle(scene=scenario)
+        return response
+
+    def _start_xiezhi_lifecycle(self, *, scene: str) -> None:
+        if not self.xiezhi.status().connected:
+            return
+        self.xiezhi.publish(
+            "simulation_start",
+            self._xiezhi_context(scene=scene, status="ready"),
+        )
+        self.xiezhi.publish(
+            "episode_start",
+            self._xiezhi_context(scene=scene, status="running"),
+        )
+        with self._xiezhi_watch_lock:
+            self._xiezhi_watch_generation += 1
+            generation = self._xiezhi_watch_generation
+        threading.Thread(
+            target=self._watch_xiezhi_lifecycle,
+            args=(generation, scene),
+            name="gongshu-xiezhi-lifecycle",
+            daemon=True,
+        ).start()
+
+    def _watch_xiezhi_lifecycle(self, generation: int, scene: str) -> None:
+        seen_states = 0
+        while True:
+            with self._xiezhi_watch_lock:
+                if generation != self._xiezhi_watch_generation:
+                    return
+            snapshot = self.mujoco_validation.snapshot()
+            history = snapshot.get("state_history", [])
+            for entry in history[seen_states:]:
+                state = str(entry.get("state", "")).lower()
+                self.xiezhi.publish(
+                    "step_update",
+                    self._xiezhi_context(scene=scene, status=state),
+                )
+            seen_states = len(history)
+            state = str(snapshot.get("state", "")).upper()
+            if state in {"SUCCESS", "FAILED"}:
+                result = "success" if state == "SUCCESS" else "failure"
+                self.xiezhi.publish(
+                    "execution_finish",
+                    self._xiezhi_context(scene=scene, status=state.lower()),
+                    result=result,
+                )
+                self.xiezhi.publish(
+                    "episode_end",
+                    self._xiezhi_context(scene=scene, status="finished"),
+                    result=result,
+                )
+                return
+            if state == "WAITING" and seen_states:
+                return
+            threading.Event().wait(0.05)
+
+    @staticmethod
+    def _xiezhi_context(*, scene: str, status: str) -> GongshuRuntimeContext:
+        return GongshuRuntimeContext(
+            robot="panda",
+            simulation="mujoco",
+            scene=scene,
+            task="grasp_test",
+            status=status,
         )
 
     def run_simulation(self) -> dict[str, Any]:
@@ -578,6 +663,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/spatial-perception/state",
             "/api/grasp-planning/state",
             "/api/mujoco-validation/state",
+            "/api/xiezhi/status",
         }
         if (
             path in quiet_paths
@@ -616,10 +702,15 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.state-playback/v1",
                         "mujoco-validation.explicit-save/v1",
                         "mujoco-validation.real-appearance-proxy/v1",
+                        "xiezhi-lifecycle.status/v0.1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
+                    "xiezhi": self.app.xiezhi.status().as_dict(),
                 }
             )
+            return
+        if path == "/api/xiezhi/status":
+            self._send_json(self.app.xiezhi.status().as_dict())
             return
         if path == "/api/camera/state":
             self._send_json(self.app.camera.snapshot())

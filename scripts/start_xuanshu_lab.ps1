@@ -26,11 +26,15 @@ if (-not (Test-Path -LiteralPath $pythonwPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
     throw "XUANSHU LAB entry was not found: $entryPath"
 }
-if (-not (Test-Path -LiteralPath (Join-Path $xiezhiSrc "xiezhi\__init__.py") -PathType Leaf)) {
-    throw "Xiezhi runtime was not found: $xiezhiSrc"
+$pythonPathEntries = @((Join-Path $projectRoot "src"))
+$xiezhiSourceAvailable = Test-Path `
+    -LiteralPath (Join-Path $xiezhiSrc "xiezhi\__init__.py") `
+    -PathType Leaf
+if ($xiezhiSourceAvailable) {
+    $pythonPathEntries += $xiezhiSrc
+} else {
+    Write-Warning "Xiezhi runtime was not found; Gongshu will continue without it: $xiezhiSrc"
 }
-
-$pythonPathEntries = @((Join-Path $projectRoot "src"), $xiezhiSrc)
 if ($env:PYTHONPATH) {
     $pythonPathEntries += $env:PYTHONPATH
 }
@@ -42,9 +46,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "PySide6 6.8.3 is not installed in the project environment. Run: .venv\Scripts\python.exe -m pip install -e ."
 }
 
-$xiezhiReady = & $pythonPath -c "from xiezhi.runtime import default_algorithm_registry; assert 'rule_based' in default_algorithm_registry().names()"
-if ($LASTEXITCODE -ne 0) {
-    throw "Xiezhi runtime or its rule_based policy could not be loaded from: $xiezhiSrc"
+if ($xiezhiSourceAvailable) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & $pythonPath -c "from xiezhi.runtime.lifecycle import XiezhiLifecycleRuntime; assert XiezhiLifecycleRuntime().status().connected" 2>$null
+    $xiezhiReady = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $previousErrorActionPreference
+    if (-not $xiezhiReady) {
+        Write-Warning "Xiezhi lifecycle runtime is unavailable; Gongshu will continue normally."
+    }
 }
 
 $arguments = "`"$entryPath`""
@@ -63,4 +73,4 @@ Start-Process `
     -ArgumentList $arguments `
     -WorkingDirectory $projectRoot
 
-Write-Host "Gongshu is starting with the Xiezhi decision layer enabled."
+Write-Host "Gongshu is starting with optional Xiezhi lifecycle support."
