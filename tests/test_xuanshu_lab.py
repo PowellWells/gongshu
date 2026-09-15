@@ -166,6 +166,29 @@ class DesktopShellTests(unittest.TestCase):
 
 
 class FrontendPortalTests(unittest.TestCase):
+    def test_xuanshu_cmd_is_the_only_documented_launcher(self) -> None:
+        official_cmd = (PROJECT_ROOT / "Start-XUANSHU-LAB.cmd").read_text(
+            encoding="utf-8-sig"
+        )
+        legacy_cmd = (PROJECT_ROOT / "Start-Vision2Grasp.cmd").read_text(
+            encoding="utf-8-sig"
+        )
+        legacy_script = (
+            PROJECT_ROOT / "scripts" / "start_vision2grasp.ps1"
+        ).read_text(encoding="utf-8-sig")
+
+        self.assertIn(r"scripts\start_xuanshu_lab.ps1", official_cmd)
+        self.assertIn("Start-XUANSHU-LAB.cmd", legacy_cmd)
+        self.assertNotIn(r"scripts\start_vision2grasp.ps1", legacy_cmd)
+        self.assertIn("start_xuanshu_lab.ps1", legacy_script)
+        self.assertNotIn("run_vision2grasp_app.py", legacy_script)
+
+        for filename in ("README.md", "README_EN.md", "README_JA.md", "README_KO.md"):
+            readme = (PROJECT_ROOT / filename).read_text(encoding="utf-8")
+            self.assertIn(r"G:\Vision2Grasp\Start-XUANSHU-LAB.cmd", readme)
+            self.assertNotIn("Start-Vision2Grasp.cmd", readme)
+            self.assertNotIn(r".\.venv\Scripts\python.exe .\run_vision2grasp_app.py", readme)
+
     def test_original_intro_and_workspace_routes_remain_the_visible_entry(self) -> None:
         portal = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
         moment = (PROJECT_ROOT / "frontend" / "apps" / "moment" / "index.html").read_text(encoding="utf-8")

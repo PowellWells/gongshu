@@ -79,25 +79,13 @@ py -3.12 -m venv .venv
 
 ### Launch
 
-直接打开 Gongshu：
+XUANSHU AI 平台唯一官方启动入口：
 
 ```text
-Start-Vision2Grasp.cmd
+G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-或使用 PowerShell：
-
-```powershell
-.\.venv\Scripts\python.exe .\run_vision2grasp_app.py
-```
-
-默认工作台地址为 `http://127.0.0.1:8765/apps/gongshu/index.html`。首次连接手机时，在 Gongshu 中打开 **连接设置 Camera Setup**，按本地 CA 与 Pairing 二维码引导完成连接。
-
-也可从现有 XUANSHU LAB 门户进入：
-
-```text
-Start-XUANSHU-LAB.cmd
-```
+双击该文件进入 XUANSHU AI Launcher，再打开 Gongshu。Phone Camera、Local Image、MuJoCo 和 Gongshu 内部的可选 Xiezhi 能力均由主启动器统一调度；不要从子目录、开发分支或 Git 工作树单独启动。首次连接手机时，在 Gongshu 中打开 **连接设置 Camera Setup**，按本地 CA 与 Pairing 二维码引导完成连接。
 
 <details>
 <summary>Repository layout</summary>

@@ -1,7 +1,7 @@
 # XUANSHU AI 项目架构冻结说明 v1.0
 
 - 状态：已确认、后续开发必须遵守
-- 生效日期：2026-09-15
+- 生效日期：2026-09-15（统一启动入口于 2026-09-16 补充冻结）
 - 适用范围：XUANSHU AI、Gongshu 与 Xiezhi 的产品层级、代码依赖、前端关系和视觉关系
 - 性质：架构约束，不代表新增功能、算法或接口已经实现
 
@@ -115,7 +115,36 @@ Xiezhi 负责智能决策实验：算法选择、决策输出、实验记录和�
 
 截至本冻结记录，Xiezhi 仅完成 Gongshu 页面内部的前端结构、品牌融合与交互占位；未实现算法、后端、API、实验逻辑或模块数据通信。
 
-## 9. 文档关系与变更控制
+## 9. 统一启动入口冻结
+
+XUANSHU AI 平台唯一官方启动入口为：
+
+```text
+G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+```
+
+固定启动链路：
+
+```text
+Start-XUANSHU-LAB.cmd
+→ XUANSHU AI Launcher
+→ Gongshu
+→ Gongshu 内部的 Offline Image、MuJoCo 与可选 Xiezhi 能力
+```
+
+必须遵守以下不变量：
+
+1. 不为 Gongshu、Xiezhi、Offline Image Mode、MuJoCo Experiment 或后续模块新增独立的官方启动入口。
+2. 不要求用户进入子项目、开发分支或 Git 工作树启动任何模块。
+3. 不创建新的 `start_xxx.bat` 或 `start_xxx.cmd` 替代主入口。
+4. 所有模块的打开与调度必须由 XUANSHU AI Launcher 完成。
+5. 历史兼容启动文件若暂时保留，只能转发到 `Start-XUANSHU-LAB.cmd`，不得直接启动子服务。
+6. Git 工作树只用于隔离开发；功能验收后应合入 `G:\Vision2Grasp`，不得形成第二套用户启动方式。
+7. 用户文档、测试说明和交付说明只将 `Start-XUANSHU-LAB.cmd` 标记为官方入口。
+
+该入口规范统一的是用户启动路径，不改变 Gongshu 可脱离 Xiezhi 正常运行的依赖原则。
+
+## 10. 文档关系与变更控制
 
 - 本文冻结产品架构和模块依赖关系。
 - `GONGSHU_SCOPE.md` 继续冻结 Gongshu 的开源与分发边界；它不改变本文定义的产品层级。

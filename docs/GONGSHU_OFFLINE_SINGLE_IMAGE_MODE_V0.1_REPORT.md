@@ -1,5 +1,15 @@
 # Gongshu Offline Single Image Mode v0.1 Report
 
+## 0. 启动入口
+
+本模式已接入主仓库 Gongshu，不创建独立启动器。唯一官方启动方式为双击：
+
+```text
+G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+```
+
+进入 XUANSHU AI Launcher 后打开 Gongshu，并在 `Vision Source` 中选择 `Local Image`。
+
 ## 1. 新增文件
 
 - `src/vision2grasp/sources/local_image.py`
@@ -75,7 +85,7 @@ artifacts/offline_run/<run_id>/
 - Local Image 专项：5/5 通过；
 - Gongshu Workspace：12/12 通过；
 - Xiezhi Runtime：7 通过、1 个既有环境条件测试跳过；
-- 全量回归：214 通过、7 个既有环境条件测试跳过；
+- 全量回归：共运行 215 项，214 项通过、1 个既有 Xiezhi 集成环境条件测试跳过；
 - JavaScript 语法与 `git diff --check`：通过；
 - 实际 UI 端到端验证：图片加载、Observation、12 个目标候选、空间感知、抓取规划、MuJoCo 均完成。
 
