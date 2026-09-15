@@ -10,6 +10,18 @@
 
 .workspace-header { grid-row: 1; }
 .workspace-toolbar { grid-row: 2; }
+.local-image-input { grid-row: 3; }
+
+.workspace-app.has-local-image-input {
+  grid-template-rows: 64px 70px 52px minmax(680px, calc(100dvh - 186px)) auto;
+}
+
+.workspace-app.has-local-image-input .workspace-shell {
+  grid-row: 4;
+  height: calc(100dvh - 186px);
+}
+
+.workspace-app.has-local-image-input .xiezhi-module { grid-row: 5; }
 
 .workspace-shell {
   grid-row: 3;

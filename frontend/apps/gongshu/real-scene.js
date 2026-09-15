@@ -41,13 +41,6 @@
     simulation: "MuJoCo Validation",
   });
 
-  const SOURCE_LABELS = Object.freeze({
-    phone: "手机 Phone",
-    usb: "USB 相机 USB Camera",
-    network: "网络流 Network Stream",
-    rgbd: "RGB-D 相机 RGB-D Camera",
-  });
-
   const CONDITION_LABELS = Object.freeze({
     NORMAL: "正常条件 Normal",
     BLUR: "模糊条件 Blur",
@@ -136,6 +129,11 @@
     pipelineBadge: byId("pipelineBadge"),
     pipelineMessage: byId("pipelineMessage"),
     sourceSelect: byId("sourceSelect"),
+    localImageInput: byId("localImageInput"),
+    localImageFile: byId("localImageFile"),
+    localImageFilename: byId("localImageFilename"),
+    loadLocalImageButton: byId("loadLocalImageButton"),
+    localImageStatus: byId("localImageStatus"),
     conditionSelect: byId("conditionSelect"),
     conditionStatus: byId("conditionStatus"),
     conditionVisualValue: byId("conditionVisualValue"),
@@ -163,6 +161,7 @@
     startGraspHint: byId("startGraspHint"),
     resetPipelineButton: byId("resetPipelineButton"),
     liveState: byId("liveState"),
+    liveViewTitle: byId("liveViewTitle"),
     liveEmpty: byId("liveEmpty"),
     liveMedia: byId("liveMedia"),
     targetOverlay: byId("targetOverlay"),
@@ -302,6 +301,8 @@
   let viewMode = "auto";
   let primaryView = "live";
   let workspaceMode = "phone";
+  let selectedLocalImage = null;
+  let localImageState = null;
   let latestCameraState = null;
   let cameraShouldStream = false;
   let liveStreamStarted = false;
@@ -427,6 +428,22 @@
     return latestCameraState?.connection?.status === "LIVE";
   }
 
+  function localImageIsReady() {
+    return workspaceMode === "local_image"
+      && localImageState?.observation?.status === "ready";
+  }
+
+  function setLiveViewTitle(localImage) {
+    els.liveViewTitle.replaceChildren(document.createTextNode(localImage ? "本地视觉 " : "实时视觉 "));
+    const english = document.createElement("b");
+    english.textContent = localImage ? "Local RGB" : "Live RGB";
+    els.liveViewTitle.append(english);
+  }
+
+  function visionSourceIsReady() {
+    return workspaceMode === "phone" ? cameraIsLive() : localImageIsReady();
+  }
+
   function cameraConnectionLabel(status) {
     return {
       LIVE: "实时 Live",
@@ -439,13 +456,9 @@
   }
 
   function updateActionButtons() {
-    const phoneLive = workspaceMode === "phone"
-      && els.sourceSelect.value === "phone"
-      && cameraIsLive();
-    const mayAnalyze = phoneLive && pipeline.state === "LIVE" && !targetAnalysisRunning;
-    const mayStart = workspaceMode === "phone"
-      && els.sourceSelect.value === "phone"
-      && canStartGrasp(pipeline.state, targetPerceptionState);
+    const sourceReady = visionSourceIsReady();
+    const mayAnalyze = sourceReady && pipeline.state === "LIVE" && !targetAnalysisRunning;
+    const mayStart = sourceReady && canStartGrasp(pipeline.state, targetPerceptionState);
     els.analyzeTargetsButton.disabled = !mayAnalyze;
     els.startGraspButton.disabled = !mayStart;
     const validationReady = pipeline.state === "GRASP_PLANNING"
@@ -570,7 +583,7 @@
     const selected = state.selected_target;
     const frame = state.frame;
     renderTargetHitboxes(state);
-    els.analysisControls.hidden = !cameraShouldStream && !selected;
+    els.analysisControls.hidden = workspaceMode === "local_image" || (!cameraShouldStream && !selected);
     els.analysisStatus.textContent = state.message || "扫描中 Scanning";
     els.visionScanFx.classList.toggle("is-scanning", !selected && cameraShouldStream);
     els.targetLockBanner.hidden = !selected;
@@ -582,20 +595,26 @@
       els.targetLockValue.textContent = state.tracking ? "目标跟踪 Tracking" : "目标已锁定 Target Locked";
       els.targetDetail.textContent = `源帧 Frame ${selected.source_frame_id} · 手动选择 Manual Selection · 高清叠加 HD Overlay`;
     } else {
-      els.liveState.textContent = "扫描中 Scanning";
+      els.liveState.textContent = workspaceMode === "local_image" && candidates.length
+        ? "候选已就绪 Candidates Ready"
+        : "扫描中 Scanning";
       els.targetStatus.textContent = state.status === "NO_CANDIDATES" ? "未发现目标 No Candidates" : candidates.length ? "可选择 Selectable" : "扫描中 Scanning";
       els.targetValue.textContent = candidates.length ? `${candidates.length} 个候选 Candidates` : "等待选择 WAITING";
       els.targetClassValue.textContent = candidates.length ? "未知目标 Unknown Object" : "暂无目标 No Target";
       els.targetLockValue.textContent = candidates.length ? "等待选择 Selectable" : "扫描中 Scanning";
       els.targetDetail.textContent = candidates.length
-        ? "点击高清实时画面中的目标框以锁定目标。"
+        ? workspaceMode === "local_image"
+          ? "点击 Local RGB 中的目标框以锁定目标。"
+          : "点击高清实时画面中的目标框以锁定目标。"
         : state.status === "NO_CANDIDATES"
           ? "当前实时画面未发现有效目标，系统将继续扫描。"
           : "连接手机后自动扫描实时 RGB 画面。";
     }
     if (frame) {
       els.liveResolution.textContent = `${frame.width} × ${frame.height}`;
-      els.liveSourceLabel.textContent = `手机 Phone · 高清实时视觉 HD Live RGB`;
+      els.liveSourceLabel.textContent = workspaceMode === "local_image"
+        ? `本地图片 Local Image · ${localImageState?.observation?.image_name || "Local RGB"}`
+        : "手机相机 Phone Camera · 高清实时视觉 HD Live RGB";
     }
     updateActionButtons();
   }
@@ -656,7 +675,9 @@
       panel.dataset.slot = primary ? "primary" : String(auxiliaryViews.indexOf(key) + 1);
       panel.setAttribute("aria-current", primary ? "true" : "false");
     });
-    els.statusPrimaryView.textContent = VIEW_LABELS[view];
+    els.statusPrimaryView.textContent = view === "live" && workspaceMode === "local_image"
+      ? "Local RGB"
+      : VIEW_LABELS[view];
   }
 
   function setViewMode(mode, pinnedView = primaryView) {
@@ -734,7 +755,9 @@
     els.targetValue.textContent = "等待选择 WAITING";
     els.targetClassValue.textContent = "NOT AVAILABLE";
     els.targetLockValue.textContent = "WAITING";
-    els.targetDetail.textContent = "连接手机后自动扫描实时 RGB 画面。";
+    els.targetDetail.textContent = workspaceMode === "local_image"
+      ? "加载本地图片后扫描目标。"
+      : "连接手机后自动扫描实时 RGB 画面。";
     renderConditionReport(null);
     els.spatialInspectorStatus.textContent = "WAITING";
     els.spatialDepthValue.textContent = "等待计算 WAITING";
@@ -976,31 +999,142 @@
   }
 
   async function selectSource(source) {
-    workspaceMode = "phone";
+    workspaceMode = source === "local_image" ? "local_image" : "phone";
+    stopLiveVisionLoop();
     stopLiveView();
     if (pipeline.state !== "LIVE") pipeline.reset({ reason: "source-changed" });
     try { await apiPost("/api/target-perception/reset"); } catch { /* source switch still clears local state */ }
     clearWorkspaceOutputs();
     if (source === "phone") {
-      els.liveSourceLabel.textContent = "手机 Phone · 等待连接";
+      await apiPost("/api/vision-source/select", { source: "phone_camera" });
+      document.body.classList.remove("has-local-image-input");
+      els.localImageInput.hidden = true;
+      setLiveViewTitle(false);
+      els.liveMedia.alt = "手机局域网实时 RGB 画面";
+      setPrimaryView(primaryView);
+      els.liveEmpty.querySelector("strong").textContent = "等待视觉输入 Waiting for Source";
+      els.liveEmpty.querySelector("span").textContent = "连接手机后，局域网 WebRTC 真实画面将在此显示";
+      els.liveEmpty.querySelector("button").hidden = false;
+      els.liveSourceLabel.textContent = "手机相机 Phone Camera · 等待连接";
       if (latestCameraState) renderCameraState(latestCameraState);
-      showNotice("已选择手机 Phone；连接能力沿用现有 WebRTC LAN 链路。");
+      showNotice("已选择手机相机 Phone Camera；连接能力沿用现有 WebRTC LAN 链路。");
       return;
     }
-    stopLiveView();
-    els.liveState.textContent = "PENDING";
+    document.body.classList.add("has-local-image-input");
+    els.localImageInput.hidden = false;
+    setLiveViewTitle(true);
+    els.liveMedia.alt = "本地图片 RGB 视觉输入";
+    setPrimaryView(primaryView);
+    els.liveEmpty.querySelector("strong").textContent = "等待本地图片 Waiting for Local Image";
+    els.liveEmpty.querySelector("span").textContent = "选择一张图片并加载，随后进入现有 Gongshu Pipeline";
+    els.liveEmpty.querySelector("button").hidden = true;
+    if (localImageState?.observation?.status === "ready") {
+      await apiPost("/api/vision-source/select", { source: "local_image" });
+      showLocalImage(localImageState.observation);
+      await analyzeTargets();
+      return;
+    }
+    els.liveState.textContent = "WAITING";
     els.liveState.classList.remove("is-live", "has-data");
-    els.liveSourceLabel.textContent = `${SOURCE_LABELS[source]} · MODULE PENDING`;
+    els.liveSourceLabel.textContent = "本地图片 Local Image · 等待加载";
     els.liveResolution.textContent = "—";
-    els.liveConnection.textContent = "Not Available";
-    els.statusConnection.textContent = "Module Pending";
+    els.liveConnection.textContent = "Waiting";
+    els.statusConnection.textContent = "Waiting for Local Image";
     updateActionButtons();
-    showNotice(`${SOURCE_LABELS[source]} 接口已预留，本轮未接入。`, "error");
+    showNotice("已选择本地图片 Local Image；请选择并加载一张图片。");
+  }
+
+  function showLocalImage(observation) {
+    localImageState = { observation };
+    const resolution = observation.resolution || {};
+    els.liveMedia.src = `/api/vision-source/local-image/preview.jpg?run=${encodeURIComponent(observation.run_id)}&t=${Date.now()}`;
+    els.liveMedia.onload = () => {
+      if (workspaceMode !== "local_image") return;
+      els.liveMedia.hidden = false;
+      els.liveEmpty.hidden = true;
+    };
+    els.liveMedia.onerror = () => {
+      els.liveMedia.hidden = true;
+      els.liveEmpty.hidden = false;
+    };
+    els.liveState.textContent = "已加载 READY";
+    els.liveState.classList.add("is-live");
+    els.liveSourceLabel.textContent = `本地图片 Local Image · ${observation.image_name}`;
+    els.liveResolution.textContent = `${resolution.width} × ${resolution.height}`;
+    els.liveConnection.textContent = "已加载 Ready";
+    els.statusConnection.textContent = "Local Image Ready";
+    els.localImageFilename.textContent = observation.image_name;
+    els.localImageStatus.textContent = "READY";
+    els.localImageStatus.className = "local-image-status is-ready";
+    updateActionButtons();
+  }
+
+  async function restoreVisionSource() {
+    try {
+      const state = await apiGet(`/api/vision-source/state?t=${Date.now()}`);
+      const observation = state?.local_image?.observation;
+      if (state?.source !== "local_image" || observation?.status !== "ready") return;
+      workspaceMode = "local_image";
+      els.sourceSelect.value = "local_image";
+      document.body.classList.add("has-local-image-input");
+      els.localImageInput.hidden = false;
+      setLiveViewTitle(true);
+      els.liveMedia.alt = "本地图片 RGB 视觉输入";
+      els.liveEmpty.querySelector("strong").textContent = "等待本地图片 Waiting for Local Image";
+      els.liveEmpty.querySelector("span").textContent = "选择一张图片并加载，随后进入现有 Gongshu Pipeline";
+      els.liveEmpty.querySelector("button").hidden = true;
+      showLocalImage(observation);
+      setPrimaryView(primaryView);
+    } catch { /* a clean app start has no local image to restore */ }
+  }
+
+  function fileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = String(reader.result || "");
+        const separator = value.indexOf(",");
+        if (separator < 0) reject(new Error("无法读取图片内容"));
+        else resolve(value.slice(separator + 1));
+      };
+      reader.onerror = () => reject(reader.error || new Error("无法读取图片"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function loadLocalImage() {
+    if (!selectedLocalImage || workspaceMode !== "local_image") return;
+    els.loadLocalImageButton.disabled = true;
+    els.localImageStatus.textContent = "LOADING";
+    els.localImageStatus.className = "local-image-status";
+    targetAnalysisRunning = true;
+    updateActionButtons();
+    try {
+      if (pipeline.state !== "LIVE") pipeline.reset({ reason: "local-image-loaded" });
+      clearWorkspaceOutputs();
+      workspaceMode = "local_image";
+      const loaded = await apiPost("/api/vision-source/local-image/load", {
+        filename: selectedLocalImage.name,
+        data_base64: await fileAsBase64(selectedLocalImage),
+        ...conditionExperimentSettings(),
+      });
+      showLocalImage(loaded.observation);
+      renderTargetPerception(loaded.target_perception);
+      showNotice(`本地图片已加载并创建 Observation：${loaded.observation.image_name}`);
+    } catch (error) {
+      els.localImageStatus.textContent = "FAILED";
+      els.localImageStatus.className = "local-image-status is-error";
+      showNotice(`本地图片加载失败：${error.message}`, "error");
+    } finally {
+      targetAnalysisRunning = false;
+      els.loadLocalImageButton.disabled = !selectedLocalImage;
+      updateActionButtons();
+    }
   }
 
   function showFrozenTargetFrame(state) {
     analysisFrozen = false;
-    if (cameraShouldStream) startLiveView();
+    if (workspaceMode === "phone" && cameraShouldStream) startLiveView();
     els.liveState.textContent = state.status === "TARGET_LOCKED" ? "目标已锁定 Target Locked" : "扫描中 Scanning";
     els.liveState.classList.add("is-live");
     renderTargetPerception(state);
@@ -1008,7 +1142,7 @@
   }
 
   async function analyzeTargets() {
-    if (targetAnalysisRunning || pipeline.state !== "LIVE" || !cameraIsLive()) return;
+    if (targetAnalysisRunning || pipeline.state !== "LIVE" || !visionSourceIsReady()) return;
     const requestRevision = ++targetAnalysisRequest;
     targetAnalysisRunning = true;
     els.analysisControls.hidden = false;
@@ -1024,9 +1158,10 @@
       if (requestRevision !== targetAnalysisRequest) return;
       analysisFrozen = false;
       renderTargetPerception(state);
+      const sourceLabel = workspaceMode === "local_image" ? "本地图片" : "实时画面";
       showNotice(state.status === "NO_CANDIDATES"
-        ? "当前实时画面未发现目标，系统将继续扫描。"
-        : `实时检测已更新，发现 ${state.candidates.length} 个可选目标。`,
+        ? `${sourceLabel}未发现目标。`
+        : `${sourceLabel}检测已更新，发现 ${state.candidates.length} 个可选目标。`,
       state.status === "NO_CANDIDATES" ? "error" : "success");
     } catch (error) {
       if (requestRevision !== targetAnalysisRequest) return;
@@ -1037,7 +1172,7 @@
       els.analyzeTargetsButton.querySelector("span").textContent = "立即扫描";
       els.analyzeTargetsButton.querySelector("small").textContent = "Scan Now";
       updateActionButtons();
-      if (targetPerceptionState?.status !== "CANDIDATES") scheduleLiveVision(650);
+      if (workspaceMode === "phone" && targetPerceptionState?.status !== "CANDIDATES") scheduleLiveVision(650);
     }
   }
 
@@ -1206,8 +1341,14 @@
     }
     if (pipeline.state !== "LIVE") pipeline.reset({ reason: "resume-live" });
     clearWorkspaceOutputs();
-    if (latestCameraState) renderCameraState(latestCameraState);
-    showNotice("已返回实时画面 Live RGB；可重新分析目标。");
+    if (workspaceMode === "local_image" && localImageState?.observation) {
+      showLocalImage(localImageState.observation);
+      await analyzeTargets();
+      showNotice("已返回本地图片 Local RGB；可重新选择目标。");
+    } else {
+      if (latestCameraState) renderCameraState(latestCameraState);
+      showNotice("已返回实时画面 Live RGB；可重新分析目标。");
+    }
   }
 
   function depthModeLabel(mode) {
@@ -1880,7 +2021,7 @@
       els.spatialFooter.textContent = `FRAME ${frame.id} · ${target.id}`;
       els.statusSnapshot.textContent = `${frame.width} × ${frame.height} · Frame ${frame.id}`;
       pipeline.transition("SCENE_CAPTURED", {
-        source: "phone-live-rgb",
+        source: workspaceMode === "local_image" ? "local-image" : "phone-live-rgb",
         snapshotId: snapshot.snapshot_id,
         targetId: target.id,
         sourceFrameId: frame.id,
@@ -1911,13 +2052,15 @@
   }
 
   async function resetPipeline() {
-    workspaceMode = "phone";
     try { await apiPost("/api/target-perception/reset"); } catch { /* local reset remains available */ }
     clearWorkspaceOutputs();
     if (pipeline.state !== "LIVE") pipeline.reset({ reason: "user-reset" });
     setViewMode("auto");
     if (els.sourceSelect.value === "phone" && latestCameraState) renderCameraState(latestCameraState);
-    else selectSource(els.sourceSelect.value);
+    else if (workspaceMode === "local_image" && localImageState?.observation) {
+      showLocalImage(localImageState.observation);
+      await analyzeTargets();
+    } else await selectSource(els.sourceSelect.value);
     showNotice("流程已重置为 LIVE，未生成任何推断数据。");
   }
 
@@ -2147,6 +2290,14 @@
   });
 
   els.sourceSelect.addEventListener("change", () => selectSource(els.sourceSelect.value));
+  els.localImageFile.addEventListener("change", () => {
+    selectedLocalImage = els.localImageFile.files?.[0] || null;
+    els.localImageFilename.textContent = selectedLocalImage?.name || "尚未选择 No file selected";
+    els.loadLocalImageButton.disabled = !selectedLocalImage;
+    els.localImageStatus.textContent = selectedLocalImage ? "SELECTED" : "WAITING";
+    els.localImageStatus.className = "local-image-status";
+  });
+  els.loadLocalImageButton.addEventListener("click", loadLocalImage);
   els.conditionSelect.addEventListener("change", () => {
     const protocol = els.conditionSelect.value;
     showNotice(protocol === "NORMAL"
@@ -2394,6 +2545,7 @@
   renderPipeline();
   setPrimaryView("live");
   (async function initializeWorkspace() {
+    await restoreVisionSource();
     await restoreTargetPerceptionState();
     await restoreSpatialPerceptionState();
     await restoreGraspAndValidationState();

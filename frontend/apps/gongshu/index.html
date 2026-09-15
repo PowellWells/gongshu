@@ -42,12 +42,10 @@
 
     <section class="workspace-toolbar" aria-label="抓取任务控制栏">
       <label class="control-field">
-        <span>视觉输入 Source</span>
+        <span>视觉输入 Vision Source</span>
         <select id="sourceSelect">
-          <option value="phone">手机 Phone</option>
-          <option value="usb">USB 相机 USB Camera</option>
-          <option value="network">网络流 Network Stream</option>
-          <option value="rgbd">RGB-D 相机 RGB-D Camera</option>
+          <option value="phone">手机相机 Phone Camera</option>
+          <option value="local_image">本地图片 Local Image</option>
         </select>
       </label>
       <label class="control-field">
@@ -89,11 +87,23 @@
       </button>
     </section>
 
+    <section id="localImageInput" class="local-image-input" aria-label="Local Image Input" hidden>
+      <div>
+        <span>本地图片输入</span>
+        <strong>Local Image Input</strong>
+      </div>
+      <label class="local-image-picker" for="localImageFile">选择图片 Choose Image</label>
+      <input id="localImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden />
+      <p>文件名：<strong id="localImageFilename">尚未选择 No file selected</strong></p>
+      <button id="loadLocalImageButton" type="button" disabled>加载图片 Load Image</button>
+      <span id="localImageStatus" class="local-image-status">WAITING</span>
+    </section>
+
     <main class="workspace-shell">
       <section id="viewGrid" class="workspace-view-grid" aria-label="Vision-to-Grasp 四视图 Workspace">
         <article id="livePanel" class="workspace-view is-primary" data-view="live" data-slot="primary">
           <header class="workspace-view-header">
-            <div><span>01</span><h2>实时视觉 <b>Live RGB</b></h2></div>
+            <div><span>01</span><h2 id="liveViewTitle">实时视觉 <b>Live RGB</b></h2></div>
             <div class="view-header-actions">
               <strong id="liveState" class="module-state">未连接 Disconnected</strong>
               <button class="pin-view-button" type="button" data-pin-view="live" aria-label="固定实时视觉为主视图">Pin</button>

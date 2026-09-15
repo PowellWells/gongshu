@@ -49,7 +49,12 @@ from vision2grasp.grasp_planning import (
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
-from vision2grasp.sources import OpenCVCameraConfig, OpenCVCameraSource, RGBArraySource
+from vision2grasp.sources import (
+    LocalImageAdapter,
+    OpenCVCameraConfig,
+    OpenCVCameraSource,
+    RGBArraySource,
+)
 from vision2grasp.spatial_perception import (
     CalibratedCameraIntrinsicsProvider,
     MaskSpatialPerceptionProvider,
@@ -80,7 +85,8 @@ CALIBRATION_PATH = PROJECT_ROOT / "artifacts" / "real_scene" / "table_calibratio
 RUNTIME_ROOT = FRONTEND_ROOT / "runtime"
 RUNTIME_RUNS_ROOT = RUNTIME_ROOT / "runs"
 LAUNCHER_LOG_ROOT = PROJECT_ROOT / "artifacts" / "launcher"
-MAX_JSON_BODY_BYTES = 20 * 1024 * 1024
+OFFLINE_RUNS_ROOT = PROJECT_ROOT / "artifacts" / "offline_run"
+MAX_JSON_BODY_BYTES = 24 * 1024 * 1024
 
 
 def _spatial_perception_config() -> dict[str, Any]:
@@ -261,6 +267,8 @@ class Vision2GraspApp:
         self.camera = PhoneLANProvider(
             phone_camera_config or PhoneLANConfig(project_root=PROJECT_ROOT)
         )
+        self.local_image = LocalImageAdapter(OFFLINE_RUNS_ROOT)
+        self._vision_source = "phone_camera"
         self._real_scene: RealSceneProcessor | None = None
         self._real_scene_lock = threading.Lock()
         self._simulation_lock = threading.Lock()
@@ -330,15 +338,62 @@ class Vision2GraspApp:
             kind="image",
         )
 
+    def select_vision_source(self, source: str) -> dict[str, object]:
+        if source not in {"phone_camera", "local_image"}:
+            raise ValueError("vision source must be phone_camera or local_image")
+        if source == "local_image" and self.local_image.active_run_id() is None:
+            raise RuntimeError("load a local image before activating Local Image")
+        self._vision_source = source
+        return {"status": "ok", "source": source}
+
+    def vision_source_snapshot(self) -> dict[str, object]:
+        return {
+            "schema_version": "gongshu.vision-source/v0.1",
+            "source": self._vision_source,
+            "local_image": self.local_image.snapshot(),
+        }
+
+    def load_local_image(self, request: dict[str, Any]) -> dict[str, object]:
+        filename = str(request.get("filename", ""))
+        encoded = str(request.get("data_base64", ""))
+        try:
+            payload = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError("local image payload is not valid base64") from error
+
+        observation = self.local_image.load(filename, payload)
+        self._vision_source = "local_image"
+        self.spatial_perception.reset()
+        self.grasp_planning.reset()
+        self.mujoco_validation.reset()
+        self.target_perception.reset()
+        target_state = self.analyze_phone_targets(request)
+        return {
+            "schema_version": "gongshu.local-image-load/v0.1",
+            "status": "ready",
+            "observation": observation.as_dict(),
+            "preview_url": "/api/vision-source/local-image/preview.jpg",
+            "target_perception": target_state,
+        }
+
+    def _capture_vision_frame(self) -> RGBFrame:
+        if self._vision_source == "local_image":
+            return self.local_image.capture()
+        return self.camera.capture()
+
+    def _record_offline_pipeline_status(self, status: str) -> None:
+        if getattr(self, "_vision_source", "phone_camera") == "local_image":
+            self.local_image.record_pipeline_status(status)
+
     def analyze_phone_targets(self, request: dict[str, Any] | None = None) -> dict[str, object]:
-        """Freeze one real Phone RGB frame and generate selectable instances."""
+        """Freeze one frame from the active source and generate selectable instances."""
 
         self.spatial_perception.reset()
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
         body = request or {}
         conditioned = self.condition_experiment.process(
-            self.camera.capture(),
+            self._capture_vision_frame(),
             self._condition_protocol(body),
             strategy=self._stress_strategy(body),
             level=self._stress_level(body),
@@ -346,7 +401,9 @@ class Vision2GraspApp:
             random_seed=self._stress_seed(body),
             research_mode=str(body.get("mode", "RESEARCH")).upper() == "RESEARCH",
         )
-        return self.target_perception.analyze(conditioned)
+        result = self.target_perception.analyze(conditioned)
+        self._record_offline_pipeline_status(str(result.get("status", "ANALYZED")))
+        return result
 
     def track_phone_target(
         self, request: dict[str, Any] | None = None
@@ -354,6 +411,8 @@ class Vision2GraspApp:
         """Update only the high-resolution overlay for a locked demo target."""
 
         body = request or {}
+        if getattr(self, "_vision_source", "phone_camera") == "local_image":
+            raise RuntimeError("Local Image is static and does not support target tracking")
         frame = self.camera.capture()
         if (
             str(body.get("mode", "RESEARCH")).upper() == "RESEARCH"
@@ -451,18 +510,22 @@ class Vision2GraspApp:
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
         snapshot = self.target_perception.selected_scene_snapshot()
-        return self.spatial_perception.start(
+        result = self.spatial_perception.start(
             snapshot,
             expected_snapshot_id=str(request["snapshot_id"]),
             expected_source_frame_id=int(request["source_frame_id"]),
             expected_target_instance_id=str(request["target_instance_id"]),
             expected_source_timestamp_s=float(request["source_timestamp_s"]),
         )
+        self._record_offline_pipeline_status("SPATIAL_ANALYSIS")
+        return result
 
     def retry_spatial(self) -> dict[str, object]:
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
-        return self.spatial_perception.retry()
+        result = self.spatial_perception.retry()
+        self._record_offline_pipeline_status("SPATIAL_ANALYSIS_RETRY")
+        return result
 
     def plan_grasp(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Plan only from the immutable SpatialResult and selected snapshot."""
@@ -476,11 +539,13 @@ class Vision2GraspApp:
         requested_snapshot_id = str(body.get("snapshot_id", "")).strip()
         if requested_snapshot_id and requested_snapshot_id != snapshot.snapshot_id:
             raise ValueError("Grasp Planning request does not match selected Scene Snapshot")
-        return self.grasp_planning.plan(
+        result = self.grasp_planning.plan(
             observation,
             snapshot,
             mode=str(body.get("mode", "RESEARCH")),
         )
+        self._record_offline_pipeline_status("GRASP_PLANNING")
+        return result
 
     def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Create one normalized attempt from a ready or rejected candidate."""
@@ -510,8 +575,42 @@ class Vision2GraspApp:
             response = self.mujoco_validation.start_rejected_attempt(
                 outcome, scenario=scenario, snapshot=snapshot
             )
+        self._record_offline_pipeline_status("MUJOCO_VALIDATION")
+        self._start_offline_run_watch()
         self._start_xiezhi_lifecycle(scene=scenario)
         return response
+
+    def _start_offline_run_watch(self) -> None:
+        if getattr(self, "_vision_source", "phone_camera") != "local_image":
+            return
+        run_id = self.local_image.active_run_id()
+        if run_id is None:
+            return
+        threading.Thread(
+            target=self._watch_offline_run,
+            args=(run_id,),
+            name="gongshu-offline-run",
+            daemon=True,
+        ).start()
+
+    def _watch_offline_run(self, run_id: str) -> None:
+        while True:
+            snapshot = self.mujoco_validation.snapshot()
+            state = str(snapshot.get("status", snapshot.get("state", ""))).upper()
+            if state in {"SUCCESS", "FAILED"}:
+                self.local_image.record_pipeline_status("COMPLETED", run_id=run_id)
+                self.local_image.record_mujoco_result(
+                    {
+                        "status": state,
+                        "reason": snapshot.get("reason"),
+                        "result": snapshot.get("result"),
+                    },
+                    run_id=run_id,
+                )
+                return
+            if state == "WAITING":
+                return
+            threading.Event().wait(0.05)
 
     def _start_xiezhi_lifecycle(self, *, scene: str) -> None:
         if not self.xiezhi.status().connected:
@@ -684,6 +783,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "camera.phone-lan/v1",
                         "camera.lan-live/webrtc",
                         "camera.lan-capture/original",
+                        "vision-source.local-image/v0.1",
                         "target-perception.instance-mask/v1",
                         "condition-processing.classical/v1",
                         "condition-stress-simulation.reproducible/v1",
@@ -712,6 +812,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/xiezhi/status":
             self._send_json(self.app.xiezhi.status().as_dict())
             return
+        if path == "/api/vision-source/state":
+            self._send_json(self.app.vision_source_snapshot())
+            return
         if path == "/api/camera/state":
             self._send_json(self.app.camera.snapshot())
             return
@@ -728,6 +831,16 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             content_type, binary = capture
             self._send_binary(binary, content_type)
+            return
+        if path == "/api/vision-source/local-image/state":
+            self._send_json(self.app.local_image.snapshot())
+            return
+        if path == "/api/vision-source/local-image/preview.jpg":
+            preview = self.app.local_image.preview_jpeg()
+            if preview is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "local image is not ready")
+                return
+            self._send_binary(preview, "image/jpeg")
             return
         if path == "/api/camera/live.mjpeg":
             self._send_camera_mjpeg()
@@ -838,6 +951,12 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             if path == "/api/camera/capture/save":
                 saved = self.app.camera.save_latest_capture()
                 self._send_json({"status": "ok", "path": str(saved)})
+                return
+            if path == "/api/vision-source/select":
+                self._send_json(self.app.select_vision_source(str(body["source"])))
+                return
+            if path == "/api/vision-source/local-image/load":
+                self._send_json(self.app.load_local_image(body))
                 return
             if path == "/api/target-perception/analyze":
                 self._send_json(

@@ -46,6 +46,12 @@ class GongshuWorkspaceTests(unittest.TestCase):
     def test_workspace_has_required_controls_and_fixed_inspector_sections(self) -> None:
         required_ids = {
             "sourceSelect",
+            "localImageInput",
+            "localImageFile",
+            "localImageFilename",
+            "loadLocalImageButton",
+            "localImageStatus",
+            "liveViewTitle",
             "conditionSelect",
             "conditionStatus",
             "conditionVisualValue",
@@ -164,6 +170,24 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "saveCaptureButton",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
+
+    def test_local_image_reuses_the_existing_pipeline(self) -> None:
+        self.assertIn('value="local_image"', self.html)
+        self.assertIn("本地图片输入", self.html)
+        self.assertIn("Local Image Input", self.html)
+        for endpoint in (
+            "/api/vision-source/state",
+            "/api/vision-source/select",
+            "/api/vision-source/local-image/load",
+            "/api/vision-source/local-image/preview.jpg",
+            "/api/target-perception/analyze",
+            "/api/spatial-perception/analyze",
+            "/api/grasp-planning/plan",
+            "/api/mujoco-validation/start",
+        ):
+            self.assertIn(endpoint, self.controller)
+        self.assertIn('source: workspaceMode === "local_image" ? "local-image" : "phone-live-rgb"', self.controller)
+        self.assertNotIn("localImagePipeline", self.controller)
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (
