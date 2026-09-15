@@ -8,6 +8,7 @@
     <title>公输 Gongshu · 机器人抓取主工作台</title>
     <link rel="stylesheet" href="./gongshu.css" />
     <link rel="stylesheet" href="./workspace.css" />
+    <link rel="stylesheet" href="./xiezhi-lab.css" />
   </head>
   <body class="workspace-app">
     <header class="workspace-header">
@@ -347,6 +348,62 @@
       </aside>
     </main>
 
+    <section id="xiezhiLab" class="xiezhi-module" aria-labelledby="xiezhiLabTitle">
+      <div class="xiezhi-module-shell">
+        <header class="xiezhi-module-header">
+          <div class="xiezhi-module-index" aria-hidden="true"><span>05</span><small>INTERNAL MODULE</small></div>
+          <span class="xiezhi-logo-lockup"><img src="./assets/xiezhi-logo-sheet.png" alt="Xiezhi 獬豸智能决策" /></span>
+          <div class="xiezhi-module-title">
+            <span>GONGSHU · ALGORITHM &amp; DECISION LAYER</span>
+            <h1 id="xiezhiLabTitle">獬豸 Xiezhi <b>Algorithm Lab</b></h1>
+            <p>公输机器人工作流内部的算法实验、决策分析与版本比较空间</p>
+          </div>
+          <strong class="xiezhi-module-state"><i aria-hidden="true"></i> UI CONCEPT</strong>
+        </header>
+
+        <div class="xiezhi-workflow-bridge" aria-label="Gongshu 工作流到 Xiezhi 算法实验层">
+          <span>GONGSHU ROBOT WORKSPACE</span>
+          <i aria-hidden="true"></i>
+          <strong>INTERNAL ALGORITHM WORKSPACE</strong>
+          <small>前端结构已接入 · 暂无算法、接口或实验数据</small>
+        </div>
+
+        <div class="xiezhi-module-body">
+          <section class="xiezhi-concept-preview" aria-labelledby="xiezhiPreviewTitle">
+            <span>SELECTED CONCEPT</span>
+            <h2 id="xiezhiPreviewTitle">Algorithm Lab</h2>
+            <p id="xiezhiPreviewCopy">为未来算法迭代和机器人行为验证预留统一实验入口。</p>
+            <div class="xiezhi-context-placeholder">
+              <small>GONGSHU WORKSPACE CONTEXT</small>
+              <strong>等待实验上下文</strong>
+              <p>未来承接感知、规划、仿真与执行结果；当前仅做视觉占位。</p>
+            </div>
+          </section>
+
+          <nav class="xiezhi-capability-grid" aria-label="Xiezhi 前端概念入口">
+            <button class="is-selected" type="button" data-xiezhi-action="Algorithm Lab" data-preview="Algorithm Lab" data-copy="为未来算法迭代和机器人行为验证预留统一实验入口。">
+              <span class="xiezhi-card-logo" aria-hidden="true"><img src="./assets/xiezhi-logo-sheet.png" alt="" /></span>
+              <small>ALGORITHM LAB</small><strong>算法实验</strong><p>实验配置与运行入口</p><b>→</b>
+            </button>
+            <button type="button" data-xiezhi-action="Decision Analysis" data-preview="Decision Analysis" data-copy="集中呈现未来策略选择、行为说明与决策验证。">
+              <small>DECISION MODULE</small><strong>决策分析</strong><p>策略判断与解释入口</p><b>→</b>
+            </button>
+            <button type="button" data-xiezhi-action="Algorithm Versions" data-preview="Algorithm Versions" data-copy="为未来算法版本、实验配置与迭代关系预留管理框架。">
+              <small>ALGORITHM VERSION</small><strong>算法版本</strong><p>版本与配置入口</p><b>→</b>
+            </button>
+            <button type="button" data-xiezhi-action="Experiment Comparison" data-preview="Experiment Comparison" data-copy="为未来多算法、多条件实验结果预留对比分析框架。">
+              <small>EXPERIMENT AREA</small><strong>实验比较</strong><p>记录与对比入口</p><b>→</b>
+            </button>
+          </nav>
+        </div>
+
+        <footer class="xiezhi-module-footer">
+          <span>Xiezhi is part of Gongshu Robot Platform</span>
+          <strong>FRONTEND INTEGRATION ONLY</strong>
+        </footer>
+      </div>
+    </section>
+
     <div id="notice" class="workspace-notice" role="status" aria-live="polite" hidden></div>
 
     <dialog id="conditionDialog" class="workspace-dialog condition-dialog" aria-labelledby="conditionDialogTitle">
@@ -448,5 +505,6 @@
     <script src="./pipeline-state.js"></script>
     <script src="./target-selection.js"></script>
     <script src="./real-scene.js"></script>
+    <script src="./xiezhi-lab.js"></script>
   </body>
 </html>
