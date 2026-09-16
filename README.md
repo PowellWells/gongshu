@@ -22,9 +22,9 @@
   <a href="LICENSE"><img alt="Apache-2.0 开源许可证" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu 是一个开源、模块化的机器人智能平台，统一承载视觉输入、空间理解、抓取规划、仿真验证、实验体系与智能决策。Xiezhi（獬豸）是 Gongshu 内部的智能决策与算法实验能力，不是独立产品。
+Gongshu 是一个开源、模块化的机器人智能平台，统一承载视觉输入、空间理解、抓取规划、仿真验证、实验体系与智能决策。Experiment Lab 负责实验组织与分析；Xiezhi（獬豸）是 Gongshu 内部的智能算法与决策能力，不是独立产品。
 
-当前产品架构以 [XUANSHU AI Architecture Freeze v2.0](XUANSHU_ARCHITECTURE_FREEZE_V2.0.md) 为准。
+当前产品架构以 [XUANSHU AI Architecture Freeze v3.0](XUANSHU_ARCHITECTURE_FREEZE_V3.0.md) 为准。
 
 ![Gongshu 项目概念宣传图](assets/demo-cover.png)
 
@@ -38,7 +38,7 @@ Gongshu 帮助研究者在同一工作台中组织机器人视觉、抓取与智
 - **空间理解**：处理深度、点云、目标 XYZ 与相机内参等空间信息。
 - **抓取规划**：生成、检查和排序抓取候选，便于比较规划结果。
 - **仿真验证**：使用 MuJoCo / robosuite 和 Franka Panda 对抓取过程进行实验验证。
-- **智能决策与算法实验**：由 Gongshu 内部 Xiezhi 模块承载算法实验、决策分析与策略演进。
+- **实验与智能决策**：Experiment Lab 组织 Trial、评价与比较；内部 Xiezhi 模块提供算法决策、风险评估与策略演进。
 
 v0.1.0 是 Gongshu 的开源基线。真实视觉输入目前由同一可信局域网内的手机摄像头提供；真实 RGB-D 相机接入仍是后续方向。当前版本不包含经过验证的真实机器人端到端抓取，也不将单目深度或仿真结果表述为真实硬件测量。
 
@@ -88,7 +88,7 @@ XUANSHU AI 平台唯一官方启动入口：
 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-双击该文件进入 XUANSHU AI Launcher，再打开 Gongshu。Phone Camera、Local Image、MuJoCo 以及 Xiezhi 智能决策与算法实验能力均由 Gongshu 内部统一加载；用户不单独启动 Xiezhi。不要从子目录、开发分支或 Git 工作树单独启动模块。首次连接手机时，在 Gongshu 中打开 **连接设置 Camera Setup**，按本地 CA 与 Pairing 二维码引导完成连接。
+双击该文件进入 XUANSHU AI Launcher，再打开 Gongshu。Phone Camera、Local Image、MuJoCo、Experiment Lab 以及 Xiezhi 智能算法与决策能力均由 Gongshu 内部统一加载；用户不单独启动 Xiezhi。不要从子目录、开发分支或 Git 工作树单独启动模块。首次连接手机时，在 Gongshu 中打开 **连接设置 Camera Setup**，按本地 CA 与 Pairing 二维码引导完成连接。
 
 <details>
 <summary>Repository layout</summary>

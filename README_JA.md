@@ -22,9 +22,9 @@
   <a href="LICENSE"><img alt="Apache-2.0 ライセンス" src="https://img.shields.io/badge/license-Apache--2.0-2563eb?style=flat-square"></a>
 </p>
 
-Gongshu は、視覚入力、空間理解、把持計画、シミュレーション検証、実験、知的意思決定を統合するオープンソースのモジュール型ロボット知能プラットフォームです。Xiezhi は Gongshu 内部の意思決定・アルゴリズム実験機能であり、独立した製品ではありません。
+Gongshu は、視覚入力、空間理解、把持計画、シミュレーション検証、実験、知的意思決定を統合するオープンソースのモジュール型ロボット知能プラットフォームです。Experiment Lab が実験の編成と分析を担い、Xiezhi は Gongshu 内部のアルゴリズム・意思決定機能として動作します。独立した製品ではありません。
 
-現在の製品アーキテクチャは [XUANSHU AI Architecture Freeze v2.0](XUANSHU_ARCHITECTURE_FREEZE_V2.0.md) に従います。
+現在の製品アーキテクチャは [XUANSHU AI Architecture Freeze v3.0](XUANSHU_ARCHITECTURE_FREEZE_V3.0.md) に従います。
 
 ![Gongshu コンセプトカバー](assets/demo-cover.png)
 
@@ -38,7 +38,7 @@ Gongshu は、ロボットビジョン、把持、知的意思決定の実験を
 - **空間理解**：深度、点群、対象 XYZ 座標、カメラ内部パラメータなどの空間情報。
 - **把持計画**：把持候補の生成、実行可能性検査、順位付けによる結果比較。
 - **シミュレーション検証**：MuJoCo / robosuite と Franka Panda を使用した実験的な把持検証。
-- **意思決定知能とアルゴリズム実験**：内部 Xiezhi モジュールによるアルゴリズム実験、意思決定分析、戦略進化。
+- **実験と意思決定知能**：Experiment Lab が Trial、評価、比較を編成し、内部 Xiezhi モジュールがアルゴリズム判断、リスク評価、戦略進化を担います。
 
 v0.1.0 は Gongshu のオープンソース・ベースラインです。実画像入力は現在、同一の信頼できる LAN 上のスマートフォンカメラから取得します。実 RGB-D カメラとの統合は今後の方向性です。本リリースには検証済みの実機ロボットによるエンドツーエンド把持は含まれず、単眼深度やシミュレーション結果を実機計測値として扱いません。
 
@@ -88,7 +88,7 @@ XUANSHU AI の唯一の公式起動入口：
 G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
 ```
 
-このファイルをダブルクリックして XUANSHU AI Launcher に入り、Gongshu を開きます。Phone Camera、Local Image、MuJoCo、および Xiezhi の意思決定・アルゴリズム実験機能は Gongshu 内部で読み込まれ、ユーザーが Xiezhi を個別に起動することはありません。サブディレクトリ、開発ブランチ、Git worktree から個別に起動しないでください。スマートフォンを初めて接続する場合は、Gongshu の **Camera Setup** を開き、ローカル CA と Pairing QR の案内に従ってください。
+このファイルをダブルクリックして XUANSHU AI Launcher に入り、Gongshu を開きます。Phone Camera、Local Image、MuJoCo、Experiment Lab、および Xiezhi のアルゴリズム・意思決定機能は Gongshu 内部で読み込まれ、ユーザーが Xiezhi を個別に起動することはありません。サブディレクトリ、開発ブランチ、Git worktree から個別に起動しないでください。スマートフォンを初めて接続する場合は、Gongshu の **Camera Setup** を開き、ローカル CA と Pairing QR の案内に従ってください。
 
 <details>
 <summary>リポジトリ構成</summary>

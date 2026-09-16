@@ -2,10 +2,13 @@
 
 ## Gongshu × Xiezhi Integration Freeze v2.0
 
-- 状态：已确认，自 2026-09-16 起生效
+- 状态：历史版本；已于 2026-09-16 被 `XUANSHU_ARCHITECTURE_FREEZE_V3.0.md` 取代
+- 当前权威文档：`XUANSHU_ARCHITECTURE_FREEZE_V3.0.md`
 - 适用范围：XUANSHU AI、Gongshu 与 Xiezhi 的产品定位、启动关系、前端表达、代码组织和后续开发
-- 文档优先级：本文取代 `XUANSHU_ARCHITECTURE_FREEZE_V1.0.md`，成为当前权威架构记录
+- 文档优先级：本文保留 v2.0 产品融合决策；与 v3.0 冲突时以 v3.0 为准
 - 实施边界：本次冻结统一未来方向，不要求立即重构、移动或删除现有代码
+
+> 本文仅保留历史决策。v3.0 进一步将实验生命周期、算法提供者和机器人 Runtime 的所有权分离。
 
 ## 1. 本次修订
 

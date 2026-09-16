@@ -166,21 +166,26 @@ class DesktopShellTests(unittest.TestCase):
 
 
 class FrontendPortalTests(unittest.TestCase):
-    def test_architecture_v2_freezes_xiezhi_as_an_internal_gongshu_capability(self) -> None:
+    def test_architecture_v3_separates_runtime_algorithm_and_experiment_ownership(self) -> None:
         current = (
-            PROJECT_ROOT / "XUANSHU_ARCHITECTURE_FREEZE_V2.0.md"
+            PROJECT_ROOT / "XUANSHU_ARCHITECTURE_FREEZE_V3.0.md"
         ).read_text(encoding="utf-8")
-        historical = (
-            PROJECT_ROOT / "XUANSHU_ARCHITECTURE_FREEZE_V1.0.md"
-        ).read_text(encoding="utf-8")
+        historical_v1 = (PROJECT_ROOT / "XUANSHU_ARCHITECTURE_FREEZE_V1.0.md").read_text(
+            encoding="utf-8"
+        )
+        historical_v2 = (PROJECT_ROOT / "XUANSHU_ARCHITECTURE_FREEZE_V2.0.md").read_text(
+            encoding="utf-8"
+        )
         launcher = (
             PROJECT_ROOT / "scripts" / "start_xuanshu_lab.ps1"
         ).read_text(encoding="utf-8-sig")
 
-        self.assertIn("Gongshu 是主体，Xiezhi 是能力", current)
-        self.assertIn("用户只需要知道“打开 Gongshu”", current)
-        self.assertIn("不创建 Xiezhi 独立 App、启动器、产品页或桌面入口", current)
-        self.assertIn("当前权威文档：`XUANSHU_ARCHITECTURE_FREEZE_V2.0.md`", historical)
+        self.assertIn("Gongshu        = Robot Body + Runtime", current)
+        self.assertIn("Xiezhi         = Robot Brain / Decision Provider", current)
+        self.assertIn("Experiment Lab = Scientific Experiment Framework", current)
+        self.assertIn("Baseline 不依赖 Xiezhi 才能注册或运行", current)
+        self.assertIn("当前权威文档：`XUANSHU_ARCHITECTURE_FREEZE_V3.0.md`", historical_v1)
+        self.assertIn("当前权威文档：`XUANSHU_ARCHITECTURE_FREEZE_V3.0.md`", historical_v2)
         self.assertIn("internal Xiezhi intelligence capability", launcher)
         self.assertNotIn("optional Xiezhi lifecycle support", launcher)
 
