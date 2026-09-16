@@ -38,25 +38,33 @@
     )).join(" ");
   }
 
+  function renderRuntimeState(state) {
+    if (!runtimeStatus || !connectionStatus || !runtimeContext || !latestEvent) return;
+    runtimeStatus.textContent = String(state.status || "unknown").toUpperCase();
+    const active = state.active_provider === "xiezhi" ? "Xiezhi" : "Gongshu";
+    connectionStatus.textContent = `${active} · ${state.algorithm || "UNKNOWN"}`;
+    runtimeContext.textContent = state.decision_available ? "AVAILABLE" : "NOT AVAILABLE";
+    const decision = state.last_decision;
+    latestEvent.textContent = decision
+      ? `${eventLabel(decision.selected_action)} · ${decision.selected_candidate_id || decision.reason}`
+      : "NONE";
+  }
+
   async function refreshRuntimeStatus() {
     if (!runtimeStatus || !connectionStatus || !runtimeContext || !latestEvent) return;
     try {
-      const response = await fetch("/api/xiezhi/status", { cache: "no-store" });
+      const response = await fetch("/api/intelligence/state", { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const state = await response.json();
-      runtimeStatus.textContent = String(state.status || "unknown").toUpperCase();
-      connectionStatus.textContent = state.connected ? "CONNECTED" : "OFFLINE";
-      const context = state.context || {};
-      runtimeContext.textContent = context.simulation
-        ? `Gongshu ${eventLabel(context.simulation)}`
-        : "Gongshu";
-      latestEvent.textContent = eventLabel(state.last_event);
+      renderRuntimeState(await response.json());
     } catch (_error) {
       runtimeStatus.textContent = "UNAVAILABLE";
       connectionStatus.textContent = "OFFLINE";
     }
   }
 
+  window.addEventListener("gongshu:intelligence-state", (event) => {
+    if (event.detail) renderRuntimeState(event.detail);
+  });
   refreshRuntimeStatus();
   window.setInterval(refreshRuntimeStatus, 1000);
 })();

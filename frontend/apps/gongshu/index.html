@@ -362,60 +362,58 @@
       <div class="xiezhi-module-shell">
         <header class="xiezhi-module-header">
           <div class="xiezhi-module-index" aria-hidden="true"><span>05</span><small>INTERNAL MODULE</small></div>
-          <span class="xiezhi-logo-lockup"><img src="./assets/xiezhi-logo-sheet.png" alt="Xiezhi 獬豸智能决策" /></span>
           <div class="xiezhi-module-title">
-            <span>GONGSHU · ALGORITHM &amp; DECISION LAYER</span>
-            <h1 id="xiezhiLabTitle">獬豸 Xiezhi <b>Algorithm Lab</b></h1>
-            <p>公输机器人工作流内部的算法实验、决策分析与版本比较空间</p>
+            <span>GONGSHU · INTERNAL INTELLIGENCE</span>
+            <h1 id="xiezhiLabTitle">公输 <b>Intelligence Layer</b></h1>
+            <p>公输机器人工作流内部的统一算法决策入口；Xiezhi 是可选 Provider</p>
           </div>
           <strong class="xiezhi-module-state"><i aria-hidden="true"></i> ENABLED</strong>
         </header>
 
-        <div class="xiezhi-workflow-bridge" aria-label="Gongshu 工作流到 Xiezhi 算法实验层">
+        <div class="xiezhi-workflow-bridge" aria-label="Gongshu 工作流到内部智能决策层">
           <span>GONGSHU ROBOT WORKSPACE</span>
           <i aria-hidden="true"></i>
-          <strong>INTERNAL ALGORITHM WORKSPACE</strong>
-          <small>决策适配层已接入 · 默认开启 · 未连接真实机器人</small>
+          <strong>ALGORITHM INTERFACE</strong>
+          <small>Observation → Decision Output → Gongshu Runtime</small>
         </div>
 
         <div class="xiezhi-module-body">
           <section class="xiezhi-concept-preview" aria-labelledby="xiezhiPreviewTitle">
-            <span>SELECTED CONCEPT</span>
-            <h2 id="xiezhiPreviewTitle">Algorithm Lab</h2>
-            <p id="xiezhiPreviewCopy">为未来算法迭代和机器人行为验证预留统一实验入口。</p>
+            <span>RUNTIME STATUS</span>
+            <h2 id="xiezhiPreviewTitle">Intelligence Runtime</h2>
+            <p id="xiezhiPreviewCopy">候选方案由 Gongshu 生成，算法 Provider 只负责选择与风险判断。</p>
             <div class="xiezhi-context-placeholder">
-              <small>GONGSHU WORKSPACE CONTEXT</small>
-              <strong>Xiezhi Runtime</strong>
+              <small>GONGSHU INTELLIGENCE CONTEXT</small>
+              <strong>Algorithm Interface</strong>
               <dl class="xiezhi-runtime-grid" aria-live="polite">
                 <div><dt>Status</dt><dd id="xiezhiRuntimeStatus">CONNECTING</dd></div>
-                <div><dt>Connection</dt><dd id="xiezhiConnectionStatus">WAITING</dd></div>
-                <div><dt>Context</dt><dd id="xiezhiRuntimeContext">Gongshu</dd></div>
-                <div><dt>Latest Event</dt><dd id="xiezhiLatestEvent">NONE</dd></div>
+                <div><dt>Provider</dt><dd id="xiezhiConnectionStatus">WAITING</dd></div>
+                <div><dt>Decision</dt><dd id="xiezhiRuntimeContext">NOT AVAILABLE</dd></div>
+                <div><dt>Last Decision</dt><dd id="xiezhiLatestEvent">NONE</dd></div>
               </dl>
-              <p>仅同步运行状态与 MuJoCo 生命周期事件，不参与决策或控制。</p>
+              <p>Xiezhi 产生标准 Decision Output；机器人执行与 MuJoCo 始终由 Gongshu Runtime 负责。</p>
             </div>
           </section>
 
-          <nav class="xiezhi-capability-grid" aria-label="Xiezhi 前端概念入口">
-            <button class="is-selected" type="button" data-xiezhi-action="Algorithm Lab" data-preview="Algorithm Lab" data-copy="为未来算法迭代和机器人行为验证预留统一实验入口。">
-              <span class="xiezhi-card-logo" aria-hidden="true"><img src="./assets/xiezhi-logo-sheet.png" alt="" /></span>
-              <small>ALGORITHM LAB</small><strong>算法实验</strong><p>实验配置与运行入口</p><b>→</b>
+          <nav class="xiezhi-capability-grid" aria-label="Gongshu Intelligence Layer 状态说明">
+            <button class="is-selected" type="button" data-xiezhi-action="Decision Runtime" data-preview="Decision Runtime" data-copy="每次规划完成后，统一算法接口都会产生可记录的 Decision Output。">
+              <small>DECISION RUNTIME</small><strong>决策运行</strong><p>选择动作与抓取候选</p><b>→</b>
             </button>
-            <button type="button" data-xiezhi-action="Decision Analysis" data-preview="Decision Analysis" data-copy="集中呈现未来策略选择、行为说明与决策验证。">
-              <small>DECISION MODULE</small><strong>决策分析</strong><p>策略判断与解释入口</p><b>→</b>
+            <button type="button" data-xiezhi-action="Provider" data-preview="Algorithm Provider" data-copy="Xiezhi 与 Gongshu Baseline 使用同一接口；Provider 不接触 Robot 或 MuJoCo。">
+              <small>ALGORITHM PROVIDER</small><strong>算法提供者</strong><p>Xiezhi / Baseline</p><b>→</b>
             </button>
-            <button type="button" data-xiezhi-action="Algorithm Versions" data-preview="Algorithm Versions" data-copy="为未来算法版本、实验配置与迭代关系预留管理框架。">
-              <small>ALGORITHM VERSION</small><strong>算法版本</strong><p>版本与配置入口</p><b>→</b>
+            <button type="button" data-xiezhi-action="Risk Evidence" data-preview="Decision Evidence" data-copy="显示所选候选、启发式置信度、风险估计与决策原因。">
+              <small>DECISION EVIDENCE</small><strong>决策证据</strong><p>Confidence / Risk</p><b>→</b>
             </button>
-            <button type="button" data-xiezhi-action="Experiment Comparison" data-preview="Experiment Comparison" data-copy="为未来多算法、多条件实验结果预留对比分析框架。">
-              <small>EXPERIMENT AREA</small><strong>实验比较</strong><p>记录与对比入口</p><b>→</b>
+            <button type="button" data-xiezhi-action="Experiment Record" data-preview="Experiment Lab Record" data-copy="Experiment Lab 独立记录输入、算法、决策和 MuJoCo 结果，不属于 Xiezhi。">
+              <small>EXPERIMENT LAB</small><strong>实验记录</strong><p>统一 Trial 证据</p><b>→</b>
             </button>
           </nav>
         </div>
 
         <footer class="xiezhi-module-footer">
           <span>Xiezhi is part of Gongshu Robot Platform</span>
-          <strong>OPTIONAL DECISION ADAPTER</strong>
+          <strong>GONGSHU-OWNED ALGORITHM INTERFACE</strong>
         </footer>
       </div>
     </section>

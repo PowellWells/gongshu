@@ -234,7 +234,7 @@ class FrontendPortalTests(unittest.TestCase):
         self.assertNotIn("default_algorithm_registry", launcher)
         self.assertIn('[gongshu_xiezhi]\nenabled = true', config)
 
-    def test_gongshu_page_displays_live_xiezhi_lifecycle_status(self) -> None:
+    def test_gongshu_page_displays_live_intelligence_decision_status(self) -> None:
         html = (PROJECT_ROOT / "frontend" / "apps" / "gongshu" / "index.html").read_text(
             encoding="utf-8"
         )
@@ -248,7 +248,9 @@ class FrontendPortalTests(unittest.TestCase):
             "xiezhiLatestEvent",
         ):
             self.assertIn(f'id="{element_id}"', html)
-        self.assertIn('fetch("/api/xiezhi/status"', script)
+        self.assertIn('fetch("/api/intelligence/state"', script)
+        self.assertIn("state.decision_available", script)
+        self.assertIn("state.last_decision", script)
 
 
 if __name__ == "__main__":

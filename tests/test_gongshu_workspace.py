@@ -183,11 +183,29 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "/api/target-perception/analyze",
             "/api/spatial-perception/analyze",
             "/api/grasp-planning/plan",
+            "/api/intelligence/decide",
             "/api/mujoco-validation/start",
         ):
             self.assertIn(endpoint, self.controller)
         self.assertIn('source: workspaceMode === "local_image" ? "local-image" : "phone-live-rgb"', self.controller)
         self.assertNotIn("localImagePipeline", self.controller)
+        self.assertIn("await selectTarget(firstCandidate.id);", self.controller)
+        self.assertIn('decision?.selected_action === "EXECUTE_GRASP"', self.controller)
+        self.assertIn("window.setTimeout(() => startValidation(), 180);", self.controller)
+
+    def test_intelligence_layer_is_gongshu_internal_and_decision_driven(self) -> None:
+        for label in (
+            "公输 <b>Intelligence Layer</b>",
+            "GONGSHU-OWNED ALGORITHM INTERFACE",
+            "Observation → Decision Output → Gongshu Runtime",
+            "Xiezhi 是可选 Provider",
+            "Experiment Lab 独立记录输入、算法、决策和 MuJoCo 结果",
+        ):
+            self.assertIn(label, self.html)
+        self.assertNotIn("Xiezhi <b>Algorithm Lab</b>", self.html)
+        intelligence_ui = (GONGSHU_ROOT / "xiezhi-lab.js").read_text(encoding="utf-8")
+        self.assertIn('/api/intelligence/state', intelligence_ui)
+        self.assertNotIn('/api/xiezhi/status', intelligence_ui)
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (

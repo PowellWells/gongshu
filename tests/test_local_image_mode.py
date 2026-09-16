@@ -12,6 +12,8 @@ import numpy as np
 
 from run_vision2grasp_app import Vision2GraspApp
 from vision2grasp.contracts import RGBFrame
+from vision2grasp.experiment_lab import ExperimentTrialRecorder
+from vision2grasp.intelligence import IntelligenceService
 from vision2grasp.sources import LocalImageAdapter
 
 
@@ -86,6 +88,10 @@ class LocalImageAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             app = object.__new__(Vision2GraspApp)
             app.local_image = LocalImageAdapter(Path(temporary) / "artifacts" / "offline_run")
+            app.experiment_recorder = ExperimentTrialRecorder(
+                Path(temporary) / "artifacts" / "offline_run"
+            )
+            app.intelligence = IntelligenceService(xiezhi_enabled=False)
             app._vision_source = "phone_camera"
             app.condition_experiment = _ConditionProcessor()
             app.target_perception = _TargetPerception()

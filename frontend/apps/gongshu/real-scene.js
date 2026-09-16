@@ -1120,7 +1120,13 @@
       });
       showLocalImage(loaded.observation);
       renderTargetPerception(loaded.target_perception);
-      showNotice(`本地图片已加载并创建 Observation：${loaded.observation.image_name}`);
+      const firstCandidate = loaded.target_perception?.candidates?.[0];
+      if (firstCandidate?.id) {
+        showNotice(`本地图片已加载，正在自动选择首个目标：${loaded.observation.image_name}`);
+        await selectTarget(firstCandidate.id);
+      } else {
+        showNotice(`本地图片已加载，但未发现可抓取目标：${loaded.observation.image_name}`, "error");
+      }
     } catch (error) {
       els.localImageStatus.textContent = "FAILED";
       els.localImageStatus.className = "local-image-status is-error";
@@ -1782,6 +1788,7 @@
 
   async function runGraspPlanning() {
     if (graspPlanningRunning || pipeline.state !== "SPATIAL_READY") return;
+    let autoStartValidation = false;
     graspPlanningRunning = true;
     pipeline.transition("GRASP_PLANNING", { source: "spatial-result" });
     els.graspState.textContent = "PLANNING";
@@ -1802,10 +1809,18 @@
         ? initial
         : await waitForGraspJob(initial.job_id);
       renderGraspPlanning(state);
-      if (state.status === "GRASP_READY") {
-        showNotice("抓取规划完成：真实 Top-K 已过滤并选出 Best Executable Grasp。", "success");
-      } else if (state.status === "PLANNING_REJECTED") {
-        showNotice(`规划拒绝：${graspRejectionLabel(state.error_code, state.mode)}；候选诊断已保留。`, "error");
+      if (["GRASP_READY", "PLANNING_REJECTED"].includes(state.status)) {
+        const intelligence = await apiPost("/api/intelligence/decide", {});
+        window.dispatchEvent(new CustomEvent("gongshu:intelligence-state", { detail: intelligence }));
+        const decision = intelligence.last_decision;
+        if (state.status === "GRASP_READY" && decision?.selected_action === "EXECUTE_GRASP") {
+          showNotice(`智能决策完成：${decision.provider} / ${decision.algorithm} 已选择 ${decision.selected_candidate_id}。`, "success");
+          autoStartValidation = workspaceMode === "local_image";
+        } else if (state.status === "PLANNING_REJECTED") {
+          showNotice(`规划拒绝：${graspRejectionLabel(state.error_code, state.mode)}；决策与候选诊断已记录。`, "error");
+        } else {
+          showNotice(`智能层建议 ${decision?.selected_action || "NO_ACTION"}：${decision?.reason || "未授权执行"}`, "error");
+        }
       } else {
         showNotice(`抓取规划错误：${state.error_code || "GRASP_PLANNING_FAILED"}`, "error");
       }
@@ -1825,6 +1840,7 @@
       activeGraspJobId = null;
       graspPlanningRunning = false;
       updateActionButtons();
+      if (autoStartValidation) window.setTimeout(() => startValidation(), 180);
     }
   }
 

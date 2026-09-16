@@ -39,6 +39,7 @@ from vision2grasp.extensions.xiezhi.lifecycle import (
     GongshuRuntimeContext,
     GongshuXiezhiLifecycleAdapter,
 )
+from vision2grasp.experiment_lab import ExperimentTrialRecorder
 from vision2grasp.grasp_planning import (
     GRConvNetDetector,
     GRConvNetDetectorConfig,
@@ -46,6 +47,7 @@ from vision2grasp.grasp_planning import (
     PixelWiseTopKGraspPlanner,
     TopKGraspPlannerConfig,
 )
+from vision2grasp.intelligence import IntelligenceService
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
@@ -268,6 +270,7 @@ class Vision2GraspApp:
             phone_camera_config or PhoneLANConfig(project_root=PROJECT_ROOT)
         )
         self.local_image = LocalImageAdapter(OFFLINE_RUNS_ROOT)
+        self.experiment_recorder = ExperimentTrialRecorder(OFFLINE_RUNS_ROOT)
         self._vision_source = "phone_camera"
         self._real_scene: RealSceneProcessor | None = None
         self._real_scene_lock = threading.Lock()
@@ -275,6 +278,7 @@ class Vision2GraspApp:
         self._xiezhi_watch_lock = threading.Lock()
         self._xiezhi_watch_generation = 0
         self.xiezhi = GongshuXiezhiLifecycleAdapter.connect(enabled=_xiezhi_enabled())
+        self.intelligence = IntelligenceService(xiezhi_enabled=_xiezhi_enabled())
         self.target_perception = TargetPerceptionService(
             FastSAMTargetSegmenter(FastSAMTargetSegmenterConfig(device="auto"))
         )
@@ -362,10 +366,12 @@ class Vision2GraspApp:
             raise ValueError("local image payload is not valid base64") from error
 
         observation = self.local_image.load(filename, payload)
+        self.experiment_recorder.start(observation)
         self._vision_source = "local_image"
         self.spatial_perception.reset()
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
+        self.intelligence.reset()
         self.target_perception.reset()
         target_state = self.analyze_phone_targets(request)
         return {
@@ -391,6 +397,7 @@ class Vision2GraspApp:
         self.spatial_perception.reset()
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
+        self.intelligence.reset()
         body = request or {}
         conditioned = self.condition_experiment.process(
             self._capture_vision_frame(),
@@ -509,6 +516,7 @@ class Vision2GraspApp:
 
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
+        self.intelligence.reset()
         snapshot = self.target_perception.selected_scene_snapshot()
         result = self.spatial_perception.start(
             snapshot,
@@ -523,6 +531,7 @@ class Vision2GraspApp:
     def retry_spatial(self) -> dict[str, object]:
         self.grasp_planning.reset()
         self.mujoco_validation.reset()
+        self.intelligence.reset()
         result = self.spatial_perception.retry()
         self._record_offline_pipeline_status("SPATIAL_ANALYSIS_RETRY")
         return result
@@ -531,6 +540,7 @@ class Vision2GraspApp:
         """Plan only from the immutable SpatialResult and selected snapshot."""
 
         self.mujoco_validation.reset()
+        self.intelligence.reset()
         body = request or {}
         observation = self.spatial_perception.current_observation()
         snapshot = self.target_perception.selected_scene_snapshot()
@@ -547,11 +557,28 @@ class Vision2GraspApp:
         self._record_offline_pipeline_status("GRASP_PLANNING")
         return result
 
+    def decide_grasp(self) -> dict[str, object]:
+        """Run the selected provider against the completed Gongshu plan."""
+
+        outcome = self.grasp_planning.current_outcome()
+        decision = self.intelligence.decide(outcome)
+        if self._vision_source == "local_image":
+            run_id = self.local_image.active_run_id()
+            if run_id is not None:
+                self.experiment_recorder.record_decision(run_id, decision)
+                self.local_image.record_pipeline_status("INTELLIGENCE_DECISION")
+        return self.intelligence.snapshot()
+
     def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Create one normalized attempt from a ready or rejected candidate."""
 
         body = request or {}
         outcome = self.grasp_planning.current_outcome()
+        decision = self.intelligence.ensure_decision(outcome)
+        if self._vision_source == "local_image":
+            run_id = self.local_image.active_run_id()
+            if run_id is not None:
+                self.experiment_recorder.record_decision(run_id, decision)
         snapshot = self.target_perception.selected_scene_snapshot()
         if snapshot is None:
             raise RuntimeError("no selected Scene Snapshot is available for simulation")
@@ -568,6 +595,15 @@ class Vision2GraspApp:
             raise ValueError("Validation request does not match the selected simulation candidate")
         scenario = str(body.get("scenario", "NOMINAL"))
         if outcome.plan is not None:
+            if not decision.authorizes_execution:
+                raise RuntimeError(
+                    f"Intelligence decision does not authorize execution: "
+                    f"{decision.selected_action.value}"
+                )
+            if decision.selected_candidate_id != outcome.plan.best_candidate_id:
+                raise RuntimeError(
+                    "selected decision candidate is not executable by the current Gongshu plan"
+                )
             response = self.mujoco_validation.start(
                 outcome.plan, scenario=scenario, snapshot=snapshot
             )
@@ -598,15 +634,14 @@ class Vision2GraspApp:
             snapshot = self.mujoco_validation.snapshot()
             state = str(snapshot.get("status", snapshot.get("state", ""))).upper()
             if state in {"SUCCESS", "FAILED"}:
+                result = {
+                    "status": state,
+                    "reason": snapshot.get("reason"),
+                    "result": snapshot.get("result"),
+                }
                 self.local_image.record_pipeline_status("COMPLETED", run_id=run_id)
-                self.local_image.record_mujoco_result(
-                    {
-                        "status": state,
-                        "reason": snapshot.get("reason"),
-                        "result": snapshot.get("result"),
-                    },
-                    run_id=run_id,
-                )
+                self.local_image.record_mujoco_result(result, run_id=run_id)
+                self.experiment_recorder.record_result(run_id, result)
                 return
             if state == "WAITING":
                 return
@@ -761,6 +796,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/target-perception/state",
             "/api/spatial-perception/state",
             "/api/grasp-planning/state",
+            "/api/intelligence/state",
             "/api/mujoco-validation/state",
             "/api/xiezhi/status",
         }
@@ -803,14 +839,20 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.explicit-save/v1",
                         "mujoco-validation.real-appearance-proxy/v1",
                         "xiezhi-lifecycle.status/v0.1",
+                        "gongshu-intelligence-decision/v1",
+                        "gongshu-experiment-trial/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                     "xiezhi": self.app.xiezhi.status().as_dict(),
+                    "intelligence": self.app.intelligence.snapshot(),
                 }
             )
             return
         if path == "/api/xiezhi/status":
             self._send_json(self.app.xiezhi.status().as_dict())
+            return
+        if path == "/api/intelligence/state":
+            self._send_json(self.app.intelligence.snapshot())
             return
         if path == "/api/vision-source/state":
             self._send_json(self.app.vision_source_snapshot())
@@ -996,6 +1038,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 validation = getattr(self.app, "mujoco_validation", None)
                 if validation is not None:
                     validation.reset()
+                intelligence = getattr(self.app, "intelligence", None)
+                if intelligence is not None:
+                    intelligence.reset()
                 self._send_json(result)
                 return
             if path == "/api/spatial-perception/analyze":
@@ -1017,7 +1062,15 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(self.app.plan_grasp(body), status=HTTPStatus.ACCEPTED)
                 return
             if path == "/api/grasp-planning/reset":
-                self._send_json(self.app.grasp_planning.reset())
+                result = self.app.grasp_planning.reset()
+                self.app.intelligence.reset()
+                self._send_json(result)
+                return
+            if path == "/api/intelligence/decide":
+                self._send_json(self.app.decide_grasp())
+                return
+            if path == "/api/intelligence/reset":
+                self._send_json(self.app.intelligence.reset())
                 return
             if path == "/api/mujoco-validation/start":
                 self._send_json(self.app.start_validation(body))
@@ -1081,6 +1134,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         for service_name in (
             "spatial_perception",
             "grasp_planning",
+            "intelligence",
             "mujoco_validation",
         ):
             service = getattr(self.app, service_name, None)
