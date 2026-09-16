@@ -41,6 +41,19 @@ class XiezhiDecisionV01Tests(unittest.TestCase):
                 ["decision_selection", "decision_output"],
             ],
         )
+        self.assertEqual(
+            [stage["function"] for stage in blueprint["stages"]],
+            [
+                "observe()",
+                "evaluate_candidates()",
+                "assess_risk()",
+                "select_decision()",
+                "output_decision()",
+            ],
+        )
+        self.assertTrue(
+            all(stage["module"] == "decision_v0_1.py" for stage in blueprint["stages"])
+        )
 
     def test_registry_exposes_versioned_algorithm_metadata(self) -> None:
         registry = default_algorithm_registry(include_xiezhi=True)

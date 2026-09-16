@@ -5,7 +5,7 @@
   const copy = document.querySelector("#xiezhiPreviewCopy");
   const notice = document.querySelector("#notice");
   const actions = [...document.querySelectorAll("[data-xiezhi-action]")];
-  const entries = [...document.querySelectorAll("[data-xiezhi-entry]")];
+  const arenaEntry = document.querySelector('[data-xiezhi-entry="arena"]');
   const detailPanel = document.querySelector("#xiezhiDetailPanel");
   const detailTitle = document.querySelector("#xiezhiDetailTitle");
   const detailClose = document.querySelector("#xiezhiDetailClose");
@@ -209,6 +209,7 @@
     setText("#xiezhiEvidenceDiagnostics", formatDiagnostics(evidence.diagnostics));
     setText("#xiezhiEvidenceReason", reasonLabel(runtime.reason));
     renderDecisionHistory(state.history);
+    window.dispatchEvent(new CustomEvent("xiezhi:dashboard-state", { detail: state }));
   }
 
   async function refreshDashboardState() {
@@ -219,6 +220,7 @@
       connectionStatus.textContent = "AlgorithmDecision v1";
       runtimeContext.textContent = "不可用 NOT AVAILABLE";
       latestEvent.textContent = "无 NONE";
+      window.dispatchEvent(new CustomEvent("xiezhi:dashboard-state", { detail: null }));
     }
   }
 
@@ -238,12 +240,9 @@
   }
 
   actions.forEach((button) => button.addEventListener("click", () => openPanel(button)));
-  entries.forEach((entry) => entry.addEventListener("click", () => {
-    const label = entry.dataset.xiezhiEntry === "blueprint"
-      ? "算法蓝图 Algorithm Blueprint"
-      : "算法竞技场 Algorithm Arena";
-    showNotice(`${label} 入口已预留，本阶段未创建页面。`, "success");
-  }));
+  arenaEntry?.addEventListener("click", () => {
+    showNotice("算法竞技场 Algorithm Arena 入口已预留，本阶段未创建页面。", "success");
+  });
   detailClose?.addEventListener("click", () => {
     detailPanel.hidden = true;
     actions.forEach((item) => {

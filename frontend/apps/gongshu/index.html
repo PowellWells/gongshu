@@ -442,7 +442,7 @@
               <div class="is-wide"><dt>管线概览 Pipeline Overview</dt><dd id="xiezhiEnginePipeline">—</dd></div>
             </dl>
             <div class="xiezhi-engine-entries" aria-label="未来算法工具入口">
-              <button type="button" data-xiezhi-entry="blueprint"><small>算法结构 ALGORITHM STRUCTURE</small><strong>算法蓝图 Algorithm Blueprint</strong><span id="xiezhiBlueprintReference">—</span></button>
+              <button type="button" data-xiezhi-entry="blueprint" disabled><small>算法结构 ALGORITHM STRUCTURE</small><strong>算法蓝图 Algorithm Blueprint</strong><span id="xiezhiBlueprintReference">等待数据 WAITING</span></button>
               <button type="button" data-xiezhi-entry="arena"><small>公平比较 FAIR COMPARISON</small><strong>算法竞技场 Algorithm Arena</strong><span>入口预留 ENTRY RESERVED</span></button>
             </div>
           </article>
@@ -472,6 +472,41 @@
         </footer>
       </div>
     </section>
+
+    <dialog id="xiezhiBlueprintDialog" class="xiezhi-blueprint-dialog" aria-labelledby="xiezhiBlueprintTitle">
+      <header class="xiezhi-blueprint-header">
+        <div>
+          <small>决策引擎 · 算法结构 DECISION ENGINE · ALGORITHM STRUCTURE</small>
+          <h2 id="xiezhiBlueprintTitle">算法蓝图 Algorithm Blueprint</h2>
+          <p id="xiezhiBlueprintIdentity">等待 Blueprint v1 数据 Waiting for Blueprint v1</p>
+        </div>
+        <button id="xiezhiBlueprintClose" type="button" aria-label="关闭算法蓝图 Close Algorithm Blueprint">关闭 Close</button>
+      </header>
+      <div class="xiezhi-blueprint-layout">
+        <section class="xiezhi-blueprint-canvas" aria-labelledby="xiezhiBlueprintPipelineTitle">
+          <header>
+            <div><small>算法管线 ALGORITHM PIPELINE</small><h3 id="xiezhiBlueprintPipelineTitle">决策结构 Decision Structure</h3></div>
+            <span id="xiezhiBlueprintSchema">—</span>
+          </header>
+          <div id="xiezhiBlueprintPipeline" class="xiezhi-blueprint-pipeline" role="list" aria-label="算法蓝图节点 Algorithm Blueprint Nodes"></div>
+        </section>
+        <aside class="xiezhi-blueprint-detail" aria-labelledby="xiezhiBlueprintNodeName">
+          <small>节点详情 NODE DETAIL</small>
+          <h3 id="xiezhiBlueprintNodeName">选择一个节点 Select a node</h3>
+          <p id="xiezhiBlueprintNodeDescription">节点信息由 Blueprint v1 提供。</p>
+          <dl>
+            <div><dt>代码模块 Module</dt><dd id="xiezhiBlueprintNodeModule">—</dd></div>
+            <div><dt>函数 Function</dt><dd id="xiezhiBlueprintNodeFunction">—</dd></div>
+            <div><dt>输入 Input</dt><dd id="xiezhiBlueprintNodeInput">—</dd></div>
+            <div><dt>输出 Output</dt><dd id="xiezhiBlueprintNodeOutput">—</dd></div>
+          </dl>
+        </aside>
+      </div>
+      <footer>
+        <span>只读结构视图 READ-ONLY STRUCTURE VIEW</span>
+        <strong id="xiezhiBlueprintId">—</strong>
+      </footer>
+    </dialog>
 
     <div id="notice" class="workspace-notice" role="status" aria-live="polite" hidden></div>
 
@@ -574,6 +609,7 @@
     <script src="./pipeline-state.js"></script>
     <script src="./target-selection.js"></script>
     <script src="./real-scene.js"></script>
+    <script src="./xiezhi-blueprint.js"></script>
     <script src="./xiezhi-lab.js"></script>
   </body>
 </html>

@@ -237,6 +237,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         ]
         self.assertEqual(positions, sorted(positions))
         intelligence_ui = (GONGSHU_ROOT / "xiezhi-lab.js").read_text(encoding="utf-8")
+        blueprint_ui = (GONGSHU_ROOT / "xiezhi-blueprint.js").read_text(encoding="utf-8")
         self.assertIn('/api/intelligence/dashboard', intelligence_ui)
         self.assertIn('state.schema_version !== "gongshu.xiezhi-dashboard/v1"', intelligence_ui)
         self.assertIn("const runtime = state.runtime", intelligence_ui)
@@ -246,6 +247,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertNotIn('/api/intelligence/select-algorithm', intelligence_ui)
         self.assertIn("detailPanel.hidden = false", intelligence_ui)
         self.assertNotIn('/api/xiezhi/status', intelligence_ui)
+        self.assertIn("orderedStages(blueprint)", blueprint_ui)
+        self.assertIn("selectStage(stage, button)", blueprint_ui)
+        self.assertIn("stage.module", blueprint_ui)
+        self.assertIn("stage.function", blueprint_ui)
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (

@@ -33,6 +33,8 @@ class BlueprintStage:
     input_contract: str
     output_contract: str
     description: str
+    module: str | None = None
+    function: str | None = None
 
     def __post_init__(self) -> None:
         if not _IDENTIFIER.fullmatch(self.stage_id):
@@ -40,14 +42,23 @@ class BlueprintStage:
         for field_name in ("name", "input_contract", "output_contract", "description"):
             if not str(getattr(self, field_name)).strip():
                 raise ValueError(f"{field_name} must not be empty")
+        if (self.module is None) != (self.function is None):
+            raise ValueError("blueprint stage module and function must be provided together")
+        if self.module is not None:
+            object.__setattr__(self, "module", str(self.module).strip())
+            object.__setattr__(self, "function", str(self.function).strip())
+            if not self.module or not self.function:
+                raise ValueError("blueprint stage module and function must not be empty")
 
-    def public_metadata(self) -> dict[str, str]:
+    def public_metadata(self) -> dict[str, str | None]:
         return {
             "stage_id": self.stage_id,
             "name": self.name,
             "input_contract": self.input_contract,
             "output_contract": self.output_contract,
             "description": self.description,
+            "module": self.module,
+            "function": self.function,
         }
 
 

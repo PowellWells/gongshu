@@ -100,6 +100,9 @@ class VisualizationDataProviderTests(unittest.TestCase):
                 "decision_output",
             ],
         )
+        candidate_evaluation = blueprint["stages"][1]
+        self.assertEqual(candidate_evaluation["module"], "decision_v0_1.py")
+        self.assertEqual(candidate_evaluation["function"], "evaluate_candidates()")
 
     def test_evidence_view_uses_current_decision_output(self) -> None:
         decision = self.execution.algorithm_runs[0].decision_output

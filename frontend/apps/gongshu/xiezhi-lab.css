@@ -412,6 +412,7 @@
 }
 
 .xiezhi-engine-entries button:hover { border-color: var(--blue-500); background: var(--blue-50); }
+.xiezhi-engine-entries button:disabled { opacity: 0.58; cursor: not-allowed; }
 .xiezhi-engine-entries small { color: var(--muted-light); font-size: 7px; letter-spacing: 0.09em; }
 .xiezhi-engine-entries strong { font-size: 11px; }
 .xiezhi-engine-entries span { color: var(--blue-700); font-size: 8px; }
@@ -429,6 +430,150 @@
 .xiezhi-history-row small { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .xiezhi-history-row strong, .xiezhi-history-row b { color: var(--blue-700); font-size: 10px; }
 .xiezhi-empty-state { margin: 0; padding: 16px; color: var(--muted); text-align: center; }
+
+.xiezhi-blueprint-dialog {
+  width: min(1180px, calc(100vw - 48px));
+  max-width: none;
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #8db9e5;
+  border-radius: 12px;
+  background: #f7fbfe;
+  color: var(--text);
+  box-shadow: 0 24px 70px rgba(14, 50, 88, 0.25);
+}
+
+.xiezhi-blueprint-dialog::backdrop { background: rgba(10, 33, 58, 0.48); backdrop-filter: blur(3px); }
+
+.xiezhi-blueprint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(110deg, #fff, var(--surface-blue));
+}
+
+.xiezhi-blueprint-header small,
+.xiezhi-blueprint-canvas header small,
+.xiezhi-blueprint-detail > small {
+  color: var(--blue-600);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.xiezhi-blueprint-header h2 { margin: 5px 0 3px; color: var(--navy-900); font-size: 21px; }
+.xiezhi-blueprint-header p { margin: 0; color: var(--muted); font-size: 9px; }
+.xiezhi-blueprint-header > button {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--navy-800);
+  cursor: pointer;
+}
+
+.xiezhi-blueprint-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.7fr);
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+}
+
+.xiezhi-blueprint-canvas,
+.xiezhi-blueprint-detail {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.xiezhi-blueprint-canvas { padding: 16px; }
+.xiezhi-blueprint-canvas > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.xiezhi-blueprint-canvas h3 { margin: 4px 0 0; color: var(--navy-900); font-size: 16px; }
+.xiezhi-blueprint-canvas header > span { color: var(--muted-light); font: 700 8px/1.3 "Cascadia Mono", Consolas, monospace; }
+
+.xiezhi-blueprint-pipeline {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.xiezhi-blueprint-node {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 116px;
+  flex: 1 1 0;
+  padding: 12px;
+  border: 1px solid rgba(31, 105, 171, 0.22);
+  border-radius: 8px;
+  background: linear-gradient(145deg, var(--surface-blue), #fff);
+  color: var(--navy-800);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.xiezhi-blueprint-node:hover,
+.xiezhi-blueprint-node.is-selected {
+  border-color: var(--blue-500);
+  box-shadow: 0 8px 18px rgba(20, 86, 153, 0.11);
+  transform: translateY(-2px);
+}
+
+.xiezhi-blueprint-node.is-selected { background: linear-gradient(145deg, #e8f4ff, #fff); }
+.xiezhi-blueprint-node small { color: var(--blue-600); font: 800 8px/1 "Cascadia Mono", Consolas, monospace; }
+.xiezhi-blueprint-node strong { font-size: 11px; line-height: 1.35; }
+.xiezhi-blueprint-node span { color: var(--muted); font-size: 8px; line-height: 1.4; }
+
+.xiezhi-blueprint-edge {
+  position: relative;
+  align-self: center;
+  width: 15px;
+  height: 1px;
+  flex: 0 0 15px;
+  background: linear-gradient(90deg, var(--blue-500), var(--cyan));
+}
+
+.xiezhi-blueprint-edge::after {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  content: "";
+  border-top: 1px solid var(--cyan-strong);
+  border-right: 1px solid var(--cyan-strong);
+  transform: rotate(45deg);
+}
+
+.xiezhi-blueprint-detail { padding: 18px; background: linear-gradient(155deg, #fff, var(--surface-blue)); }
+.xiezhi-blueprint-detail h3 { margin: 8px 0 7px; color: var(--navy-900); font-size: 17px; }
+.xiezhi-blueprint-detail > p { min-height: 48px; margin: 0 0 14px; color: var(--muted); font-size: 9px; line-height: 1.6; }
+.xiezhi-blueprint-detail dl { display: grid; gap: 8px; margin: 0; }
+.xiezhi-blueprint-detail dl div { padding: 10px 11px; border: 1px solid rgba(31, 105, 171, 0.15); background: rgba(255, 255, 255, 0.78); }
+.xiezhi-blueprint-detail dt { color: var(--muted-light); font-size: 7px; letter-spacing: 0.08em; text-transform: uppercase; }
+.xiezhi-blueprint-detail dd { margin: 4px 0 0; overflow-wrap: anywhere; color: var(--blue-700); font: 750 10px/1.45 "Cascadia Mono", Consolas, monospace; }
+
+.xiezhi-blueprint-dialog > footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.xiezhi-blueprint-dialog > footer strong { color: var(--blue-700); font: 700 8px/1.3 "Cascadia Mono", Consolas, monospace; }
 
 .xiezhi-module-footer {
   display: flex;
@@ -448,4 +593,11 @@
 @media (max-height: 760px) {
   .workspace-app { grid-template-rows: 58px 64px minmax(620px, calc(100dvh - 122px)) auto; }
   .workspace-shell { height: calc(100dvh - 122px); min-height: 620px; }
+}
+
+@media (max-width: 980px) {
+  .xiezhi-blueprint-layout { grid-template-columns: 1fr; }
+  .xiezhi-blueprint-pipeline { flex-direction: column; }
+  .xiezhi-blueprint-edge { width: 1px; height: 14px; margin-left: 50%; flex-basis: 14px; }
+  .xiezhi-blueprint-edge::after { top: auto; right: -3px; bottom: 0; transform: rotate(135deg); }
 }
