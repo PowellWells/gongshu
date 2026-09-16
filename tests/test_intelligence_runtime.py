@@ -72,7 +72,11 @@ class IntelligenceRuntimeTests(unittest.TestCase):
         self.assertTrue(decision.authorizes_execution)
         state = service.snapshot()
         self.assertTrue(state["decision_available"])
-        self.assertEqual(state["last_decision"]["confidence"], 0.92)
+        self.assertEqual(state["last_decision"]["confidence"], 0.91)
+        self.assertEqual(
+            state["last_decision"]["diagnostics"]["provider_score_type"],
+            "MEAN_PLANNER_RANKING_AND_EVIDENCE_CONFIDENCE",
+        )
         self.assertIn(
             {"provider": "xiezhi", "algorithm": "rule_based"},
             state["available_algorithms"],

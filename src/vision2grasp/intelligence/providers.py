@@ -79,7 +79,19 @@ class BaselineDecisionProvider:
         )
 
 
-def _legacy_candidate(candidate: CandidateEvidence) -> LegacyGraspCandidate:
+def _provider_score(
+    candidate: CandidateEvidence, evidence_confidence: float | None
+) -> float:
+    """Align Gongshu ranking evidence with Xiezhi's documented [0, 1] policy score."""
+
+    if evidence_confidence is None:
+        return float(candidate.score)
+    return float((candidate.score + evidence_confidence) / 2.0)
+
+
+def _legacy_candidate(
+    candidate: CandidateEvidence, evidence_confidence: float | None
+) -> LegacyGraspCandidate:
     approach = np.asarray(candidate.approach_vector, dtype=np.float64).copy()
     approach /= np.linalg.norm(approach)
     closing = np.asarray(candidate.closing_vector, dtype=np.float64).copy()
@@ -99,7 +111,7 @@ def _legacy_candidate(candidate: CandidateEvidence) -> LegacyGraspCandidate:
         candidate_id=candidate.candidate_id,
         world_from_grasp=transform,
         gripper_width_m=candidate.gripper_width_m,
-        score=candidate.score,
+        score=_provider_score(candidate, evidence_confidence),
         reachable=candidate.executable,
         score_terms=candidate.score_factors,
     )
@@ -125,7 +137,7 @@ class XiezhiDecisionProvider:
             timestamp_s=observation.timestamp_s,
             target_object_id=observation.target_id,
             candidates=tuple(
-                _legacy_candidate(candidate)
+                _legacy_candidate(candidate, observation.evidence_confidence)
                 for candidate in observation.candidates
                 if candidate.executable
             ),
@@ -150,7 +162,7 @@ class XiezhiDecisionProvider:
         selected_confidence = (
             observation.evidence_confidence
             if selected is None
-            else float(selected.score)
+            else _provider_score(selected, observation.evidence_confidence)
         )
         reason = str(result.diagnostics.get("reason") or result.stop_reason or "provider_decision")
         return AlgorithmDecision(
@@ -178,6 +190,8 @@ class XiezhiDecisionProvider:
                 "executable_candidate_count": sum(
                     1 for candidate in observation.candidates if candidate.executable
                 ),
+                "planner_ranking_score": None if selected is None else selected.score,
+                "provider_score_type": "MEAN_PLANNER_RANKING_AND_EVIDENCE_CONFIDENCE",
             },
         )
 

@@ -91,12 +91,13 @@ MuJoCo 启动前会再次确保当前规划已有对应决策。对于可执行�
 - Trial Record 同时保存输入、算法、决策与 MuJoCo 结果：通过。
 - 前端单工作区、自动本地图像流程与 Intelligence Layer 边界检查：通过。
 - 相关回归测试：40 passed，1 skipped。
-- 全量测试工作树运行：211 passed，7 skipped；另有 2 项因独立 Git 工作树不包含被忽略的本地 benchmark/图片资产而失败，不属于本轮代码回归。
+- 主工作树全量测试：220 passed，1 skipped，8 subtests passed。
+- 真实进程级 Local Image 冒烟：`CANDIDATES → READY → GRASP_READY → Xiezhi/rule_based → EXECUTE_GRASP → MuJoCo → Experiment Record COMPLETED`。该样例的 MuJoCo 结果为 `FAILED / CONTACT_LOSS`，证明结果失败也能被完整记录，而不是将进入仿真误报为抓取成功。
 
 ## 7. 已知限制
 
 - v1.0 的 Gongshu 执行契约只执行规划器确认的 Best Executable Grasp；未来若允许算法从全部 Top-K 任意选择，需要扩展可执行 GraspPlan 契约。
-- confidence 与 risk_estimation 均为未校准启发式证据，不代表真实成功概率。
+- confidence 与 risk_estimation 均为未校准启发式证据，不代表真实成功概率。Xiezhi Rule-Based Provider 使用候选排名分数与规划可靠性证据的等权组合，以对齐既有策略阈值；两项原始证据和组合类型均写入 diagnostics。
 - 自动本地图像流程默认选择感知列表中的首个目标；多目标任务的语义目标选择尚未进入算法层。
 - Experiment Lab v1.0 的持久化 Trial Record 仅覆盖 Local Image 流程；Phone Camera 仍保留现有会话内结果。
 - 当前只激活 Xiezhi `rule_based` Provider；算法版本比较与批量实验属于后续 Experiment Lab 阶段。
