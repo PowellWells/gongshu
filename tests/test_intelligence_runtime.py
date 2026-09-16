@@ -12,9 +12,21 @@ import numpy as np
 
 from run_vision2grasp_app import Vision2GraspApp
 from vision2grasp.experiment_lab import ExperimentTrialRecorder
-from vision2grasp.grasp_planning import CandidateFeasibility, GraspCandidate
-from vision2grasp.intelligence import DecisionAction, IntelligenceService
+from vision2grasp.grasp_planning import (
+    CandidateFeasibility,
+    GraspCandidate,
+    GraspConfidence,
+    GraspPlan,
+    PlanningState,
+)
+from vision2grasp.intelligence import (
+    AlgorithmDecision,
+    DecisionAction,
+    DecisionStatus,
+    IntelligenceService,
+)
 from vision2grasp.sources import LocalImageAdapter
+from vision2grasp.spatial_perception import CalibrationState, DepthMode, IntrinsicsSource
 
 
 def make_outcome(*, score: float = 0.92, executable: bool = True):
@@ -44,12 +56,84 @@ def make_outcome(*, score: float = 0.92, executable: bool = True):
         best_candidate_id="candidate-01",
         confidence=SimpleNamespace(value=0.90),
     )
+    if plan is not None:
+        plan.for_execution_candidate = lambda _candidate_id: plan
     return SimpleNamespace(
         candidates=(candidate,),
         plan=plan,
         planning_time_s=0.02,
         grasp_uncertainty=None,
         spatial_uncertainty=None,
+    )
+
+
+def make_three_candidate_outcome():
+    candidates = tuple(
+        GraspCandidate(
+            candidate_id=candidate_id,
+            grasp_point_xyz=np.array([x, 0.0, 0.73]),
+            approach_vector=np.array([0.0, 0.0, 1.0]),
+            closing_vector=np.array([1.0, 0.0, 0.0]),
+            grasp_angle=0.0,
+            gripper_width=0.04,
+            quality_score=score,
+            score_factors={"quality": score},
+            ranking_score=score,
+            source_frame_id=42,
+            target_instance_id="target-42-01",
+        )
+        for candidate_id, x, score in (
+            ("C1", 0.01, 0.95),
+            ("C2", 0.02, 0.85),
+            ("C3", 0.03, 0.75),
+        )
+    )
+    plan = GraspPlan(
+        target_id="target-42-01",
+        snapshot_id="snapshot-42",
+        source_frame_id=42,
+        grasp_point_xyz=candidates[0].grasp_point_xyz,
+        approach_vector=candidates[0].approach_vector,
+        closing_vector=candidates[0].closing_vector,
+        grasp_angle=candidates[0].grasp_angle,
+        gripper_width=candidates[0].gripper_width,
+        quality_score=candidates[0].quality_score,
+        confidence=GraspConfidence(value=0.90, factors={"quality": 0.90}),
+        source="test",
+        coordinate_frame="OPENCV_CAMERA_X_RIGHT_Y_DOWN_Z_FORWARD",
+        depth_mode=DepthMode.METRIC,
+        planning_state=PlanningState.GRASP_READY,
+        intrinsics_source=IntrinsicsSource.CALIBRATED,
+        calibration_state=CalibrationState.CALIBRATED,
+        uncertainty=(),
+        object_extents_xyz=np.array([0.10, 0.08, 0.12]),
+        candidate_count=3,
+        candidates=candidates,
+        best_candidate_id="C1",
+    )
+    return SimpleNamespace(
+        candidates=candidates,
+        plan=plan,
+        planning_time_s=0.02,
+        grasp_uncertainty=None,
+        spatial_uncertainty=None,
+    )
+
+
+def make_decision(action: DecisionAction, candidate_id: str | None = None):
+    return AlgorithmDecision(
+        decision_id=f"decision-{action.value.lower()}",
+        observation_id="observation-42",
+        provider_id="xiezhi",
+        algorithm_id="test_authority",
+        status=DecisionStatus.ACTION_AVAILABLE,
+        selected_action=action,
+        selected_candidate_id=candidate_id,
+        confidence=0.88,
+        risk_estimation=0.12,
+        uncertainty=("DEPTH_UNRELIABLE",),
+        reason="test_decision",
+        diagnostics={"test": True},
     )
 
 
@@ -80,6 +164,20 @@ class IntelligenceRuntimeTests(unittest.TestCase):
         self.assertIn(
             {"provider": "xiezhi", "algorithm": "rule_based"},
             state["available_algorithms"],
+        )
+        payload = decision.public_metadata()
+        self.assertEqual(payload["action"], "EXECUTE_GRASP")
+        self.assertEqual(payload["uncertainty"], [])
+        self.assertTrue(
+            {
+                "selected_candidate_id",
+                "action",
+                "confidence",
+                "risk_estimation",
+                "uncertainty",
+                "reason",
+                "diagnostics",
+            }.issubset(payload)
         )
 
     def test_decision_engine_can_switch_to_baseline_and_preserve_history(self) -> None:
@@ -175,6 +273,87 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             app.intelligence.snapshot()["last_decision"]["selected_action"],
             "EXECUTE_GRASP",
         )
+
+    def test_xiezhi_selected_candidate_overrides_planner_best_for_runtime(self) -> None:
+        outcome = make_three_candidate_outcome()
+        selected_decision = make_decision(DecisionAction.EXECUTE_GRASP, "C2")
+        captured: list[object] = []
+
+        class Planning:
+            @staticmethod
+            def current_outcome():
+                return outcome
+
+        class Intelligence:
+            @staticmethod
+            def ensure_decision(_outcome):
+                return selected_decision
+
+        class Target:
+            @staticmethod
+            def selected_scene_snapshot():
+                return SimpleNamespace(snapshot_id="snapshot-42")
+
+        class Validation:
+            @staticmethod
+            def start(plan, *, scenario, snapshot):
+                captured.append(plan)
+                return {"status": "INITIALIZING", "candidate_id": plan.best_candidate_id}
+
+        app = object.__new__(Vision2GraspApp)
+        app.grasp_planning = Planning()
+        app.intelligence = Intelligence()
+        app.target_perception = Target()
+        app.mujoco_validation = Validation()
+        app._vision_source = "phone_camera"
+        app._record_offline_pipeline_status = lambda _status: None
+        app._start_offline_run_watch = lambda: None
+        app._start_xiezhi_lifecycle = lambda **_kwargs: None
+
+        response = app.start_validation(
+            {"target_id": "target-42-01", "scenario": "NOMINAL"}
+        )
+
+        self.assertEqual(outcome.plan.best_candidate_id, "C1")
+        self.assertEqual(response["candidate_id"], "C2")
+        self.assertEqual(captured[0].best_candidate_id, "C2")
+        np.testing.assert_allclose(captured[0].grasp_point_xyz, [0.02, 0.0, 0.73])
+
+    def test_reobserve_and_abort_never_start_mujoco(self) -> None:
+        outcome = make_three_candidate_outcome()
+
+        class Planning:
+            @staticmethod
+            def current_outcome():
+                return outcome
+
+        class Target:
+            @staticmethod
+            def selected_scene_snapshot():
+                return SimpleNamespace(snapshot_id="snapshot-42")
+
+        class Validation:
+            @staticmethod
+            def start(*_args, **_kwargs):
+                raise AssertionError("MuJoCo must not start")
+
+        app = object.__new__(Vision2GraspApp)
+        app.grasp_planning = Planning()
+        app.target_perception = Target()
+        app.mujoco_validation = Validation()
+        app._vision_source = "phone_camera"
+
+        for action, message in (
+            (DecisionAction.REOBSERVE, "requires reobservation"),
+            (DecisionAction.ABORT, "aborted the current task"),
+        ):
+            with self.subTest(action=action):
+                decision = make_decision(action)
+                app.intelligence = SimpleNamespace(
+                    ensure_decision=lambda _outcome, value=decision: value
+                )
+                with self.assertRaisesRegex(RuntimeError, message):
+                    app.start_validation({"target_id": "target-42-01"})
 
 
 if __name__ == "__main__":

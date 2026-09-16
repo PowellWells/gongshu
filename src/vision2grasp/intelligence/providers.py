@@ -61,6 +61,7 @@ class BaselineDecisionProvider:
                 confidence=None,
                 risk_estimation=None,
                 reason="no_executable_grasp_candidate",
+                uncertainty=observation.uncertainty_reasons,
                 diagnostics={"candidate_count": len(observation.candidates)},
             )
         confidence = float(selected.score)
@@ -75,6 +76,7 @@ class BaselineDecisionProvider:
             confidence=confidence,
             risk_estimation=float(1.0 - confidence),
             reason="best_executable_ranked_candidate",
+            uncertainty=observation.uncertainty_reasons,
             diagnostics={"candidate_count": len(observation.candidates)},
         )
 
@@ -159,6 +161,9 @@ class XiezhiDecisionProvider:
         }
         action = action_map.get(result.action_name, DecisionAction.NO_ACTION)
         selected = _selected_evidence(observation, result.candidate_id)
+        selected_candidate_id = (
+            result.candidate_id if action is DecisionAction.EXECUTE_GRASP else None
+        )
         selected_confidence = (
             observation.evidence_confidence
             if selected is None
@@ -176,12 +181,13 @@ class XiezhiDecisionProvider:
                 else DecisionStatus.ABSTAINED
             ),
             selected_action=action,
-            selected_candidate_id=result.candidate_id,
+            selected_candidate_id=selected_candidate_id,
             confidence=selected_confidence,
             risk_estimation=(
                 None if selected_confidence is None else float(1.0 - selected_confidence)
             ),
             reason=reason,
+            uncertainty=observation.uncertainty_reasons,
             diagnostics={
                 **dict(result.diagnostics),
                 "position_std_proxy_m": position_std,

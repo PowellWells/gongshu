@@ -47,7 +47,7 @@ from vision2grasp.grasp_planning import (
     PixelWiseTopKGraspPlanner,
     TopKGraspPlannerConfig,
 )
-from vision2grasp.intelligence import IntelligenceService
+from vision2grasp.intelligence import DecisionAction, IntelligenceService
 from vision2grasp.perception import UltralyticsSegmenterConfig, UltralyticsYOLOSegmenter
 from vision2grasp.real_scene import RealScenePerceptionPipeline
 from vision2grasp.real_scene_service import RealSceneProcessor
@@ -585,6 +585,14 @@ class Vision2GraspApp:
             run_id = self.local_image.active_run_id()
             if run_id is not None:
                 self.experiment_recorder.record_decision(run_id, decision)
+        if decision.action is DecisionAction.REOBSERVE:
+            raise RuntimeError(
+                "Intelligence decision requires reobservation; grasp execution was not started"
+            )
+        if decision.action is DecisionAction.ABORT:
+            raise RuntimeError(
+                "Intelligence decision aborted the current task; grasp execution was not started"
+            )
         snapshot = self.target_perception.selected_scene_snapshot()
         if snapshot is None:
             raise RuntimeError("no selected Scene Snapshot is available for simulation")
@@ -603,15 +611,13 @@ class Vision2GraspApp:
         if outcome.plan is not None:
             if not decision.authorizes_execution:
                 raise RuntimeError(
-                    f"Intelligence decision does not authorize execution: "
-                    f"{decision.selected_action.value}"
+                    f"Intelligence decision does not authorize execution: {decision.action.value}"
                 )
-            if decision.selected_candidate_id != outcome.plan.best_candidate_id:
-                raise RuntimeError(
-                    "selected decision candidate is not executable by the current Gongshu plan"
-                )
+            execution_plan = outcome.plan.for_execution_candidate(
+                decision.selected_candidate_id
+            )
             response = self.mujoco_validation.start(
-                outcome.plan, scenario=scenario, snapshot=snapshot
+                execution_plan, scenario=scenario, snapshot=snapshot
             )
         else:
             response = self.mujoco_validation.start_rejected_attempt(

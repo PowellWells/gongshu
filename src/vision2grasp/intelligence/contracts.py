@@ -98,7 +98,12 @@ class AlgorithmObservation:
 
 @dataclass(frozen=True, slots=True)
 class AlgorithmDecision:
-    """Provider-neutral result consumed only by Gongshu Runtime."""
+    """Frozen v1 provider-neutral result consumed only by Gongshu Runtime.
+
+    The stable decision payload is selected_candidate_id, action, confidence,
+    risk_estimation, uncertainty, reason, and diagnostics. ``selected_action``
+    remains the internal/compatibility spelling used by existing callers.
+    """
 
     decision_id: str
     observation_id: str
@@ -110,6 +115,7 @@ class AlgorithmDecision:
     confidence: float | None
     risk_estimation: float | None
     reason: str
+    uncertainty: tuple[str, ...] = ()
     used_fallback: bool = False
     fallback_reason: str | None = None
     diagnostics: Mapping[str, Any] = field(default_factory=dict)
@@ -124,7 +130,16 @@ class AlgorithmDecision:
                 raise ValueError(f"{name} must be None or in [0, 1]")
         if self.selected_action is DecisionAction.EXECUTE_GRASP and not self.selected_candidate_id:
             raise ValueError("EXECUTE_GRASP requires selected_candidate_id")
+        if self.selected_action is not DecisionAction.EXECUTE_GRASP and self.selected_candidate_id:
+            raise ValueError("only EXECUTE_GRASP may select a candidate")
+        object.__setattr__(self, "uncertainty", tuple(dict.fromkeys(self.uncertainty)))
         object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def action(self) -> DecisionAction:
+        """Stable v1 action name; selected_action is retained for compatibility."""
+
+        return self.selected_action
 
     @property
     def authorizes_execution(self) -> bool:
@@ -142,12 +157,14 @@ class AlgorithmDecision:
             "provider": self.provider_id,
             "algorithm": self.algorithm_id,
             "status": self.status.value,
+            "action": self.action.value,
             "selected_action": self.selected_action.value,
             "selected_candidate_id": self.selected_candidate_id,
             "confidence": self.confidence,
             "confidence_type": "HEURISTIC_UNCALIBRATED",
             "risk_estimation": self.risk_estimation,
             "risk_type": "HEURISTIC_UNCALIBRATED",
+            "uncertainty": list(self.uncertainty),
             "reason": self.reason,
             "used_fallback": self.used_fallback,
             "fallback_reason": self.fallback_reason,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
@@ -318,6 +318,37 @@ class GraspPlan:
             ),
             "execution_scope": "ROBOT_INDEPENDENT_CAMERA_FRAME",
         }
+
+    def for_execution_candidate(self, candidate_id: str) -> "GraspPlan":
+        """Build a runtime plan from the authority-selected candidate.
+
+        The planner's original plan remains immutable and retains its ranking result.
+        Gongshu Runtime uses this derived plan only after an AlgorithmDecision has
+        authorized execution.
+        """
+
+        selected = next(
+            (candidate for candidate in self.candidates if candidate.candidate_id == candidate_id),
+            None,
+        )
+        if selected is None:
+            raise ValueError("selected decision candidate is not in the Gongshu candidate pool")
+        if not selected.executable:
+            raise ValueError("selected decision candidate is not executable")
+        if selected.target_instance_id and selected.target_instance_id != self.target_id:
+            raise ValueError("selected decision candidate does not match the planned target")
+        if selected.source_frame_id >= 0 and selected.source_frame_id != self.source_frame_id:
+            raise ValueError("selected decision candidate does not match the planned source frame")
+        return replace(
+            self,
+            grasp_point_xyz=selected.grasp_point_xyz,
+            approach_vector=selected.approach_vector,
+            closing_vector=selected.closing_vector,
+            grasp_angle=selected.grasp_angle,
+            gripper_width=selected.gripper_width,
+            quality_score=selected.quality_score,
+            best_candidate_id=selected.candidate_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
