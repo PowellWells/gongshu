@@ -193,18 +193,35 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('decision?.selected_action === "EXECUTE_GRASP"', self.controller)
         self.assertIn("window.setTimeout(() => startValidation(), 180);", self.controller)
 
-    def test_intelligence_layer_is_gongshu_internal_and_decision_driven(self) -> None:
+    def test_xiezhi_is_a_clickable_gongshu_internal_decision_submodule(self) -> None:
         for label in (
-            "公输 <b>Intelligence Layer</b>",
-            "GONGSHU-OWNED ALGORITHM INTERFACE",
-            "Observation → Decision Output → Gongshu Runtime",
-            "Xiezhi 是可选 Provider",
-            "Experiment Lab 独立记录输入、算法、决策和 MuJoCo 结果",
+            "獬豸 <b>Xiezhi</b>",
+            'src="assets/xiezhi-logo-sheet.png"',
+            'alt="獬豸 Xiezhi 智能决策 Logo"',
+            "GONGSHU · INTERNAL SUBMODULE",
+            "XIEZHI DECISION MODULE",
+            "Observation → Xiezhi Decision → Gongshu Runtime",
+            "DECISION ENGINE",
+            "决策引擎",
+            "DECISION HISTORY",
+            "决策记录",
+            "Xiezhi is an internal submodule of Gongshu Robot Platform",
         ):
             self.assertIn(label, self.html)
-        self.assertNotIn("Xiezhi <b>Algorithm Lab</b>", self.html)
+        for forbidden in (
+            "公输 <b>Intelligence Layer</b>",
+            "ALGORITHM PROVIDER",
+            "算法提供者",
+            "Experiment Lab Record",
+        ):
+            self.assertNotIn(forbidden, self.html)
+        for action in ("runtime", "provider", "evidence", "history"):
+            self.assertIn(f'data-xiezhi-action="{action}"', self.html)
+            self.assertIn(f'data-xiezhi-panel="{action}"', self.html)
         intelligence_ui = (GONGSHU_ROOT / "xiezhi-lab.js").read_text(encoding="utf-8")
         self.assertIn('/api/intelligence/state', intelligence_ui)
+        self.assertIn('/api/intelligence/select-algorithm', intelligence_ui)
+        self.assertIn("detailPanel.hidden = false", intelligence_ui)
         self.assertNotIn('/api/xiezhi/status', intelligence_ui)
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:

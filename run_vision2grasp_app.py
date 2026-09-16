@@ -569,6 +569,12 @@ class Vision2GraspApp:
                 self.local_image.record_pipeline_status("INTELLIGENCE_DECISION")
         return self.intelligence.snapshot()
 
+    def select_algorithm(self, request: dict[str, Any]) -> dict[str, object]:
+        return self.intelligence.select_algorithm(
+            str(request.get("provider", "")),
+            str(request.get("algorithm", "")),
+        )
+
     def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Create one normalized attempt from a ready or rejected candidate."""
 
@@ -1068,6 +1074,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 return
             if path == "/api/intelligence/decide":
                 self._send_json(self.app.decide_grasp())
+                return
+            if path == "/api/intelligence/select-algorithm":
+                self._send_json(self.app.select_algorithm(body))
                 return
             if path == "/api/intelligence/reset":
                 self._send_json(self.app.intelligence.reset())

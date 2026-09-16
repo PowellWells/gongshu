@@ -36,6 +36,9 @@ class AlgorithmRegistry:
             raise TypeError("algorithm provider identity does not match its registry entry")
         return provider
 
+    def supports(self, provider_id: str, algorithm_id: str) -> bool:
+        return (provider_id, algorithm_id) in self._factories
+
     def entries(self) -> tuple[dict[str, str], ...]:
         return tuple(
             {"provider": provider, "algorithm": algorithm}

@@ -82,6 +82,24 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             state["available_algorithms"],
         )
 
+    def test_decision_engine_can_switch_to_baseline_and_preserve_history(self) -> None:
+        service = IntelligenceService(xiezhi_enabled=True)
+        first = service.decide(make_outcome())
+        selected = service.select_algorithm("gongshu", "baseline_topk")
+        self.assertEqual(selected["selected_provider"], "gongshu")
+        self.assertEqual(selected["selected_algorithm"], "baseline_topk")
+        self.assertFalse(selected["decision_available"])
+        second = service.decide(make_outcome())
+        self.assertEqual(first.provider_id, "xiezhi")
+        self.assertEqual(second.provider_id, "gongshu")
+        history = service.snapshot()["decision_history"]
+        self.assertEqual([item["provider"] for item in history], ["gongshu", "xiezhi"])
+
+    def test_unknown_decision_engine_is_rejected(self) -> None:
+        service = IntelligenceService(xiezhi_enabled=True)
+        with self.assertRaisesRegex(ValueError, "not available"):
+            service.select_algorithm("xiezhi", "not_registered")
+
     def test_xiezhi_load_failure_falls_back_to_gongshu_baseline(self) -> None:
         with patch(
             "vision2grasp.intelligence.registry.XiezhiDecisionProvider",

@@ -29,11 +29,13 @@ class IntelligenceService:
         registry: AlgorithmRegistry | None = None,
     ) -> None:
         self._xiezhi_enabled = bool(xiezhi_enabled)
-        self._algorithm_id = algorithm_id
         self._registry = registry or default_algorithm_registry(include_xiezhi=xiezhi_enabled)
+        self._selected_provider_id = "xiezhi" if xiezhi_enabled else "gongshu"
+        self._selected_algorithm_id = algorithm_id if xiezhi_enabled else "baseline_topk"
         self._lock = threading.RLock()
         self._revision = 0
         self._decision: AlgorithmDecision | None = None
+        self._decision_history: list[AlgorithmDecision] = []
         self._observation_id: str | None = None
         self._provider_status = "READY"
         self._provider_id = "xiezhi" if xiezhi_enabled else "gongshu"
@@ -43,9 +45,10 @@ class IntelligenceService:
         with self._lock:
             self._revision += 1
             self._decision = None
+            self._decision_history.clear()
             self._observation_id = None
             self._provider_status = "READY"
-            self._provider_id = "xiezhi" if self._xiezhi_enabled else "gongshu"
+            self._provider_id = self._selected_provider_id
             self._fallback_reason = None
             return self.snapshot()
 
@@ -55,9 +58,11 @@ class IntelligenceService:
             if self._decision is not None and self._observation_id == observation.observation_id:
                 return self._decision
         fallback_reason = None
-        if self._xiezhi_enabled:
+        if self._selected_provider_id == "xiezhi":
             try:
-                decision = self._registry.create("xiezhi", self._algorithm_id).decide(observation)
+                decision = self._registry.create(
+                    self._selected_provider_id, self._selected_algorithm_id
+                ).decide(observation)
                 provider_status = "READY"
                 provider_id = "xiezhi"
             except (ImportError, RuntimeError, TypeError, ValueError) as error:
@@ -67,12 +72,16 @@ class IntelligenceService:
                 provider_status = "DEGRADED"
                 provider_id = "gongshu"
         else:
-            decision = self._registry.create("gongshu", "baseline_topk").decide(observation)
+            decision = self._registry.create(
+                self._selected_provider_id, self._selected_algorithm_id
+            ).decide(observation)
             provider_status = "READY"
-            provider_id = "gongshu"
+            provider_id = self._selected_provider_id
         with self._lock:
             self._revision += 1
             self._decision = decision
+            self._decision_history.append(decision)
+            self._decision_history = self._decision_history[-20:]
             self._observation_id = observation.observation_id
             self._provider_status = provider_status
             self._provider_id = provider_id
@@ -82,19 +91,42 @@ class IntelligenceService:
     def ensure_decision(self, outcome: GraspPlanningOutcome) -> AlgorithmDecision:
         return self.decide(outcome)
 
+    def select_algorithm(self, provider_id: str, algorithm_id: str) -> dict[str, Any]:
+        provider = str(provider_id).strip().lower()
+        algorithm = str(algorithm_id).strip().lower()
+        if not self._registry.supports(provider, algorithm):
+            raise ValueError(f"algorithm provider is not available: {provider}/{algorithm}")
+        with self._lock:
+            self._selected_provider_id = provider
+            self._selected_algorithm_id = algorithm
+            self._provider_id = provider
+            self._provider_status = "READY"
+            self._fallback_reason = None
+            self._decision = None
+            self._observation_id = None
+            self._revision += 1
+            return self.snapshot()
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             decision = None if self._decision is None else self._decision.public_metadata()
             return {
                 "schema_version": INTELLIGENCE_STATE_SCHEMA_VERSION,
                 "status": self._provider_status,
-                "configured_provider": "xiezhi" if self._xiezhi_enabled else "gongshu",
+                "configured_provider": self._selected_provider_id,
+                "selected_provider": self._selected_provider_id,
+                "selected_algorithm": self._selected_algorithm_id,
                 "active_provider": self._provider_id,
                 "algorithm": (
-                    self._algorithm_id if self._provider_id == "xiezhi" else "baseline_topk"
+                    self._selected_algorithm_id
+                    if self._provider_id == self._selected_provider_id
+                    else "baseline_topk"
                 ),
                 "decision_available": decision is not None,
                 "last_decision": decision,
+                "decision_history": [
+                    item.public_metadata() for item in reversed(self._decision_history)
+                ],
                 "fallback_reason": self._fallback_reason,
                 "available_algorithms": list(self._registry.entries()),
                 "revision": self._revision,

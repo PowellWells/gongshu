@@ -248,7 +248,7 @@ class FrontendPortalTests(unittest.TestCase):
             "xiezhiLatestEvent",
         ):
             self.assertIn(f'id="{element_id}"', html)
-        self.assertIn('fetch("/api/intelligence/state"', script)
+        self.assertIn('api("/api/intelligence/state")', script)
         self.assertIn("state.decision_available", script)
         self.assertIn("state.last_decision", script)
 

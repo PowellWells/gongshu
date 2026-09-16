@@ -66,11 +66,12 @@ MuJoCo 启动前会再次确保当前规划已有对应决策。对于可执行�
 
 ## 4. 前端变化
 
-- 原“Xiezhi Algorithm Lab”改为“Gongshu Intelligence Layer”。
-- 页面不再表现为另一个软件入口。
-- 展示字段改为：Status、Provider、Decision、Last Decision。
-- 决策产生后实时显示 Provider、算法、动作和候选。
-- Experiment Lab 明确显示为 Gongshu 的独立实验记录层，不归属 Xiezhi。
+- 05 整块明确为“獬豸 Xiezhi”，定位为 Gongshu 页面内的智能决策子模块，不是独立软件入口。
+- 头部使用正式獬豸 Logo，并保留“GONGSHU · INTERNAL SUBMODULE”所属关系。
+- “Algorithm Provider / 算法提供者”在用户界面统一改名为“Decision Engine / 决策引擎”。
+- 决策运行、决策引擎、决策证据、决策记录四个卡片均可展开查看真实运行数据。
+- 决策引擎可在 Xiezhi `rule_based` 与 Gongshu `baseline_topk` 之间切换；切换只替换决策环节。
+- Experiment Lab 不再出现在 05 内部；实验生命周期仍属于 Gongshu 的独立实验层。
 
 ## 5. 实验记录
 
@@ -100,5 +101,5 @@ MuJoCo 启动前会再次确保当前规划已有对应决策。对于可执行�
 - confidence 与 risk_estimation 均为未校准启发式证据，不代表真实成功概率。Xiezhi Rule-Based Provider 使用候选排名分数与规划可靠性证据的等权组合，以对齐既有策略阈值；两项原始证据和组合类型均写入 diagnostics。
 - 自动本地图像流程默认选择感知列表中的首个目标；多目标任务的语义目标选择尚未进入算法层。
 - Experiment Lab v1.0 的持久化 Trial Record 仅覆盖 Local Image 流程；Phone Camera 仍保留现有会话内结果。
-- 当前只激活 Xiezhi `rule_based` Provider；算法版本比较与批量实验属于后续 Experiment Lab 阶段。
+- 当前可插拔选择覆盖 Xiezhi `rule_based` 与 Gongshu `baseline_topk` 两个决策引擎；更多算法版本与批量实验属于后续 Experiment Lab 阶段。
 - 当前验证仍是规范化 MuJoCo 仿真，不声明真实相机到机器人坐标标定，也不连接真实机器人控制。
