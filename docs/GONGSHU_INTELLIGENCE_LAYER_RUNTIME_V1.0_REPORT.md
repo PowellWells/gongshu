@@ -91,8 +91,8 @@ MuJoCo 启动前会再次确保当前规划已有对应决策。对于可执行�
 - Gongshu Execution 在 MuJoCo 前消费并校验 Decision：通过。
 - Trial Record 同时保存输入、算法、决策与 MuJoCo 结果：通过。
 - 前端单工作区、自动本地图像流程与 Intelligence Layer 边界检查：通过。
-- 相关回归测试：40 passed，1 skipped。
-- 主工作树全量测试：220 passed，1 skipped，8 subtests passed。
+- 相关回归测试：42 passed，1 skipped。
+- 主工作树全量测试：222 passed，1 skipped，8 subtests passed。
 - 真实进程级 Local Image 冒烟：`CANDIDATES → READY → GRASP_READY → Xiezhi/rule_based → EXECUTE_GRASP → MuJoCo → Experiment Record COMPLETED`。该样例的 MuJoCo 结果为 `FAILED / CONTACT_LOSS`，证明结果失败也能被完整记录，而不是将进入仿真误报为抓取成功。
 
 ## 7. 已知限制
