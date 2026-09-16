@@ -248,9 +248,12 @@ class FrontendPortalTests(unittest.TestCase):
             "xiezhiLatestEvent",
         ):
             self.assertIn(f'id="{element_id}"', html)
-        self.assertIn('api("/api/intelligence/state")', script)
-        self.assertIn("state.decision_available", script)
-        self.assertIn("state.last_decision", script)
+        self.assertIn('api("/api/intelligence/dashboard")', script)
+        self.assertIn('state.schema_version !== "gongshu.xiezhi-dashboard/v1"', script)
+        self.assertIn("const runtime = state.runtime", script)
+        self.assertIn("const engine = state.engine", script)
+        self.assertIn("const evidence = state.evidence", script)
+        self.assertIn("renderDecisionHistory(state.history)", script)
 
 
 if __name__ == "__main__":

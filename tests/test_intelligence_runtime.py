@@ -186,6 +186,28 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             }.issubset(payload)
         )
 
+    def test_service_exposes_dashboard_v1_as_a_read_only_decision_projection(self) -> None:
+        service = IntelligenceService(xiezhi_enabled=True)
+        self.assertIsNone(service.dashboard_state())
+        decision = service.decide(make_outcome())
+
+        dashboard = service.dashboard_state()
+
+        self.assertIsNotNone(dashboard)
+        assert dashboard is not None
+        payload = dashboard.public_metadata()
+        self.assertEqual(payload["schema_version"], "gongshu.xiezhi-dashboard/v1")
+        self.assertEqual(payload["runtime"]["current_action"], decision.action.value)
+        self.assertEqual(
+            payload["runtime"]["selected_candidate"],
+            decision.selected_candidate_id,
+        )
+        self.assertEqual(payload["engine"]["algorithm_version"], "v0.1")
+
+        baseline = IntelligenceService(xiezhi_enabled=False)
+        baseline.decide(make_outcome())
+        self.assertIsNone(baseline.dashboard_state())
+
     def test_decision_engine_can_switch_to_baseline_and_preserve_history(self) -> None:
         service = IntelligenceService(xiezhi_enabled=True)
         first = service.decide(make_outcome())

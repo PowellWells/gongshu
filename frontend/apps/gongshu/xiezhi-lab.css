@@ -274,6 +274,21 @@
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+.xiezhi-capability-grid button:first-child {
+  grid-column: span 2;
+  min-height: 124px;
+  border-color: #8db9e5;
+  background: linear-gradient(110deg, var(--blue-50), #fff);
+}
+
+.xiezhi-capability-grid button > em {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  color: rgba(31, 105, 171, 0.22);
+  font: normal 800 21px/1 "Cascadia Mono", Consolas, monospace;
+}
+
 .xiezhi-capability-grid button:hover,
 .xiezhi-capability-grid button.is-selected {
   border-color: #8db9e5;
@@ -377,10 +392,34 @@
 .xiezhi-provider-option:hover { border-color: #8db9e5; background: var(--blue-50); }
 .xiezhi-provider-option.is-selected { border-color: var(--cyan); background: rgba(236, 253, 250, 0.72); cursor: default; }
 
+.xiezhi-engine-entries {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.xiezhi-engine-entries button {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px solid #a9c9e8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--navy-800);
+  text-align: left;
+  cursor: pointer;
+}
+
+.xiezhi-engine-entries button:hover { border-color: var(--blue-500); background: var(--blue-50); }
+.xiezhi-engine-entries small { color: var(--muted-light); font-size: 7px; letter-spacing: 0.09em; }
+.xiezhi-engine-entries strong { font-size: 11px; }
+.xiezhi-engine-entries span { color: var(--blue-700); font-size: 8px; }
+
 .xiezhi-decision-history { display: grid; gap: 7px; }
 .xiezhi-history-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid rgba(31, 105, 171, 0.16);

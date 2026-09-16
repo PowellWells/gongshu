@@ -16,6 +16,7 @@ from .contracts import (
 )
 from .providers import as_fallback
 from .registry import AlgorithmRegistry, default_algorithm_registry
+from .visualization import VisualizationDataProvider, XiezhiDashboardState
 
 
 class IntelligenceService:
@@ -30,6 +31,7 @@ class IntelligenceService:
     ) -> None:
         self._xiezhi_enabled = bool(xiezhi_enabled)
         self._registry = registry or default_algorithm_registry(include_xiezhi=xiezhi_enabled)
+        self._visualization = VisualizationDataProvider(self._registry)
         self._selected_provider_id = "xiezhi" if xiezhi_enabled else "gongshu"
         self._selected_algorithm_id = algorithm_id if xiezhi_enabled else "baseline_topk"
         self._lock = threading.RLock()
@@ -131,6 +133,18 @@ class IntelligenceService:
                 "available_algorithms": list(self._registry.entries()),
                 "revision": self._revision,
             }
+
+    def dashboard_state(self) -> XiezhiDashboardState | None:
+        """Return the read-only XiezhiDashboardState v1 projection, when available."""
+
+        with self._lock:
+            decision = self._decision
+        if decision is None:
+            return None
+        try:
+            return self._visualization.build(decision)
+        except ValueError:
+            return None
 
     def _observation(self, outcome: GraspPlanningOutcome) -> AlgorithmObservation:
         plan = outcome.plan

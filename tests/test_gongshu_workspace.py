@@ -149,7 +149,6 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "Pinhole Camera",
             "针孔相机",
             "超微型相机",
-            "置信度 Confidence",
         ):
             self.assertNotIn(forbidden.lower(), self.html.lower())
             self.assertNotIn(forbidden.lower(), self.controller.lower())
@@ -200,11 +199,25 @@ class GongshuWorkspaceTests(unittest.TestCase):
             'alt="獬豸 Xiezhi 智能决策 Logo"',
             "GONGSHU · INTERNAL SUBMODULE",
             "XIEZHI DECISION MODULE",
-            "Observation → Xiezhi Decision → Gongshu Runtime",
-            "DECISION ENGINE",
-            "决策引擎",
-            "DECISION HISTORY",
-            "决策记录",
+            "观测 Observation → 獬豸决策 Xiezhi Decision → 公输运行时 Gongshu Runtime",
+            "决策引擎 DECISION ENGINE",
+            "决策记录 DECISION HISTORY",
+            "当前算法 Current Algorithm",
+            "版本 Version",
+            "动作 Action",
+            "所选候选 Selected Candidate",
+            "置信度 Confidence",
+            "风险 Risk",
+            "不确定性 Uncertainty",
+            "诊断 Diagnostics",
+            "原因 Reason",
+            "算法元数据 Algorithm Metadata",
+            "算法类型 Algorithm Type",
+            "管线概览 Pipeline Overview",
+            "算法蓝图 Algorithm Blueprint",
+            "算法竞技场 Algorithm Arena",
+            "实验结果 Experiment Result",
+            "验证结果 Validation Result",
             "Xiezhi is an internal submodule of Gongshu Robot Platform",
         ):
             self.assertIn(label, self.html)
@@ -218,9 +231,19 @@ class GongshuWorkspaceTests(unittest.TestCase):
         for action in ("runtime", "provider", "evidence", "history"):
             self.assertIn(f'data-xiezhi-action="{action}"', self.html)
             self.assertIn(f'data-xiezhi-panel="{action}"', self.html)
+        positions = [
+            self.html.index(f'data-xiezhi-action="{action}"')
+            for action in ("runtime", "provider", "evidence", "history")
+        ]
+        self.assertEqual(positions, sorted(positions))
         intelligence_ui = (GONGSHU_ROOT / "xiezhi-lab.js").read_text(encoding="utf-8")
-        self.assertIn('/api/intelligence/state', intelligence_ui)
-        self.assertIn('/api/intelligence/select-algorithm', intelligence_ui)
+        self.assertIn('/api/intelligence/dashboard', intelligence_ui)
+        self.assertIn('state.schema_version !== "gongshu.xiezhi-dashboard/v1"', intelligence_ui)
+        self.assertIn("const runtime = state.runtime", intelligence_ui)
+        self.assertIn("const engine = state.engine", intelligence_ui)
+        self.assertIn("const evidence = state.evidence", intelligence_ui)
+        self.assertIn("renderDecisionHistory(state.history)", intelligence_ui)
+        self.assertNotIn('/api/intelligence/select-algorithm', intelligence_ui)
         self.assertIn("detailPanel.hidden = false", intelligence_ui)
         self.assertNotIn('/api/xiezhi/status', intelligence_ui)
 

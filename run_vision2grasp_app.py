@@ -809,6 +809,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/spatial-perception/state",
             "/api/grasp-planning/state",
             "/api/intelligence/state",
+            "/api/intelligence/dashboard",
             "/api/mujoco-validation/state",
             "/api/xiezhi/status",
         }
@@ -852,6 +853,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.real-appearance-proxy/v1",
                         "xiezhi-lifecycle.status/v0.1",
                         "gongshu-intelligence-decision/v1",
+                        "gongshu.xiezhi-dashboard/v1",
                         "gongshu-experiment-trial/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
@@ -865,6 +867,19 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/intelligence/state":
             self._send_json(self.app.intelligence.snapshot())
+            return
+        if path == "/api/intelligence/dashboard":
+            dashboard = self.app.intelligence.dashboard_state()
+            if dashboard is None:
+                self._send_json(
+                    {
+                        "status": "not_ready",
+                        "message": "Xiezhi dashboard is waiting for an AlgorithmDecision v1",
+                    },
+                    status=HTTPStatus.NOT_FOUND,
+                )
+                return
+            self._send_json(dashboard.public_metadata())
             return
         if path == "/api/vision-source/state":
             self._send_json(self.app.vision_source_snapshot())
