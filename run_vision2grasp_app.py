@@ -585,13 +585,13 @@ class Vision2GraspApp:
             run_id = self.local_image.active_run_id()
             if run_id is not None:
                 self.experiment_recorder.record_decision(run_id, decision)
-        if decision.action is DecisionAction.REOBSERVE:
-            raise RuntimeError(
-                "Intelligence decision requires reobservation; grasp execution was not started"
-            )
         if decision.action is DecisionAction.ABORT:
             raise RuntimeError(
                 "Intelligence decision aborted the current task; grasp execution was not started"
+            )
+        if outcome.plan is not None and decision.action is DecisionAction.REOBSERVE:
+            raise RuntimeError(
+                "Intelligence decision requires reobservation; grasp execution was not started"
             )
         snapshot = self.target_perception.selected_scene_snapshot()
         if snapshot is None:
@@ -620,6 +620,8 @@ class Vision2GraspApp:
                 execution_plan, scenario=scenario, snapshot=snapshot
             )
         else:
+            # A rejected-attempt validation is a simulation-only diagnostic of the
+            # rejected candidate, not authorization to execute a robot grasp.
             response = self.mujoco_validation.start_rejected_attempt(
                 outcome, scenario=scenario, snapshot=snapshot
             )

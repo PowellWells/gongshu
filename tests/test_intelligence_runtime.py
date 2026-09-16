@@ -383,6 +383,57 @@ class IntelligenceRuntimeTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, message):
                     app.start_validation({"target_id": "target-42-01"})
 
+    def test_reobserve_allows_simulation_only_validation_of_rejected_plan(self) -> None:
+        outcome = make_outcome(executable=False)
+        decision = make_decision(DecisionAction.REOBSERVE)
+        captured: list[tuple[object, str, object]] = []
+
+        class Planning:
+            @staticmethod
+            def current_outcome():
+                return outcome
+
+        class Intelligence:
+            @staticmethod
+            def ensure_decision(_outcome):
+                return decision
+
+        class Target:
+            @staticmethod
+            def selected_scene_snapshot():
+                return SimpleNamespace(snapshot_id="snapshot-42")
+
+        class Validation:
+            @staticmethod
+            def start(*_args, **_kwargs):
+                raise AssertionError("rejected plans must use diagnostic validation")
+
+            @staticmethod
+            def start_rejected_attempt(rejected, *, scenario, snapshot):
+                captured.append((rejected, scenario, snapshot))
+                return {
+                    "status": "INITIALIZING",
+                    "planning_status": "PLANNING_REJECTED",
+                }
+
+        app = object.__new__(Vision2GraspApp)
+        app.grasp_planning = Planning()
+        app.intelligence = Intelligence()
+        app.target_perception = Target()
+        app.mujoco_validation = Validation()
+        app._vision_source = "phone_camera"
+        app._record_offline_pipeline_status = lambda _status: None
+        app._start_offline_run_watch = lambda: None
+        app._start_xiezhi_lifecycle = lambda **_kwargs: None
+
+        response = app.start_validation(
+            {"target_id": "target-42-01", "scenario": "NOMINAL"}
+        )
+
+        self.assertEqual(response["planning_status"], "PLANNING_REJECTED")
+        self.assertEqual(len(captured), 1)
+        self.assertIs(captured[0][0], outcome)
+
 
 if __name__ == "__main__":
     unittest.main()
