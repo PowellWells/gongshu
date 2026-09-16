@@ -16,6 +16,19 @@ from .blueprint import (
     AlgorithmType,
     BlueprintStage,
 )
+from .external_baseline import (
+    EXTERNAL_BASELINE_PROVIDER_ID,
+    MOCK_EXTERNAL_BASELINE_ID,
+    MOCK_EXTERNAL_BASELINE_METADATA,
+    ExternalAlgorithm,
+    ExternalBaselineAdapter,
+    ExternalBaselineInput,
+    ExternalBaselineOutput,
+    ExternalCandidateInput,
+    MockExternalBaseline,
+    MockSelectionStrategy,
+    create_mock_external_baseline_provider,
+)
 
 __all__ = [
     "AlgorithmDecision",
@@ -30,5 +43,16 @@ __all__ = [
     "DecisionAction",
     "DecisionStatus",
     "IntelligenceService",
+    "EXTERNAL_BASELINE_PROVIDER_ID",
+    "MOCK_EXTERNAL_BASELINE_ID",
+    "MOCK_EXTERNAL_BASELINE_METADATA",
+    "ExternalAlgorithm",
+    "ExternalBaselineAdapter",
+    "ExternalBaselineInput",
+    "ExternalBaselineOutput",
+    "ExternalCandidateInput",
+    "MockExternalBaseline",
+    "MockSelectionStrategy",
+    "create_mock_external_baseline_provider",
     "default_algorithm_registry",
 ]

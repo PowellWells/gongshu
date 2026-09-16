@@ -107,6 +107,8 @@ class AlgorithmMetadata:
     decision_contract: str
     stages: tuple[str, ...]
     capabilities: tuple[str, ...]
+    license: str | None = None
+    repository: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -144,6 +146,12 @@ class AlgorithmMetadata:
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(self, "capabilities", tuple(self.capabilities))
+        object.__setattr__(self, "license", None if self.license is None else str(self.license).strip())
+        object.__setattr__(
+            self,
+            "repository",
+            None if self.repository is None else str(self.repository).strip(),
+        )
 
     @property
     def display_name(self) -> str:
@@ -164,6 +172,8 @@ class AlgorithmMetadata:
             "source": self.source,
             "created_time": self.created_time,
             "blueprint_reference": self.blueprint_reference,
+            "license": self.license,
+            "repository": self.repository,
             "provider": self.provider_id,
             "algorithm": self.algorithm_id,
             "display_name": self.display_name,
