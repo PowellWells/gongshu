@@ -29,6 +29,15 @@ from .external_baseline import (
     MockSelectionStrategy,
     create_mock_external_baseline_provider,
 )
+from .arena import (
+    AlgorithmArenaBackend,
+    AlgorithmRun,
+    ArenaAlgorithmReference,
+    ArenaExperiment,
+    ArenaExperimentStatus,
+    ArenaResultStore,
+    ResultRecord,
+)
 
 __all__ = [
     "AlgorithmDecision",
@@ -54,5 +63,12 @@ __all__ = [
     "MockExternalBaseline",
     "MockSelectionStrategy",
     "create_mock_external_baseline_provider",
+    "AlgorithmArenaBackend",
+    "AlgorithmRun",
+    "ArenaAlgorithmReference",
+    "ArenaExperiment",
+    "ArenaExperimentStatus",
+    "ArenaResultStore",
+    "ResultRecord",
     "default_algorithm_registry",
 ]
