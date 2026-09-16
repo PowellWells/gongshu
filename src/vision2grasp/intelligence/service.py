@@ -25,7 +25,7 @@ class IntelligenceService:
         self,
         *,
         xiezhi_enabled: bool,
-        algorithm_id: str = "rule_based",
+        algorithm_id: str = "xiezhi_decision_v0_1",
         registry: AlgorithmRegistry | None = None,
     ) -> None:
         self._xiezhi_enabled = bool(xiezhi_enabled)

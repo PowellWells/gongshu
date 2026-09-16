@@ -146,11 +146,11 @@ def image_bytes() -> bytes:
 
 
 class IntelligenceRuntimeTests(unittest.TestCase):
-    def test_xiezhi_rule_based_provider_selects_candidate_through_standard_interface(self) -> None:
+    def test_xiezhi_v0_1_provider_selects_candidate_through_standard_interface(self) -> None:
         service = IntelligenceService(xiezhi_enabled=True)
         decision = service.decide(make_outcome())
         self.assertEqual(decision.provider_id, "xiezhi")
-        self.assertEqual(decision.algorithm_id, "rule_based")
+        self.assertEqual(decision.algorithm_id, "xiezhi_decision_v0_1")
         self.assertEqual(decision.selected_action, DecisionAction.EXECUTE_GRASP)
         self.assertEqual(decision.selected_candidate_id, "candidate-01")
         self.assertTrue(decision.authorizes_execution)
@@ -161,10 +161,14 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             state["last_decision"]["diagnostics"]["provider_score_type"],
             "MEAN_PLANNER_RANKING_AND_EVIDENCE_CONFIDENCE",
         )
-        self.assertIn(
-            {"provider": "xiezhi", "algorithm": "rule_based"},
-            state["available_algorithms"],
+        xiezhi_entry = next(
+            entry
+            for entry in state["available_algorithms"]
+            if entry["provider"] == "xiezhi"
         )
+        self.assertEqual(xiezhi_entry["algorithm"], "xiezhi_decision_v0_1")
+        self.assertEqual(xiezhi_entry["display_name"], "Xiezhi Decision v0.1")
+        self.assertEqual(xiezhi_entry["decision_contract"], "gongshu.intelligence-decision/v1")
         payload = decision.public_metadata()
         self.assertEqual(payload["action"], "EXECUTE_GRASP")
         self.assertEqual(payload["uncertainty"], [])
@@ -198,9 +202,9 @@ class IntelligenceRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not available"):
             service.select_algorithm("xiezhi", "not_registered")
 
-    def test_xiezhi_load_failure_falls_back_to_gongshu_baseline(self) -> None:
+    def test_xiezhi_runtime_failure_falls_back_to_gongshu_baseline(self) -> None:
         with patch(
-            "vision2grasp.intelligence.registry.XiezhiDecisionProvider",
+            "vision2grasp.extensions.xiezhi.algorithms.decision_v0_1.XiezhiDecisionV01.decide",
             side_effect=RuntimeError("runtime unavailable"),
         ):
             service = IntelligenceService(xiezhi_enabled=True)

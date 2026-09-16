@@ -6,11 +6,11 @@ from dataclasses import replace
 from typing import Protocol
 from uuid import uuid4
 
-import numpy as np
-
-from vision2grasp.contracts import GraspCandidate as LegacyGraspCandidate
-from vision2grasp.extensions.xiezhi.backend import MayflowerXiezhiDecisionBackend
-from vision2grasp.extensions.xiezhi.contracts import GongshuObservation
+from vision2grasp.extensions.xiezhi.algorithms import (
+    XIEZHI_DECISION_V0_1_ID,
+    XIEZHI_DECISION_V0_1_METADATA,
+    XiezhiDecisionV01,
+)
 
 from .contracts import (
     AlgorithmDecision,
@@ -81,125 +81,18 @@ class BaselineDecisionProvider:
         )
 
 
-def _provider_score(
-    candidate: CandidateEvidence, evidence_confidence: float | None
-) -> float:
-    """Align Gongshu ranking evidence with Xiezhi's documented [0, 1] policy score."""
-
-    if evidence_confidence is None:
-        return float(candidate.score)
-    return float((candidate.score + evidence_confidence) / 2.0)
-
-
-def _legacy_candidate(
-    candidate: CandidateEvidence, evidence_confidence: float | None
-) -> LegacyGraspCandidate:
-    approach = np.asarray(candidate.approach_vector, dtype=np.float64).copy()
-    approach /= np.linalg.norm(approach)
-    closing = np.asarray(candidate.closing_vector, dtype=np.float64).copy()
-    closing = closing - float(np.dot(closing, approach)) * approach
-    if np.linalg.norm(closing) < 1e-8:
-        reference = np.array((1.0, 0.0, 0.0), dtype=np.float64)
-        if abs(float(np.dot(reference, approach))) > 0.9:
-            reference = np.array((0.0, 1.0, 0.0), dtype=np.float64)
-        closing = reference - float(np.dot(reference, approach)) * approach
-    closing /= np.linalg.norm(closing)
-    lateral = np.cross(approach, closing)
-    lateral /= np.linalg.norm(lateral)
-    transform = np.eye(4, dtype=np.float64)
-    transform[:3, :3] = np.column_stack((closing, lateral, approach))
-    transform[:3, 3] = candidate.grasp_point_xyz
-    return LegacyGraspCandidate(
-        candidate_id=candidate.candidate_id,
-        world_from_grasp=transform,
-        gripper_width_m=candidate.gripper_width_m,
-        score=_provider_score(candidate, evidence_confidence),
-        reachable=candidate.executable,
-        score_terms=candidate.score_factors,
-    )
-
-
 class XiezhiDecisionProvider:
-    """Adapter that lets Xiezhi decide without owning Gongshu execution."""
+    """Expose formal Xiezhi Decision v0.1 through Gongshu's provider boundary."""
 
     provider_id = "xiezhi"
+    algorithm_id = XIEZHI_DECISION_V0_1_ID
+    metadata = XIEZHI_DECISION_V0_1_METADATA
 
-    def __init__(self, algorithm_id: str = "rule_based") -> None:
-        self.algorithm_id = algorithm_id
-        self._backend = MayflowerXiezhiDecisionBackend(algorithm_id)
+    def __init__(self) -> None:
+        self._algorithm = XiezhiDecisionV01()
 
     def decide(self, observation: AlgorithmObservation) -> AlgorithmDecision:
-        confidence = observation.evidence_confidence
-        position_std = None if confidence is None else 0.004 + (1.0 - confidence) * 0.032
-        rotation_std = None if confidence is None else 0.03 + (1.0 - confidence) * 0.18
-        result = self._backend.decide(GongshuObservation(
-            episode_id=observation.episode_id,
-            observation_id=observation.observation_id,
-            revision=observation.revision,
-            timestamp_s=observation.timestamp_s,
-            target_object_id=observation.target_id,
-            candidates=tuple(
-                _legacy_candidate(candidate, observation.evidence_confidence)
-                for candidate in observation.candidates
-                if candidate.executable
-            ),
-            position_std_m=position_std,
-            rotation_std_rad=rotation_std,
-            quality=confidence,
-            occlusion=0.0,
-            robot_state={
-                "coordinate_frame": "OPENCV_CAMERA_X_RIGHT_Y_DOWN_Z_FORWARD",
-                "reliability": observation.reliability,
-            },
-        ))
-        action_map = {
-            "ExecuteGrasp": DecisionAction.EXECUTE_GRASP,
-            "Reobserve": DecisionAction.REOBSERVE,
-            "ChangeViewpoint": DecisionAction.CHANGE_VIEWPOINT,
-            "Recover": DecisionAction.RECOVER,
-            "Abort": DecisionAction.ABORT,
-        }
-        action = action_map.get(result.action_name, DecisionAction.NO_ACTION)
-        selected = _selected_evidence(observation, result.candidate_id)
-        selected_candidate_id = (
-            result.candidate_id if action is DecisionAction.EXECUTE_GRASP else None
-        )
-        selected_confidence = (
-            observation.evidence_confidence
-            if selected is None
-            else _provider_score(selected, observation.evidence_confidence)
-        )
-        reason = str(result.diagnostics.get("reason") or result.stop_reason or "provider_decision")
-        return AlgorithmDecision(
-            decision_id=_decision_id(),
-            observation_id=observation.observation_id,
-            provider_id=self.provider_id,
-            algorithm_id=self.algorithm_id,
-            status=(
-                DecisionStatus.ACTION_AVAILABLE
-                if action is not DecisionAction.NO_ACTION
-                else DecisionStatus.ABSTAINED
-            ),
-            selected_action=action,
-            selected_candidate_id=selected_candidate_id,
-            confidence=selected_confidence,
-            risk_estimation=(
-                None if selected_confidence is None else float(1.0 - selected_confidence)
-            ),
-            reason=reason,
-            uncertainty=observation.uncertainty_reasons,
-            diagnostics={
-                **dict(result.diagnostics),
-                "position_std_proxy_m": position_std,
-                "rotation_std_proxy_rad": rotation_std,
-                "uncertainty_reasons": list(observation.uncertainty_reasons),
-                "executable_candidate_count": sum(
-                    1 for candidate in observation.candidates if candidate.executable
-                ),
-                "planner_ranking_score": None if selected is None else selected.score,
-                "provider_score_type": "MEAN_PLANNER_RANKING_AND_EVIDENCE_CONFIDENCE",
-            },
-        )
+        return self._algorithm.decide(observation)
 
 
 def as_fallback(decision: AlgorithmDecision, reason: str) -> AlgorithmDecision:

@@ -9,12 +9,16 @@ from .contracts import (
 )
 from .service import IntelligenceService
 from .registry import AlgorithmRegistry, default_algorithm_registry
+from .blueprint import AlgorithmBlueprint, AlgorithmMetadata, BlueprintStage
 
 __all__ = [
     "AlgorithmDecision",
+    "AlgorithmBlueprint",
+    "AlgorithmMetadata",
     "AlgorithmRegistry",
     "AlgorithmObservation",
     "CandidateEvidence",
+    "BlueprintStage",
     "DecisionAction",
     "DecisionStatus",
     "IntelligenceService",
