@@ -147,6 +147,8 @@ class ResultRecord:
     metadata: Mapping[str, Any]
     record_id: str = field(default_factory=lambda: f"arena-result-{uuid4().hex[:16]}")
     algorithm_run_id: str | None = None
+    decision_output: AlgorithmDecision | None = None
+    created_time: str = field(default_factory=_created_time)
 
     def __post_init__(self) -> None:
         if type(self.success) is not bool:
@@ -159,6 +161,11 @@ class ResultRecord:
             raise ValueError("execution_time must be finite and non-negative")
         if not self.record_id.strip():
             raise ValueError("record_id must not be empty")
+        if self.decision_output is not None and not isinstance(
+            self.decision_output, AlgorithmDecision
+        ):
+            raise TypeError("ResultRecord decision_output must use AlgorithmDecision v1")
+        _validate_timestamp(self.created_time, "created_time")
         object.__setattr__(
             self, "validation_result", MappingProxyType(dict(self.validation_result))
         )
@@ -169,6 +176,12 @@ class ResultRecord:
             "schema_version": ARENA_RESULT_RECORD_SCHEMA_VERSION,
             "record_id": self.record_id,
             "algorithm_run_id": self.algorithm_run_id,
+            "decision_output": (
+                None
+                if self.decision_output is None
+                else self.decision_output.public_metadata()
+            ),
+            "created_time": self.created_time,
             "success": self.success,
             "failure_reason": self.failure_reason,
             "validation_result": dict(self.validation_result),
@@ -288,6 +301,7 @@ class AlgorithmArenaBackend:
             execution_time=execution_time,
             metadata=metadata,
             algorithm_run_id=run.run_id,
+            decision_output=run.decision_output,
         )
 
 

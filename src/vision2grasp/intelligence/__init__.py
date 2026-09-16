@@ -46,6 +46,14 @@ from .arena_runner import (
     ArenaValidationOutcome,
     MockArenaValidation,
 )
+from .visualization import (
+    DecisionEngineView,
+    DecisionEvidenceView,
+    DecisionHistoryEntry,
+    DecisionRuntimeView,
+    VisualizationDataProvider,
+    XiezhiDashboardState,
+)
 
 __all__ = [
     "AlgorithmDecision",
@@ -84,5 +92,11 @@ __all__ = [
     "ArenaValidation",
     "ArenaValidationOutcome",
     "MockArenaValidation",
+    "DecisionEngineView",
+    "DecisionEvidenceView",
+    "DecisionHistoryEntry",
+    "DecisionRuntimeView",
+    "VisualizationDataProvider",
+    "XiezhiDashboardState",
     "default_algorithm_registry",
 ]

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .blueprint import AlgorithmMetadata, AlgorithmStatus, AlgorithmType
+from .blueprint import (
+    AlgorithmBlueprint,
+    AlgorithmMetadata,
+    AlgorithmStatus,
+    AlgorithmType,
+)
 from .providers import AlgorithmProvider, BaselineDecisionProvider, XiezhiDecisionProvider
 
 
@@ -19,6 +24,7 @@ class AlgorithmRegistry:
         self._metadata: dict[tuple[str, str], AlgorithmMetadata] = {}
         self._metadata_by_id: dict[str, AlgorithmMetadata] = {}
         self._metadata_by_name_version: dict[tuple[str, str], AlgorithmMetadata] = {}
+        self._blueprints_by_id: dict[str, AlgorithmBlueprint] = {}
 
     @staticmethod
     def _name_version_key(name: str, version: str) -> tuple[str, str]:
@@ -62,18 +68,29 @@ class AlgorithmRegistry:
         self,
         metadata: AlgorithmMetadata,
         factory: ProviderFactory | None = None,
+        *,
+        blueprint: AlgorithmBlueprint | None = None,
     ) -> None:
         """Register formal identity metadata, optionally with a runtime provider."""
 
+        if blueprint is not None and (
+            blueprint.provider_id != metadata.provider_id
+            or blueprint.algorithm_id != metadata.algorithm_id
+            or blueprint.algorithm_version != metadata.version
+            or blueprint.blueprint_id != metadata.blueprint_reference
+        ):
+            raise ValueError("algorithm blueprint identity does not match metadata")
         if factory is None:
             self._register_metadata(metadata)
-            return
-        self.register(
-            metadata.provider_id,
-            metadata.algorithm_id,
-            factory,
-            metadata=metadata,
-        )
+        else:
+            self.register(
+                metadata.provider_id,
+                metadata.algorithm_id,
+                factory,
+                metadata=metadata,
+            )
+        if blueprint is not None:
+            self._blueprints_by_id[metadata.algorithm_id] = blueprint
 
     def create(self, provider_id: str, algorithm_id: str) -> AlgorithmProvider:
         key = (provider_id, algorithm_id)
@@ -105,6 +122,9 @@ class AlgorithmRegistry:
     def query_algorithm(self, algorithm_id: str) -> AlgorithmMetadata | None:
         return self._metadata_by_id.get(str(algorithm_id).strip())
 
+    def query_blueprint(self, algorithm_id: str) -> AlgorithmBlueprint | None:
+        return self._blueprints_by_id.get(str(algorithm_id).strip())
+
     def get_by_name_version(
         self, name: str, version: str
     ) -> AlgorithmMetadata | None:
@@ -133,6 +153,7 @@ def default_algorithm_registry(*, include_xiezhi: bool) -> AlgorithmRegistry:
         registry.register_algorithm(
             XiezhiDecisionProvider.metadata,
             XiezhiDecisionProvider,
+            blueprint=XiezhiDecisionProvider.blueprint,
         )
     return registry
 

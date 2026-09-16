@@ -7,6 +7,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from vision2grasp.extensions.xiezhi.algorithms import (
+    XIEZHI_DECISION_V0_1_BLUEPRINT,
     XIEZHI_DECISION_V0_1_ID,
     XIEZHI_DECISION_V0_1_METADATA,
     XiezhiDecisionV01,
@@ -87,6 +88,7 @@ class XiezhiDecisionProvider:
     provider_id = "xiezhi"
     algorithm_id = XIEZHI_DECISION_V0_1_ID
     metadata = XIEZHI_DECISION_V0_1_METADATA
+    blueprint = XIEZHI_DECISION_V0_1_BLUEPRINT
 
     def __init__(self) -> None:
         self._algorithm = XiezhiDecisionV01()
