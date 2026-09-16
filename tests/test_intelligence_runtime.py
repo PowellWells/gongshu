@@ -167,7 +167,9 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             if entry["provider"] == "xiezhi"
         )
         self.assertEqual(xiezhi_entry["algorithm"], "xiezhi_decision_v0_1")
-        self.assertEqual(xiezhi_entry["display_name"], "Xiezhi Decision v0.1")
+        self.assertEqual(xiezhi_entry["name"], "Xiezhi Decision")
+        self.assertEqual(xiezhi_entry["version"], "v0.1")
+        self.assertEqual(xiezhi_entry["type"], "Xiezhi Algorithm")
         self.assertEqual(xiezhi_entry["decision_contract"], "gongshu.intelligence-decision/v1")
         payload = decision.public_metadata()
         self.assertEqual(payload["action"], "EXECUTE_GRASP")

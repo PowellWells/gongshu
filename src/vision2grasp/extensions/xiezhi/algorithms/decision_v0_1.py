@@ -13,6 +13,8 @@ from uuid import uuid4
 from vision2grasp.intelligence.blueprint import (
     AlgorithmBlueprint,
     AlgorithmMetadata,
+    AlgorithmStatus,
+    AlgorithmType,
     BlueprintStage,
 )
 from vision2grasp.intelligence.contracts import (
@@ -26,7 +28,7 @@ from vision2grasp.intelligence.contracts import (
 
 
 XIEZHI_DECISION_V0_1_ID = "xiezhi_decision_v0_1"
-XIEZHI_DECISION_V0_1_VERSION = "0.1.0"
+XIEZHI_DECISION_V0_1_VERSION = "v0.1"
 _STAGE_IDS = (
     "observation",
     "candidate_evaluation",
@@ -124,15 +126,19 @@ XIEZHI_DECISION_V0_1_BLUEPRINT = AlgorithmBlueprint(
 )
 
 XIEZHI_DECISION_V0_1_METADATA = AlgorithmMetadata(
-    provider_id="xiezhi",
     algorithm_id=XIEZHI_DECISION_V0_1_ID,
-    display_name="Xiezhi Decision v0.1",
+    name="Xiezhi Decision",
     version=XIEZHI_DECISION_V0_1_VERSION,
+    type=AlgorithmType.XIEZHI_ALGORITHM,
+    description="Transparent deterministic decision authority over Gongshu-generated grasp candidates.",
+    status=AlgorithmStatus.EXPERIMENTAL,
+    source="Gongshu Intelligence Layer / Xiezhi",
+    created_time="2026-09-16T18:25:46+08:00",
+    blueprint_reference=XIEZHI_DECISION_V0_1_BLUEPRINT.blueprint_id,
+    provider_id="xiezhi",
     decision_contract=INTELLIGENCE_DECISION_SCHEMA_VERSION,
-    blueprint_id=XIEZHI_DECISION_V0_1_BLUEPRINT.blueprint_id,
     stages=_STAGE_IDS,
     capabilities=("candidate_evaluation", "risk_assessment", "decision_selection", "decision_explanation"),
-    description="Transparent deterministic decision authority over Gongshu-generated grasp candidates.",
 )
 
 

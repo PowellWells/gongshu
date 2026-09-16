@@ -47,8 +47,10 @@ class XiezhiDecisionV01Tests(unittest.TestCase):
         metadata = registry.metadata("xiezhi", XIEZHI_DECISION_V0_1_ID)
         self.assertIsNotNone(metadata)
         assert metadata is not None
-        self.assertEqual(metadata["display_name"], "Xiezhi Decision v0.1")
-        self.assertEqual(metadata["version"], "0.1.0")
+        self.assertEqual(metadata["name"], "Xiezhi Decision")
+        self.assertEqual(metadata["version"], "v0.1")
+        self.assertEqual(metadata["type"], "Xiezhi Algorithm")
+        self.assertEqual(metadata["status"], "Experimental")
         self.assertEqual(metadata["decision_contract"], "gongshu.intelligence-decision/v1")
         self.assertEqual(metadata["blueprint_schema_version"], "gongshu.algorithm-blueprint/v1")
 

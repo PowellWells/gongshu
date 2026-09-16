@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .blueprint import AlgorithmMetadata
+from .blueprint import AlgorithmMetadata, AlgorithmStatus, AlgorithmType
 from .providers import AlgorithmProvider, BaselineDecisionProvider, XiezhiDecisionProvider
 
 
@@ -17,6 +17,27 @@ class AlgorithmRegistry:
     def __init__(self) -> None:
         self._factories: dict[tuple[str, str], ProviderFactory] = {}
         self._metadata: dict[tuple[str, str], AlgorithmMetadata] = {}
+        self._metadata_by_id: dict[str, AlgorithmMetadata] = {}
+        self._metadata_by_name_version: dict[tuple[str, str], AlgorithmMetadata] = {}
+
+    @staticmethod
+    def _name_version_key(name: str, version: str) -> tuple[str, str]:
+        return (str(name).strip().casefold(), str(version).strip().casefold())
+
+    def _register_metadata(self, metadata: AlgorithmMetadata) -> None:
+        if not isinstance(metadata, AlgorithmMetadata):
+            raise TypeError("metadata must be AlgorithmMetadata")
+        if metadata.algorithm_id in self._metadata_by_id:
+            raise ValueError(f"algorithm ID is already registered: {metadata.algorithm_id}")
+        name_version = self._name_version_key(metadata.name, metadata.version)
+        if name_version in self._metadata_by_name_version:
+            raise ValueError(
+                f"algorithm name/version is already registered: {metadata.name} {metadata.version}"
+            )
+        runtime_key = (metadata.provider_id, metadata.algorithm_id)
+        self._metadata[runtime_key] = metadata
+        self._metadata_by_id[metadata.algorithm_id] = metadata
+        self._metadata_by_name_version[name_version] = metadata
 
     def register(
         self,
@@ -33,9 +54,26 @@ class AlgorithmRegistry:
             raise ValueError(f"algorithm provider is already registered: {key}")
         if metadata is not None and (metadata.provider_id, metadata.algorithm_id) != key:
             raise ValueError("algorithm metadata identity does not match its registry entry")
-        self._factories[key] = factory
         if metadata is not None:
-            self._metadata[key] = metadata
+            self._register_metadata(metadata)
+        self._factories[key] = factory
+
+    def register_algorithm(
+        self,
+        metadata: AlgorithmMetadata,
+        factory: ProviderFactory | None = None,
+    ) -> None:
+        """Register formal identity metadata, optionally with a runtime provider."""
+
+        if factory is None:
+            self._register_metadata(metadata)
+            return
+        self.register(
+            metadata.provider_id,
+            metadata.algorithm_id,
+            factory,
+            metadata=metadata,
+        )
 
     def create(self, provider_id: str, algorithm_id: str) -> AlgorithmProvider:
         key = (provider_id, algorithm_id)
@@ -64,16 +102,37 @@ class AlgorithmRegistry:
         metadata = self._metadata.get((provider_id, algorithm_id))
         return None if metadata is None else metadata.public_metadata()
 
+    def query_algorithm(self, algorithm_id: str) -> AlgorithmMetadata | None:
+        return self._metadata_by_id.get(str(algorithm_id).strip())
+
+    def get_by_name_version(
+        self, name: str, version: str
+    ) -> AlgorithmMetadata | None:
+        return self._metadata_by_name_version.get(self._name_version_key(name, version))
+
+    def list_algorithms(
+        self,
+        *,
+        algorithm_type: AlgorithmType | str | None = None,
+        status: AlgorithmStatus | str | None = None,
+    ) -> tuple[AlgorithmMetadata, ...]:
+        selected_type = None if algorithm_type is None else AlgorithmType(algorithm_type)
+        selected_status = None if status is None else AlgorithmStatus(status)
+        return tuple(
+            metadata
+            for metadata in self._metadata_by_id.values()
+            if (selected_type is None or metadata.type is selected_type)
+            and (selected_status is None or metadata.status is selected_status)
+        )
+
 
 def default_algorithm_registry(*, include_xiezhi: bool) -> AlgorithmRegistry:
     registry = AlgorithmRegistry()
     registry.register("gongshu", "baseline_topk", BaselineDecisionProvider)
     if include_xiezhi:
-        registry.register(
-            "xiezhi",
-            XiezhiDecisionProvider.algorithm_id,
+        registry.register_algorithm(
+            XiezhiDecisionProvider.metadata,
             XiezhiDecisionProvider,
-            metadata=XiezhiDecisionProvider.metadata,
         )
     return registry
 

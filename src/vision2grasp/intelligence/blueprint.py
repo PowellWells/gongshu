@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
 import re
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -10,6 +12,18 @@ from typing import Any, Mapping
 
 ALGORITHM_BLUEPRINT_SCHEMA_VERSION = "gongshu.algorithm-blueprint/v1"
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]{0,63}")
+
+
+class AlgorithmType(str, Enum):
+    EXTERNAL_BASELINE = "External Baseline"
+    XIEZHI_ALGORITHM = "Xiezhi Algorithm"
+
+
+class AlgorithmStatus(str, Enum):
+    PROTOTYPE = "Prototype"
+    EXPERIMENTAL = "Experimental"
+    VALIDATED = "Validated"
+    ARCHIVED = "Archived"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,25 +94,31 @@ class AlgorithmBlueprint:
 
 @dataclass(frozen=True, slots=True)
 class AlgorithmMetadata:
-    provider_id: str
     algorithm_id: str
-    display_name: str
+    name: str
     version: str
+    type: AlgorithmType
+    description: str
+    status: AlgorithmStatus
+    source: str
+    created_time: str
+    blueprint_reference: str
+    provider_id: str
     decision_contract: str
-    blueprint_id: str
     stages: tuple[str, ...]
     capabilities: tuple[str, ...]
-    description: str
 
     def __post_init__(self) -> None:
         for field_name in (
-            "provider_id",
             "algorithm_id",
-            "display_name",
+            "name",
             "version",
-            "decision_contract",
-            "blueprint_id",
             "description",
+            "source",
+            "created_time",
+            "blueprint_reference",
+            "provider_id",
+            "decision_contract",
         ):
             if not str(getattr(self, field_name)).strip():
                 raise ValueError(f"{field_name} must not be empty")
@@ -106,21 +126,52 @@ class AlgorithmMetadata:
             raise ValueError("provider_id must be a lowercase identifier")
         if not _IDENTIFIER.fullmatch(self.algorithm_id):
             raise ValueError("algorithm_id must be a lowercase identifier")
+        try:
+            algorithm_type = AlgorithmType(self.type)
+        except ValueError as error:
+            raise ValueError("unsupported algorithm type") from error
+        try:
+            status = AlgorithmStatus(self.status)
+        except ValueError as error:
+            raise ValueError("unsupported algorithm status") from error
+        try:
+            created = datetime.fromisoformat(self.created_time.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise ValueError("created_time must be an ISO 8601 timestamp") from error
+        if created.tzinfo is None:
+            raise ValueError("created_time must include a timezone")
+        object.__setattr__(self, "type", algorithm_type)
+        object.__setattr__(self, "status", status)
         object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(self, "capabilities", tuple(self.capabilities))
 
+    @property
+    def display_name(self) -> str:
+        return self.name
+
+    @property
+    def blueprint_id(self) -> str:
+        return self.blueprint_reference
+
     def public_metadata(self) -> dict[str, Any]:
         return {
+            "algorithm_id": self.algorithm_id,
+            "name": self.name,
+            "version": self.version,
+            "type": self.type.value,
+            "description": self.description,
+            "status": self.status.value,
+            "source": self.source,
+            "created_time": self.created_time,
+            "blueprint_reference": self.blueprint_reference,
             "provider": self.provider_id,
             "algorithm": self.algorithm_id,
             "display_name": self.display_name,
-            "version": self.version,
             "decision_contract": self.decision_contract,
             "blueprint_id": self.blueprint_id,
             "blueprint_schema_version": ALGORITHM_BLUEPRINT_SCHEMA_VERSION,
             "stages": list(self.stages),
             "capabilities": list(self.capabilities),
-            "description": self.description,
         }
 
 
@@ -128,5 +179,7 @@ __all__ = [
     "ALGORITHM_BLUEPRINT_SCHEMA_VERSION",
     "AlgorithmBlueprint",
     "AlgorithmMetadata",
+    "AlgorithmStatus",
+    "AlgorithmType",
     "BlueprintStage",
 ]
