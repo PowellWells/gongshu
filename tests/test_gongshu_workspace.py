@@ -33,6 +33,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         cls.controller = (GONGSHU_ROOT / "real-scene.js").read_text(encoding="utf-8")
         cls.pipeline = (GONGSHU_ROOT / "pipeline-state.js").read_text(encoding="utf-8")
         cls.target_selection = (GONGSHU_ROOT / "target-selection.js").read_text(encoding="utf-8")
+        cls.xiezhi_styles = (GONGSHU_ROOT / "xiezhi-lab.css").read_text(encoding="utf-8")
         cls.parser = _WorkspaceParser()
         cls.parser.feed(cls.html)
 
@@ -251,6 +252,24 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn("selectStage(stage, button)", blueprint_ui)
         self.assertIn("stage.module", blueprint_ui)
         self.assertIn("stage.function", blueprint_ui)
+
+    def test_xiezhi_decision_modules_use_an_equal_two_by_two_grid(self) -> None:
+        self.assertIn(
+            "grid-template-columns: repeat(2, minmax(0, 1fr));",
+            self.xiezhi_styles,
+        )
+        self.assertIn(
+            "grid-template-rows: repeat(2, minmax(114px, 1fr));",
+            self.xiezhi_styles,
+        )
+        self.assertNotIn(
+            ".xiezhi-capability-grid button:first-child",
+            self.xiezhi_styles,
+        )
+        self.assertEqual(
+            self.html.count('aria-controls="xiezhiDetailPanel"'),
+            4,
+        )
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (

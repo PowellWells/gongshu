@@ -253,6 +253,7 @@
 .xiezhi-capability-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(114px, 1fr));
   gap: 9px;
 }
 
@@ -262,6 +263,7 @@
   align-content: center;
   justify-items: start;
   gap: 4px;
+  height: 100%;
   min-height: 114px;
   padding: 16px 42px 16px 17px;
   overflow: hidden;
@@ -272,13 +274,6 @@
   text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.xiezhi-capability-grid button:first-child {
-  grid-column: span 2;
-  min-height: 124px;
-  border-color: #8db9e5;
-  background: linear-gradient(110deg, var(--blue-50), #fff);
 }
 
 .xiezhi-capability-grid button > em {
