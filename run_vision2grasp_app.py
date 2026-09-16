@@ -255,6 +255,9 @@ def build_mujoco_validation_service() -> MuJoCoValidationService:
         max_session_recordings=int(config["max_session_recordings"]),
         minimum_gripper_width_m=float(control["minimum_gripper_width_m"]),
         maximum_gripper_width_m=float(control["maximum_gripper_width_m"]),
+        reconstruction_debug_default_enabled=bool(
+            config.get("object_reconstruction_debug_default", False)
+        ),
     )
 
 
@@ -366,7 +369,17 @@ class Vision2GraspApp:
             raise ValueError("local image payload is not valid base64") from error
 
         observation = self.local_image.load(filename, payload)
-        self.experiment_recorder.start(observation)
+        self.experiment_recorder.start(
+            observation,
+            {
+                "mode": str(request.get("mode", "RESEARCH")).upper(),
+                "condition_protocol": self._condition_protocol(request).value,
+                "stress_strategy": self._stress_strategy(request).value,
+                "stress_level": self._stress_level(request).value,
+                "blur_type": self._stress_blur_type(request).value,
+                "random_seed": self._stress_seed(request),
+            },
+        )
         self._vision_source = "local_image"
         self.spatial_perception.reset()
         self.grasp_planning.reset()
@@ -546,6 +559,12 @@ class Vision2GraspApp:
         snapshot = self.target_perception.selected_scene_snapshot()
         if snapshot is None:
             raise RuntimeError("no selected Scene Snapshot is available for grasp planning")
+        if self._vision_source == "local_image":
+            run_id = self.local_image.active_run_id()
+            if run_id is not None:
+                self.experiment_recorder.record_perception(
+                    run_id, snapshot, observation
+                )
         requested_snapshot_id = str(body.get("snapshot_id", "")).strip()
         if requested_snapshot_id and requested_snapshot_id != snapshot.snapshot_id:
             raise ValueError("Grasp Planning request does not match selected Scene Snapshot")
@@ -596,6 +615,10 @@ class Vision2GraspApp:
         snapshot = self.target_perception.selected_scene_snapshot()
         if snapshot is None:
             raise RuntimeError("no selected Scene Snapshot is available for simulation")
+        spatial_service = getattr(self, "spatial_perception", None)
+        spatial_observation = (
+            None if spatial_service is None else spatial_service.current_observation()
+        )
         candidate = outcome.plan if outcome.plan is not None else (
             outcome.candidates[0] if outcome.candidates else None
         )
@@ -616,16 +639,43 @@ class Vision2GraspApp:
             execution_plan = outcome.plan.for_execution_candidate(
                 decision.selected_candidate_id
             )
+            validation_options: dict[str, Any] = {
+                "scenario": scenario,
+                "snapshot": snapshot,
+            }
+            if spatial_observation is not None:
+                validation_options.update(
+                    spatial_observation=spatial_observation,
+                    reconstruction_debug=(
+                        bool(body["reconstruction_debug"])
+                        if "reconstruction_debug" in body
+                        else None
+                    ),
+                )
             response = self.mujoco_validation.start(
-                execution_plan, scenario=scenario, snapshot=snapshot
+                execution_plan, **validation_options
             )
         else:
             # A rejected-attempt validation is a simulation-only diagnostic of the
             # rejected candidate, not authorization to execute a robot grasp.
+            validation_options = {"scenario": scenario, "snapshot": snapshot}
+            if spatial_observation is not None:
+                validation_options.update(
+                    spatial_observation=spatial_observation,
+                    reconstruction_debug=(
+                        bool(body["reconstruction_debug"])
+                        if "reconstruction_debug" in body
+                        else None
+                    ),
+                )
             response = self.mujoco_validation.start_rejected_attempt(
-                outcome, scenario=scenario, snapshot=snapshot
+                outcome, **validation_options
             )
         self._record_offline_pipeline_status("MUJOCO_VALIDATION")
+        if self._vision_source == "local_image":
+            run_id = self.local_image.active_run_id()
+            if run_id is not None:
+                self.experiment_recorder.record_validation_request(run_id, response)
         self._start_offline_run_watch()
         self._start_xiezhi_lifecycle(scene=scenario)
         return response
@@ -652,6 +702,9 @@ class Vision2GraspApp:
                     "status": state,
                     "reason": snapshot.get("reason"),
                     "result": snapshot.get("result"),
+                    "validation_request": snapshot.get("request"),
+                    "telemetry": snapshot.get("telemetry"),
+                    "recording": snapshot.get("recording"),
                 }
                 self.local_image.record_pipeline_status("COMPLETED", run_id=run_id)
                 self.local_image.record_mujoco_result(result, run_id=run_id)
@@ -853,10 +906,12 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.state-playback/v1",
                         "mujoco-validation.explicit-save/v1",
                         "mujoco-validation.real-appearance-proxy/v1",
+                        "mujoco-validation.point-cloud-object-reconstruction/v1",
+                        "mujoco-validation.reconstruction-debug/v1",
                         "xiezhi-lifecycle.status/v0.1",
                         "gongshu-intelligence-decision/v1",
                         "gongshu.xiezhi-dashboard/v1",
-                        "gongshu-experiment-trial/v1",
+                        "gongshu-experiment-trial/v2",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                     "xiezhi": self.app.xiezhi.status().as_dict(),
@@ -986,6 +1041,21 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             frame = self.app.mujoco_validation.latest_frame()
             if frame is None:
                 self.send_error(HTTPStatus.NOT_FOUND, "MuJoCo frame not ready")
+                return
+            self._send_binary(frame, "image/jpeg")
+            return
+        if path == "/api/mujoco-validation/reconstruction-debug/state":
+            self._send_json(self.app.mujoco_validation.reconstruction_debug_state())
+            return
+        debug_prefix = "/api/mujoco-validation/reconstruction-debug/"
+        if path.startswith(debug_prefix) and path.endswith(".jpg"):
+            kind = path[len(debug_prefix) : -4]
+            if kind not in {"input", "mask", "point-cloud", "proxy", "mujoco"}:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            frame = self.app.mujoco_validation.reconstruction_debug_frame(kind)
+            if frame is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "reconstruction debug frame not ready")
                 return
             self._send_binary(frame, "image/jpeg")
             return

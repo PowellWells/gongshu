@@ -1,4 +1,4 @@
-"""Session-only real-appearance extraction for stable MuJoCo proxies."""
+"""Session-only texture extraction and 2D shape diagnostics."""
 
 from __future__ import annotations
 
@@ -29,12 +29,13 @@ class ProxyGeometry(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class TargetAppearance:
-    """Masked target appearance and low-complexity proxy classification.
+    """Masked target appearance and an auxiliary 2D geometry suggestion.
 
     ``texture_png`` is deliberately kept as bytes. It is passed to MuJoCo's
     in-memory VFS and is not written to a runtime or repository directory.
-    The texture is rendering-only; physics uses a separate untextured geom of
-    the classified proxy shape.
+    The texture is rendering-only. Point-cloud reconstruction owns the normal
+    physics proxy; ``proxy_geometry`` remains a compatibility suggestion for
+    callers that do not provide a SpatialObservation.
     """
 
     snapshot_id: str
@@ -96,7 +97,9 @@ class TargetAppearance:
             "target_instance_id": self.target_instance_id,
             "semantic_label": self.semantic_label,
             "proxy_geometry": self.proxy_geometry.value,
-            "physics_geometry": f"STABLE_{self.proxy_geometry.value.upper()}_COLLISION_PROXY",
+            "proxy_geometry_suggestion_2d": self.proxy_geometry.value,
+            "geometry_role": "AUXILIARY_2D_DIAGNOSTIC_NOT_PHYSICS_AUTHORITY",
+            "physics_geometry": "OWNED_BY_OBJECT_RECONSTRUCTION",
             "appearance_geometry": f"COLLISION_DISABLED_{self.proxy_geometry.value.upper()}",
             "source_crop_xyxy": list(self.source_crop_xyxy),
             "texture_size": {"width": self.texture_size[0], "height": self.texture_size[1]},

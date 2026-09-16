@@ -165,3 +165,4 @@ render_height = 540
 lift_height_m = 0.08
 stable_window_s = 0.45
 failure_target_offset_m = [0.14, 0.0, 0.0]
+object_reconstruction_debug_default = false

@@ -20,9 +20,10 @@ from vision2grasp.grasp_planning import GraspCandidate, GraspPlan
 from vision2grasp.target_perception import TargetLockMetadata
 
 from .appearance import TargetAppearance
+from .object_reconstruction import ObjectReconstruction, fallback_reconstruction
 
 
-VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v4"
+VALIDATION_REQUEST_SCHEMA_VERSION = "gongshu.validation-request/v5"
 SIMULATION_ATTEMPT_SCHEMA_VERSION = "gongshu.simulation-attempt/v1"
 
 
@@ -279,19 +280,32 @@ class ValidationSceneTransform:
         cls,
         plan: GraspPlan | SimulationAttempt,
         *,
+        object_reconstruction: ObjectReconstruction | None = None,
         table_top_z: float = 0.80,
         target_xy: tuple[float, float] = (0.0, 0.0),
         scenario: ValidationScenario = ValidationScenario.NOMINAL,
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
     ) -> "ValidationSceneTransform":
-        # Plan extents are [closing, major, optical-depth]. Their relative
-        # sizes are preserved while Camera XYZ is deliberately not treated as
-        # a calibrated robot pose.
-        extents = np.asarray(plan.object_extents_xyz, dtype=np.float64)
-        grasp_position = np.array(
+        extents = np.asarray(
+            plan.object_extents_xyz
+            if object_reconstruction is None
+            else object_reconstruction.proxy_extents_world_xyz,
+            dtype=np.float64,
+        )
+        target_center = np.array(
             [target_xy[0], target_xy[1], table_top_z + extents[2] / 2.0],
             dtype=np.float64,
         )
+        grasp_position = target_center.copy()
+        if object_reconstruction is not None:
+            delta_camera = (
+                np.asarray(plan.grasp_point_xyz, dtype=np.float64)
+                - object_reconstruction.centroid_camera_xyz
+            )
+            delta_world = object_reconstruction.camera_delta_to_world(delta_camera)
+            limits = np.maximum(extents * 0.45, 0.004)
+            delta_world = np.clip(delta_world, -limits, limits)
+            grasp_position += delta_world
         offset = (
             np.asarray(failure_target_offset_m, dtype=np.float64)
             if scenario is ValidationScenario.TARGET_OFFSET_STRESS
@@ -301,14 +315,19 @@ class ValidationSceneTransform:
             raise ValueError("failure target offset must be a finite 3-vector")
         if not np.isclose(offset[2], 0.0, atol=1e-9):
             raise ValueError("target offset stress must keep the target on the table")
-        target_position = grasp_position + offset
+        target_position = target_center + offset
         closing = np.array(
             [np.cos(plan.grasp_angle), np.sin(plan.grasp_angle), 0.0], dtype=np.float64
         )
         return cls(
             name="NORMALIZED_VALIDATION_SCENE",
             target_position_world=target_position,
-            target_yaw_rad=plan.grasp_angle,
+            target_yaw_rad=(
+                plan.grasp_angle
+                if object_reconstruction is None
+                or not object_reconstruction.is_point_cloud_driven
+                else object_reconstruction.target_yaw_world_rad
+            ),
             target_extents_world=extents,
             grasp_position_world=grasp_position,
             approach_world=np.array([0.0, 0.0, -1.0], dtype=np.float64),
@@ -337,6 +356,7 @@ class ValidationSceneTransform:
 class ValidationRequest:
     grasp_plan: GraspPlan | SimulationAttempt
     scene_transform: ValidationSceneTransform
+    object_reconstruction: ObjectReconstruction
     target_appearance: TargetAppearance | None = None
     appearance_failure_reason: str | None = None
     condition_report: ConditionReport | None = None
@@ -349,6 +369,13 @@ class ValidationRequest:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
             raise ValueError("ValidationRequest requires normalized validation scene")
         appearance = self.target_appearance
+        reconstruction = self.object_reconstruction
+        if reconstruction.snapshot_id != self.grasp_plan.snapshot_id:
+            raise ValueError("object reconstruction snapshot does not match GraspPlan")
+        if reconstruction.source_frame_id != self.grasp_plan.source_frame_id:
+            raise ValueError("object reconstruction frame does not match GraspPlan")
+        if reconstruction.target_instance_id != self.grasp_plan.target_id:
+            raise ValueError("object reconstruction target does not match GraspPlan")
         if appearance is not None and self.appearance_failure_reason is not None:
             raise ValueError("real appearance and appearance fallback cannot both be active")
         if appearance is not None:
@@ -371,6 +398,7 @@ class ValidationRequest:
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         failure_target_offset_m: tuple[float, float, float] = (0.14, 0.0, 0.0),
+        object_reconstruction: ObjectReconstruction | None = None,
         target_appearance: TargetAppearance | None = None,
         appearance_failure_reason: str | None = None,
         condition_report: ConditionReport | None = None,
@@ -384,13 +412,25 @@ class ValidationRequest:
             if isinstance(scenario, ValidationScenario)
             else ValidationScenario(str(scenario).upper())
         )
+        reconstruction = object_reconstruction or fallback_reconstruction(
+            snapshot_id=plan.snapshot_id,
+            geometry_chain_id=f"legacy:{plan.snapshot_id}:{plan.target_id}",
+            source_frame_id=plan.source_frame_id,
+            target_instance_id=plan.target_id,
+            centroid_camera_xyz=np.asarray(plan.grasp_point_xyz, dtype=np.float64),
+            extents_xyz=np.asarray(plan.object_extents_xyz, dtype=np.float64),
+            appearance=target_appearance,
+            reason="SPATIAL_OBSERVATION_NOT_PROVIDED",
+        )
         return cls(
             grasp_plan=plan,
             scene_transform=ValidationSceneTransform.from_grasp_plan(
                 plan,
+                object_reconstruction=reconstruction,
                 scenario=selected,
                 failure_target_offset_m=failure_target_offset_m,
             ),
+            object_reconstruction=reconstruction,
             target_appearance=target_appearance,
             appearance_failure_reason=appearance_failure_reason,
             condition_report=condition_report,
@@ -420,6 +460,7 @@ class ValidationRequest:
                 "condition_warnings": condition_context["warnings"],
             },
             "simulation_attempt": attempt,
+            "object_reconstruction": self.object_reconstruction.public_metadata(),
             "scene_transform": self.scene_transform.public_metadata(),
             "target_appearance": self.appearance_metadata(),
             "condition_context": condition_context,

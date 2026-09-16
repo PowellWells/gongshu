@@ -128,6 +128,57 @@ class LocalImageAdapterTests(unittest.TestCase):
             self.assertTrue((records_root / first.run_id / "input.png").is_file())
             self.assertTrue((records_root / second.run_id / "run.json").is_file())
 
+    def test_experiment_recorder_archives_perception_and_reconstruction_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            records_root = Path(temporary) / "artifacts" / "offline_run"
+            adapter = LocalImageAdapter(records_root)
+            observation = adapter.load("sample.png", image_bytes())
+            recorder = ExperimentTrialRecorder(records_root)
+            recorder.start(observation, {"condition_protocol": "STRESS_TEST", "random_seed": 9})
+            rgb = np.zeros((12, 18, 3), dtype=np.uint8)
+            mask = np.zeros((12, 18), dtype=np.bool_)
+            mask[2:10, 4:14] = True
+            snapshot = SimpleNamespace(
+                snapshot_id="snapshot-local",
+                frame=RGBFrame(0, 1.0, "local-image", rgb),
+                target=SimpleNamespace(mask=mask),
+                condition_report=None,
+                public_metadata=lambda: {"snapshot_id": "snapshot-local"},
+            )
+            spatial = SimpleNamespace(
+                snapshot_id="snapshot-local",
+                depth_frame=SimpleNamespace(values=np.ones((12, 18), dtype=np.float32)),
+                target_point_cloud=np.array([[0.0, 0.0, 1.0], [0.01, 0.02, 1.01]], dtype=np.float32),
+                public_metadata=lambda: {"geometry_chain_id": "geometry-local"},
+            )
+            recorder.record_perception(observation.run_id, snapshot, spatial)
+            recorder.record_result(
+                observation.run_id,
+                {
+                    "status": "SUCCESS",
+                    "validation_request": {
+                        "object_reconstruction": {"proxy_geometry": "box"}
+                    },
+                    "telemetry": {
+                        "mujoco_model_xml_sha256": "a" * 64,
+                        "object_reconstruction": {"proxy_geometry": "box"},
+                    },
+                },
+            )
+            record = json.loads(
+                (records_root / observation.run_id / "experiment_record.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(record["schema_version"], "gongshu.experiment-trial/v2")
+            self.assertEqual(record["experiment_parameters"]["random_seed"], 9)
+            self.assertEqual(record["object_reconstruction"]["proxy_geometry"], "box")
+            self.assertEqual(record["mujoco_model"]["xml_sha256"], "a" * 64)
+            for item in ("pipeline_rgb", "target_mask", "depth", "point_cloud"):
+                artifact = record["artifacts"][item]
+                self.assertEqual(len(artifact["sha256"]), 64)
+                self.assertTrue((records_root / observation.run_id / artifact["path"]).is_file())
+
 
 class LocalImageFrontendTests(unittest.TestCase):
     def test_single_image_selection_and_load_controls_are_wired(self) -> None:
@@ -137,9 +188,15 @@ class LocalImageFrontendTests(unittest.TestCase):
         self.assertIn('id="localImageFile" type="file"', html)
         self.assertNotIn("multiple", html.split('id="localImageFile"', 1)[1].split(">", 1)[0])
         self.assertIn('id="loadLocalImageButton"', html)
+        self.assertIn('id="localImageAutoSelect"', html)
         self.assertIn('/api/vision-source/local-image/load', controller)
         self.assertIn('els.localImageFile.addEventListener("change"', controller)
         self.assertIn('els.loadLocalImageButton.addEventListener("click", loadLocalImage)', controller)
+        self.assertIn("els.localImageAutoSelect.checked", controller)
+        self.assertIn('id="reconstructionDebugToggle"', html)
+        self.assertIn('id="debugPointCloudImage"', html)
+        self.assertIn("reconstruction_debug: els.reconstructionDebugToggle.checked", controller)
+        self.assertIn("/api/mujoco-validation/reconstruction-debug/proxy.jpg", controller)
 
 
 if __name__ == "__main__":

@@ -1040,6 +1040,71 @@
   opacity: .72;
 }
 
+.local-image-auto-select,
+.reconstruction-debug-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-text, #66758a);
+  font-size: 12px;
+}
+
+.reconstruction-debug-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(63, 132, 224, .22);
+  border-radius: 14px;
+  background: rgba(244, 249, 255, .84);
+}
+
+.reconstruction-debug-panel > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reconstruction-debug-panel > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.reconstruction-debug-panel > header span,
+.reconstruction-debug-panel > header small {
+  color: #66758a;
+  font-size: 11px;
+}
+
+.reconstruction-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.reconstruction-debug-grid figure {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(33, 80, 137, .14);
+  border-radius: 10px;
+  background: #101722;
+}
+
+.reconstruction-debug-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #101722;
+}
+
+.reconstruction-debug-grid figcaption {
+  padding: 7px 9px;
+  color: #dbe9fb;
+  background: #172232;
+  font-size: 11px;
+}
+
 .workspace-view:not(.is-primary) .simulation-hud-metrics,
 .workspace-view:not(.is-primary) .simulation-attempt-summary,
 .workspace-view:not(.is-primary) .simulation-camera-controls,

@@ -5,7 +5,7 @@
   const TARGET_PERCEPTION_SCHEMA_VERSION = "gongshu.target-perception/v1";
   const SPATIAL_PERCEPTION_SCHEMA_VERSION = "gongshu.spatial-perception/v2";
   const GRASP_PLANNING_SCHEMA_VERSION = "gongshu.grasp-planning-job/v2";
-  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v4";
+  const MUJOCO_VALIDATION_SCHEMA_VERSION = "gongshu.mujoco-validation/v5";
   const RUN_SCHEMA_VERSION = "vision2grasp.run/v1";
   const PUBLISHED_SCHEMA_VERSION = "vision2grasp.launcher/v1";
   const PUBLISHED_MANIFEST_URL = "../../runtime/latest.json";
@@ -132,6 +132,7 @@
     localImageInput: byId("localImageInput"),
     localImageFile: byId("localImageFile"),
     localImageFilename: byId("localImageFilename"),
+    localImageAutoSelect: byId("localImageAutoSelect"),
     loadLocalImageButton: byId("loadLocalImageButton"),
     localImageStatus: byId("localImageStatus"),
     conditionSelect: byId("conditionSelect"),
@@ -238,6 +239,14 @@
     technicalOverlayToggle: byId("technicalOverlayToggle"),
     validationScenarioSelect: byId("validationScenarioSelect"),
     startValidationButton: byId("startValidationButton"),
+    reconstructionDebugToggle: byId("reconstructionDebugToggle"),
+    reconstructionDebugPanel: byId("reconstructionDebugPanel"),
+    reconstructionDebugMeta: byId("reconstructionDebugMeta"),
+    debugInputImage: byId("debugInputImage"),
+    debugMaskImage: byId("debugMaskImage"),
+    debugPointCloudImage: byId("debugPointCloudImage"),
+    debugProxyImage: byId("debugProxyImage"),
+    debugMujocoImage: byId("debugMujocoImage"),
     targetStatus: byId("targetStatus"),
     targetValue: byId("targetValue"),
     targetClassValue: byId("targetClassValue"),
@@ -323,6 +332,7 @@
   let validationTimer = 0;
   let playbackSeekTimer = 0;
   let simulationStreamStarted = false;
+  let reconstructionDebugIdentity = "";
   let analysisFrozen = false;
   let targetAnalysisRunning = false;
   let targetAnalysisRequest = 0;
@@ -1121,9 +1131,11 @@
       showLocalImage(loaded.observation);
       renderTargetPerception(loaded.target_perception);
       const firstCandidate = loaded.target_perception?.candidates?.[0];
-      if (firstCandidate?.id) {
+      if (firstCandidate?.id && els.localImageAutoSelect.checked) {
         showNotice(`本地图片已加载，正在自动选择首个目标：${loaded.observation.image_name}`);
         await selectTarget(firstCandidate.id);
+      } else if (firstCandidate?.id) {
+        showNotice(`本地图片已加载，请在图像中选择目标：${loaded.observation.image_name}`);
       } else {
         showNotice(`本地图片已加载，但未发现可抓取目标：${loaded.observation.image_name}`, "error");
       }
@@ -1856,6 +1868,7 @@
     const simulationAttempt = state.request?.simulation_attempt;
     const recording = state.recording;
     const playback = state.playback;
+    renderReconstructionDebug(state);
     const targetLock = state.request?.target_lock_metadata || recording?.target_lock_metadata;
     if (targetLock) {
       els.targetStatus.textContent = "目标已锁定 Target Locked";
@@ -1967,6 +1980,30 @@
     updateActionButtons();
   }
 
+  function renderReconstructionDebug(state) {
+    const available = Boolean(state.media?.reconstruction_debug_available);
+    els.reconstructionDebugPanel.hidden = !available;
+    if (!available) {
+      reconstructionDebugIdentity = "";
+      return;
+    }
+    const reconstruction = state.request?.object_reconstruction
+      || state.telemetry?.object_reconstruction;
+    const identity = `${reconstruction?.geometry_chain_id || "unknown"}:${reconstruction?.proxy_geometry || "unknown"}`;
+    if (identity !== reconstructionDebugIdentity) {
+      reconstructionDebugIdentity = identity;
+      const opened = Date.now();
+      els.debugInputImage.src = `/api/mujoco-validation/reconstruction-debug/input.jpg?t=${opened}`;
+      els.debugMaskImage.src = `/api/mujoco-validation/reconstruction-debug/mask.jpg?t=${opened}`;
+      els.debugPointCloudImage.src = `/api/mujoco-validation/reconstruction-debug/point-cloud.jpg?t=${opened}`;
+      els.debugProxyImage.src = `/api/mujoco-validation/reconstruction-debug/proxy.jpg?t=${opened}`;
+      els.reconstructionDebugMeta.textContent = `${reconstruction?.proxy_geometry || "—"} · ${(reconstruction?.proxy_extents_world_xyz || []).map((value) => Number(value).toFixed(3)).join(" × ") || "—"}`;
+    }
+    if (state.media?.stream_available) {
+      els.debugMujocoImage.src = `/api/mujoco-validation/reconstruction-debug/mujoco.jpg?t=${state.frame_revision}`;
+    }
+  }
+
   function ensureValidationPolling() {
     if (!validationTimer) validationTimer = window.setInterval(pollValidationState, 120);
   }
@@ -2000,6 +2037,7 @@
         target_id: graspPlanningState.plan?.target_id
           || graspPlanningState.candidates?.[0]?.target_instance_id,
         scenario: els.validationScenarioSelect.value,
+        reconstruction_debug: els.reconstructionDebugToggle.checked,
       });
       renderValidation(state);
       els.simulationMedia.src = `/api/mujoco-validation/live.mjpeg?opened=${Date.now()}`;

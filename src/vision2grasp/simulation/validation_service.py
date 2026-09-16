@@ -14,8 +14,14 @@ import numpy as np
 from vision2grasp.grasp_planning import GraspPlan, GraspPlanningOutcome
 from vision2grasp.target_perception import TargetSceneSnapshot
 from vision2grasp.condition_processing import GraspUncertainty, SpatialUncertainty
+from vision2grasp.spatial_perception import SpatialObservation
 
 from .appearance import extract_target_appearance
+from .object_reconstruction import reconstruct_object
+from .reconstruction_debug import (
+    ReconstructionDebugBundle,
+    build_reconstruction_debug_bundle,
+)
 from .recording import (
     PlaybackSession,
     PlanningVisualizationRecording,
@@ -38,7 +44,7 @@ from .validation_contracts import (
 )
 
 
-VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v4"
+VALIDATION_SCHEMA_VERSION: Final = "gongshu.mujoco-validation/v5"
 _PLAYBACK_SPEEDS: Final = (0.25, 0.5, 1.0, 2.0)
 
 
@@ -55,6 +61,7 @@ class MuJoCoValidationService:
         exports_root: Path | None = None,
         minimum_gripper_width_m: float = 0.01,
         maximum_gripper_width_m: float = 0.08,
+        reconstruction_debug_default_enabled: bool = False,
     ) -> None:
         self._backend_factory = backend_factory
         self._lock = threading.RLock()
@@ -89,6 +96,10 @@ class MuJoCoValidationService:
         self._exports_root = exports_root
         self._minimum_gripper_width_m = float(minimum_gripper_width_m)
         self._maximum_gripper_width_m = float(maximum_gripper_width_m)
+        self._reconstruction_debug_default_enabled = bool(
+            reconstruction_debug_default_enabled
+        )
+        self._reconstruction_debug: ReconstructionDebugBundle | None = None
         if (
             not 0.0 < self._minimum_gripper_width_m
             <= self._maximum_gripper_width_m
@@ -106,8 +117,10 @@ class MuJoCoValidationService:
         *,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
         snapshot: TargetSceneSnapshot | None = None,
+        spatial_observation: SpatialObservation | None = None,
         spatial_uncertainty: SpatialUncertainty | None = None,
         grasp_uncertainty: GraspUncertainty | None = None,
+        reconstruction_debug: bool | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
@@ -129,12 +142,27 @@ class MuJoCoValidationService:
                     )
             else:
                 appearance_failure_reason = "NO_TARGET_SCENE_SNAPSHOT"
+            reconstruction = None
+            if spatial_observation is not None:
+                if snapshot is None:
+                    raise ValueError("Object Reconstruction requires a Scene Snapshot")
+                reconstruction = reconstruct_object(
+                    spatial_observation,
+                    snapshot,
+                    appearance,
+                )
+            debug_enabled = (
+                self._reconstruction_debug_default_enabled
+                if reconstruction_debug is None
+                else bool(reconstruction_debug)
+            )
             self._request = ValidationRequest.from_grasp_plan(
                 plan,
                 scenario=scenario,
                 failure_target_offset_m=self._failure_target_offset_m,
                 target_appearance=appearance,
                 appearance_failure_reason=appearance_failure_reason,
+                object_reconstruction=reconstruction,
                 condition_report=(
                     snapshot.condition_report
                     if snapshot is not None
@@ -165,6 +193,17 @@ class MuJoCoValidationService:
             self._frame_jpeg = None
             self._current_recording = None
             self._current_visualization = None
+            self._reconstruction_debug = None
+            if debug_enabled:
+                if snapshot is None or spatial_observation is None or reconstruction is None:
+                    raise ValueError(
+                        "Object Reconstruction Debug requires snapshot and spatial observation"
+                    )
+                self._reconstruction_debug = build_reconstruction_debug_bundle(
+                    snapshot,
+                    spatial_observation,
+                    reconstruction,
+                )
             self._playback = PlaybackSession()
             from .native_panda_validation import CameraDirector
 
@@ -185,6 +224,8 @@ class MuJoCoValidationService:
         outcome: GraspPlanningOutcome,
         *,
         snapshot: TargetSceneSnapshot,
+        spatial_observation: SpatialObservation | None = None,
+        reconstruction_debug: bool | None = None,
         scenario: ValidationScenario | str = ValidationScenario.NOMINAL,
     ) -> dict[str, object]:
         """Execute the highest-ranked rejected candidate without changing planning."""
@@ -211,6 +252,8 @@ class MuJoCoValidationService:
             attempt,
             scenario=scenario,
             snapshot=snapshot,
+            spatial_observation=spatial_observation,
+            reconstruction_debug=reconstruction_debug,
             spatial_uncertainty=outcome.spatial_uncertainty,
             grasp_uncertainty=outcome.grasp_uncertainty,
         )
@@ -231,6 +274,7 @@ class MuJoCoValidationService:
             self._frame_jpeg = None
             self._current_recording = None
             self._current_visualization = None
+            self._reconstruction_debug = None
             self._started_at = 0.0
             self._state_history = []
             self._playback = PlaybackSession()
@@ -546,8 +590,32 @@ class MuJoCoValidationService:
                     "recording_saved": bool(
                         (recording and recording.saved) or (visualization and visualization.saved)
                     ),
+                    "reconstruction_debug_available": self._reconstruction_debug is not None,
                 },
             }
+
+    def reconstruction_debug_state(self) -> dict[str, object]:
+        with self._lock:
+            if self._reconstruction_debug is None:
+                return {
+                    "schema_version": "gongshu.reconstruction-debug/v1",
+                    "enabled": False,
+                    "views": [],
+                }
+            state = dict(self._reconstruction_debug.metadata)
+            state["mujoco_frame_available"] = self._frame_jpeg is not None
+            state["mujoco_model_xml_sha256"] = self._telemetry.get(
+                "mujoco_model_xml_sha256"
+            )
+            return state
+
+    def reconstruction_debug_frame(self, kind: str) -> bytes | None:
+        with self._lock:
+            if self._reconstruction_debug is None:
+                return None
+            if kind == "mujoco":
+                return None if self._frame_jpeg is None else bytes(self._frame_jpeg)
+            return self._reconstruction_debug.frame(kind)
 
     def wait_for_frame(self, revision: int, *, timeout: float = 2.0) -> tuple[int, bytes] | None:
         deadline = time.monotonic() + timeout

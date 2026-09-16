@@ -247,7 +247,7 @@ class NativePandaValidation:
         self.camera_director = camera_director
         self.config = config or NativePandaValidationConfig()
         appearance = request.target_appearance
-        proxy_geometry = ProxyGeometry.BOX if appearance is None else appearance.proxy_geometry
+        proxy_geometry = request.object_reconstruction.proxy_geometry
         self.appearance_runtime_metadata = request.appearance_metadata()
         try:
             self.model_xml, self.model_assets = self._build_model(
@@ -260,8 +260,11 @@ class NativePandaValidation:
             self.model = mujoco.MjModel.from_xml_string(
                 self.model_xml, assets=self.model_assets
             )
+            self.model_xml_sha256 = hashlib.sha256(self.model_xml.encode("utf-8")).hexdigest()
             if appearance is not None:
-                self._verify_target_appearance_loaded(self.model, appearance)
+                self._verify_target_appearance_loaded(
+                    self.model, appearance, proxy_geometry
+                )
                 self.appearance_runtime_metadata = {
                     **appearance.public_metadata(),
                     "texture_status": "LOADED",
@@ -286,6 +289,7 @@ class NativePandaValidation:
                 offscreen_height=self.config.height,
             )
             self.model = mujoco.MjModel.from_xml_string(self.model_xml)
+            self.model_xml_sha256 = hashlib.sha256(self.model_xml.encode("utf-8")).hexdigest()
         self.data = mujoco.MjData(self.model)
         self._arm_joint_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{i}") for i in range(1, 8)]
         self._arm_qpos = np.array([self.model.jnt_qposadr[j] for j in self._arm_joint_ids], dtype=np.int32)
@@ -632,6 +636,8 @@ class NativePandaValidation:
             "target_position_world": self.data.xpos[self._target_body].tolist(),
             "eef_position_world": self.data.site_xpos[self._eef_site].tolist(),
             "target_appearance": dict(self.appearance_runtime_metadata),
+            "object_reconstruction": self.request.object_reconstruction.public_metadata(),
+            "mujoco_model_xml_sha256": self.model_xml_sha256,
         }
 
     def _record_sample(self, state: SimulationState, *, force: bool = False) -> None:
@@ -711,6 +717,14 @@ class NativePandaValidation:
         run_id = f"run-{uuid.uuid4().hex[:16]}"
         request_metadata = self.request.public_metadata()
         request_metadata["target_appearance"] = dict(self.appearance_runtime_metadata)
+        request_metadata["mujoco_model"] = {
+            "xml_sha256": self.model_xml_sha256,
+            "proxy_geometry": self.request.object_reconstruction.proxy_geometry.value,
+            "proxy_extents_world_xyz": (
+                self.request.object_reconstruction.proxy_extents_world_xyz.tolist()
+            ),
+            "geometry_source": self.request.object_reconstruction.source,
+        }
         self.recording = SimulationRecording(
             recording_id=recording_id,
             run_id=run_id,
@@ -1067,7 +1081,9 @@ class NativePandaValidation:
 
     @staticmethod
     def _verify_target_appearance_loaded(
-        model: mujoco.MjModel, appearance: TargetAppearance
+        model: mujoco.MjModel,
+        appearance: TargetAppearance,
+        proxy_geometry: ProxyGeometry | None = None,
     ) -> None:
         texture_id = mujoco.mj_name2id(
             model, mujoco.mjtObj.mjOBJ_TEXTURE, "target_appearance_texture"
@@ -1084,7 +1100,7 @@ class NativePandaValidation:
             raise RuntimeError("target visual geom is not bound to appearance material")
         if int(model.tex_width[texture_id]) < 1 or int(model.tex_height[texture_id]) < 1:
             raise RuntimeError("target appearance texture has invalid dimensions")
-        if appearance.proxy_geometry is ProxyGeometry.BOX:
+        if (proxy_geometry or appearance.proxy_geometry) is ProxyGeometry.BOX:
             if int(model.geom_type[visual_id]) != int(mujoco.mjtGeom.mjGEOM_MESH):
                 raise RuntimeError("box appearance must use an explicit-UV visual mesh")
             mesh_id = int(model.geom_dataid[visual_id])

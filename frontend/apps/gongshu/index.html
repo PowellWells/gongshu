@@ -95,6 +95,10 @@
       <label class="local-image-picker" for="localImageFile">选择图片 Choose Image</label>
       <input id="localImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden />
       <p>文件名：<strong id="localImageFilename">尚未选择 No file selected</strong></p>
+      <label class="local-image-auto-select">
+        <input id="localImageAutoSelect" type="checkbox" />
+        快速自动选择首个目标 Quick Auto-select
+      </label>
       <button id="loadLocalImageButton" type="button" disabled>加载图片 Load Image</button>
       <span id="localImageStatus" class="local-image-status">WAITING</span>
     </section>
@@ -267,6 +271,10 @@
                 <option value="TARGET_OFFSET_STRESS">目标偏移 Target Offset Stress</option>
               </select>
             </label>
+            <label class="reconstruction-debug-control">
+              <input id="reconstructionDebugToggle" type="checkbox" />
+              物体重建调试 Object Reconstruction Debug
+            </label>
             <button id="startValidationButton" class="start-validation-button" type="button" disabled>
               开始仿真尝试 <b>Start Attempt</b>
             </button>
@@ -294,6 +302,19 @@
                   <button type="button" data-playback-speed="2">2×</button>
                 </div>
                 <label><input id="technicalOverlayToggle" type="checkbox" /> Technical Overlay</label>
+              </div>
+            </section>
+            <section id="reconstructionDebugPanel" class="reconstruction-debug-panel" hidden>
+              <header>
+                <div><span>诊断链</span><strong>物体重建调试 Object Reconstruction Debug</strong></div>
+                <small id="reconstructionDebugMeta">等待调试数据 Waiting</small>
+              </header>
+              <div class="reconstruction-debug-grid">
+                <figure><img id="debugInputImage" alt="Input RGB" /><figcaption>1 · 输入 RGB Input</figcaption></figure>
+                <figure><img id="debugMaskImage" alt="Segmentation Mask" /><figcaption>2 · 分割掩码 Mask</figcaption></figure>
+                <figure><img id="debugPointCloudImage" alt="Point Cloud" /><figcaption>3 · 点云 Point Cloud</figcaption></figure>
+                <figure><img id="debugProxyImage" alt="Generated Proxy" /><figcaption>4 · 生成代理 Generated Proxy</figcaption></figure>
+                <figure><img id="debugMujocoImage" alt="MuJoCo Object" /><figcaption>5 · MuJoCo 物体 Object</figcaption></figure>
               </div>
             </section>
           </div>

@@ -6,6 +6,12 @@ from .appearance import (
     TargetAppearance,
     extract_target_appearance,
 )
+from .object_reconstruction import (
+    OBJECT_RECONSTRUCTION_SCHEMA_VERSION,
+    ObjectReconstruction,
+    fallback_reconstruction,
+    reconstruct_object,
+)
 from .validation_contracts import (
     CameraMode,
     SimulationAttempt,
@@ -27,6 +33,8 @@ __all__ = [
     "CameraDirector",
     "CameraMode",
     "MuJoCoValidationService",
+    "OBJECT_RECONSTRUCTION_SCHEMA_VERSION",
+    "ObjectReconstruction",
     "PlaybackSession",
     "ProxyGeometry",
     "NativePandaValidation",
@@ -46,6 +54,8 @@ __all__ = [
     "ValidationScenario",
     "ValidationSceneTransform",
     "extract_target_appearance",
+    "fallback_reconstruction",
+    "reconstruct_object",
 ]
 
 
