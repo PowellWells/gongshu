@@ -947,7 +947,7 @@
 .simulation-attempt-summary > div {
   display: grid;
   gap: 2px;
-  min-width: 168px;
+  min-width: 156px;
   padding: 7px 9px;
   border: 1px solid rgba(116, 184, 216, .3);
   border-radius: 7px;

@@ -110,6 +110,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "simulationPlanningReason",
             "simulationAttemptState",
             "simulationAttemptCandidate",
+            "simulationDecisionAlgorithm",
+            "simulationDecisionCandidate",
+            "simulationDecisionAction",
             "simulationHud",
             "simulationHudState",
             "simulationAppearance",
@@ -288,6 +291,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             'apiPost("/api/intelligence/decide"',
             "await refreshDashboardState()",
             'new CustomEvent("xiezhi:algorithm-changed"',
+            'setText("#simulationDecisionAlgorithm"',
+            'setText("#simulationDecisionCandidate"',
+            'setText("#simulationDecisionAction"',
         ):
             self.assertIn(source, intelligence_ui)
         self.assertNotIn("xiezhi_decision_v0_1", intelligence_ui)

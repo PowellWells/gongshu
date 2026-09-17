@@ -76,7 +76,9 @@ class AlgorithmSwitcherV1Tests(unittest.TestCase):
         self.assertEqual(xiezhi_decision.algorithm_id, "xiezhi_decision_v0_1")
         self.assertEqual(external_decision.algorithm_id, MOCK_EXTERNAL_BASELINE_ID)
         self.assertEqual(external_decision.provider_id, "external_baseline")
-        self.assertEqual(external_decision.reason, "mock_highest_score")
+        self.assertEqual(xiezhi_decision.selected_candidate_id, "C1")
+        self.assertEqual(external_decision.selected_candidate_id, "C3")
+        self.assertEqual(external_decision.reason, "mock_lowest_score")
 
     def test_active_algorithm_state_can_be_persisted_and_restored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

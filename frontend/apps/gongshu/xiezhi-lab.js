@@ -251,6 +251,12 @@
     setText("#xiezhiDecisionCandidate", "无 NONE");
     setText("#xiezhiDecisionConfidence", "—");
     setText("#xiezhiDecisionUncertainty", "无 NONE");
+    setText(
+      "#simulationDecisionAlgorithm",
+      [activeAlgorithm?.name, activeAlgorithm?.version].filter(Boolean).join(" · ") || "—",
+    );
+    setText("#simulationDecisionCandidate", "无候选 NO CANDIDATE");
+    setText("#simulationDecisionAction", "等待决策 WAITING");
   }
 
   function renderDecisionHistory(history) {
@@ -321,6 +327,12 @@
     setText("#xiezhiDecisionCandidate", runtime.selected_candidate || "无 NONE");
     setText("#xiezhiDecisionConfidence", formatScore(runtime.confidence));
     setText("#xiezhiDecisionUncertainty", formatUncertainty(runtime.uncertainty));
+    setText(
+      "#simulationDecisionAlgorithm",
+      [activeAlgorithm.name, activeAlgorithm.version].filter(Boolean).join(" · ") || "—",
+    );
+    setText("#simulationDecisionCandidate", runtime.selected_candidate || "无候选 NO CANDIDATE");
+    setText("#simulationDecisionAction", eventLabel(runtime.current_action));
 
     setText("#xiezhiEngineMetadata", [metadata.name, metadata.description, metadata.source].filter(Boolean).join(" · "));
     setText("#xiezhiEngineType", algorithmTypeLabel(engine.algorithm_type));

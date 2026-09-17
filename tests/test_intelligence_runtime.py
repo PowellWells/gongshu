@@ -20,6 +20,7 @@ from vision2grasp.grasp_planning import (
     PlanningState,
 )
 from vision2grasp.intelligence import (
+    MOCK_EXTERNAL_BASELINE_ID,
     AlgorithmDecision,
     DecisionAction,
     DecisionStatus,
@@ -346,6 +347,65 @@ class IntelligenceRuntimeTests(unittest.TestCase):
         self.assertEqual(response["candidate_id"], "C2")
         self.assertEqual(captured[0].best_candidate_id, "C2")
         np.testing.assert_allclose(captured[0].grasp_point_xyz, [0.02, 0.0, 0.73])
+
+    def test_active_algorithm_switch_changes_gongshu_execution_plan(self) -> None:
+        outcome = make_three_candidate_outcome()
+        captured: list[object] = []
+
+        class Planning:
+            @staticmethod
+            def current_outcome():
+                return outcome
+
+        class Target:
+            @staticmethod
+            def selected_scene_snapshot():
+                return SimpleNamespace(snapshot_id="snapshot-42")
+
+        class Validation:
+            @staticmethod
+            def start(plan, *, scenario, snapshot):
+                captured.append(plan)
+                return {
+                    "status": "INITIALIZING",
+                    "candidate_id": plan.best_candidate_id,
+                }
+
+        app = object.__new__(Vision2GraspApp)
+        app.grasp_planning = Planning()
+        app.target_perception = Target()
+        app.mujoco_validation = Validation()
+        app.intelligence = IntelligenceService(xiezhi_enabled=True)
+        app._vision_source = "phone_camera"
+        app._record_offline_pipeline_status = lambda _status: None
+        app._start_offline_run_watch = lambda: None
+        app._start_xiezhi_lifecycle = lambda **_kwargs: None
+
+        xiezhi_response = app.start_validation(
+            {"target_id": "target-42-01", "scenario": "NOMINAL"}
+        )
+        app.intelligence.set_active_algorithm(MOCK_EXTERNAL_BASELINE_ID)
+        external_response = app.start_validation(
+            {"target_id": "target-42-01", "scenario": "NOMINAL"}
+        )
+
+        self.assertEqual(outcome.plan.best_candidate_id, "C1")
+        self.assertEqual(xiezhi_response["candidate_id"], "C1")
+        self.assertEqual(external_response["candidate_id"], "C3")
+        np.testing.assert_allclose(captured[0].grasp_point_xyz, [0.01, 0.0, 0.73])
+        np.testing.assert_allclose(captured[1].grasp_point_xyz, [0.03, 0.0, 0.73])
+        dashboard = app.intelligence.dashboard_state()
+        assert dashboard is not None
+        dashboard_payload = dashboard.public_metadata()
+        self.assertEqual(
+            dashboard_payload["active_algorithm"]["algorithm_id"],
+            MOCK_EXTERNAL_BASELINE_ID,
+        )
+        self.assertEqual(dashboard_payload["runtime"]["selected_candidate"], "C3")
+        self.assertEqual(
+            dashboard_payload["runtime"]["current_action"],
+            "EXECUTE_GRASP",
+        )
 
     def test_reobserve_and_abort_never_start_mujoco(self) -> None:
         outcome = make_three_candidate_outcome()

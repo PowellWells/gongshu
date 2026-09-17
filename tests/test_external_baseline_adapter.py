@@ -53,7 +53,7 @@ class ExternalBaselineAdapterTests(unittest.TestCase):
 
         self.assertIsInstance(decision, AlgorithmDecision)
         self.assertEqual(decision.action, DecisionAction.EXECUTE_GRASP)
-        self.assertEqual(decision.selected_candidate_id, "C1")
+        self.assertEqual(decision.selected_candidate_id, "C3")
         self.assertEqual(decision.provider_id, "external_baseline")
         self.assertEqual(decision.algorithm_id, MOCK_EXTERNAL_BASELINE_ID)
         self.assertEqual(
@@ -68,7 +68,7 @@ class ExternalBaselineAdapterTests(unittest.TestCase):
         service = IntelligenceService(xiezhi_enabled=False, registry=self.registry)
         service.select_algorithm("external_baseline", MOCK_EXTERNAL_BASELINE_ID)
         decision = service.decide(make_three_candidate_outcome())
-        self.assertEqual(decision.diagnostics["strategy"], "highest_score")
+        self.assertEqual(decision.diagnostics["strategy"], "lowest_score")
         self.assertNotIn("robot", decision.diagnostics)
         self.assertNotIn("mujoco", decision.diagnostics)
 

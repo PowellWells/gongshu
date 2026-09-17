@@ -186,6 +186,7 @@ class ExternalBaselineAdapter:
 
 class MockSelectionStrategy(str, Enum):
     HIGHEST_SCORE = "highest_score"
+    LOWEST_SCORE = "lowest_score"
     FIRST_EXECUTABLE = "first_executable"
 
 
@@ -210,11 +211,12 @@ class MockExternalBaseline:
                 uncertainty=("NO_EXECUTABLE_CANDIDATE",),
                 diagnostics={"strategy": self.strategy.value},
             )
-        selected = (
-            max(candidates, key=lambda candidate: candidate.score)
-            if self.strategy is MockSelectionStrategy.HIGHEST_SCORE
-            else candidates[0]
-        )
+        if self.strategy is MockSelectionStrategy.HIGHEST_SCORE:
+            selected = max(candidates, key=lambda candidate: candidate.score)
+        elif self.strategy is MockSelectionStrategy.LOWEST_SCORE:
+            selected = min(candidates, key=lambda candidate: candidate.score)
+        else:
+            selected = candidates[0]
         confidence = float(selected.score)
         return ExternalBaselineOutput(
             action=DecisionAction.EXECUTE_GRASP,
@@ -248,7 +250,7 @@ MOCK_EXTERNAL_BASELINE_METADATA = AlgorithmMetadata(
 def create_mock_external_baseline_provider() -> ExternalBaselineAdapter:
     return ExternalBaselineAdapter(
         MOCK_EXTERNAL_BASELINE_METADATA,
-        MockExternalBaseline(),
+        MockExternalBaseline(MockSelectionStrategy.LOWEST_SCORE),
     )
 
 
