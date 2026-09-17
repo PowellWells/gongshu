@@ -204,6 +204,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "决策引擎 DECISION ENGINE",
             "决策记录 DECISION HISTORY",
             "当前算法 Current Algorithm",
+            "激活算法 Active Algorithm",
+            "激活版本 Active Version",
+            "激活类型 Active Type",
+            "激活状态 Active Status",
             "版本 Version",
             "动作 Action",
             "所选候选 Selected Candidate",
@@ -243,15 +247,55 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('state.schema_version !== "gongshu.xiezhi-dashboard/v1"', intelligence_ui)
         self.assertIn("const runtime = state.runtime", intelligence_ui)
         self.assertIn("const engine = state.engine", intelligence_ui)
+        self.assertIn("const activeAlgorithm = state.active_algorithm", intelligence_ui)
         self.assertIn("const evidence = state.evidence", intelligence_ui)
         self.assertIn("renderDecisionHistory(state.history)", intelligence_ui)
-        self.assertNotIn('/api/intelligence/select-algorithm', intelligence_ui)
+        self.assertIn('/api/intelligence/select-algorithm', intelligence_ui)
         self.assertIn("detailPanel.hidden = false", intelligence_ui)
         self.assertNotIn('/api/xiezhi/status', intelligence_ui)
         self.assertIn("orderedStages(blueprint)", blueprint_ui)
         self.assertIn("selectStage(stage, button)", blueprint_ui)
         self.assertIn("stage.module", blueprint_ui)
         self.assertIn("stage.function", blueprint_ui)
+
+    def test_xiezhi_algorithm_switcher_uses_registry_data_and_refreshes_runtime(self) -> None:
+        intelligence_ui = (GONGSHU_ROOT / "xiezhi-lab.js").read_text(encoding="utf-8")
+        for label in (
+            "激活算法 Active Algorithm",
+            "名称 Name",
+            "激活版本 Active Version",
+            "激活类型 Active Type",
+            "激活状态 Active Status",
+            "可用算法 Available Algorithms",
+            "应用切换 Apply Switch",
+        ):
+            self.assertIn(label, self.html)
+        for element_id in (
+            "xiezhiActiveAlgorithmName",
+            "xiezhiActiveAlgorithmVersion",
+            "xiezhiActiveAlgorithmType",
+            "xiezhiActiveAlgorithmStatus",
+            "xiezhiAvailableAlgorithms",
+            "xiezhiAlgorithmSwitchStatus",
+            "xiezhiApplyAlgorithm",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for source in (
+            'api("/api/intelligence/state")',
+            "state?.available_algorithms",
+            'entry?.name || entry?.display_name || algorithmId.replaceAll("_", " ")',
+            'apiPost("/api/intelligence/select-algorithm"',
+            'apiPost("/api/intelligence/decide"',
+            "await refreshDashboardState()",
+            'new CustomEvent("xiezhi:algorithm-changed"',
+        ):
+            self.assertIn(source, intelligence_ui)
+        self.assertNotIn("xiezhi_decision_v0_1", intelligence_ui)
+        self.assertNotIn("mock_external_baseline_v0_1", intelligence_ui)
+        self.assertNotIn("xiezhi_decision_v0_1", self.html)
+        self.assertNotIn("mock_external_baseline_v0_1", self.html)
+        self.assertIn(".xiezhi-algorithm-manager", self.xiezhi_styles)
+        self.assertIn(".xiezhi-provider-option.is-active", self.xiezhi_styles)
 
     def test_xiezhi_decision_modules_use_an_equal_two_by_two_grid(self) -> None:
         self.assertIn(

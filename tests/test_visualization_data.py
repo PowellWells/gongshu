@@ -48,7 +48,17 @@ class VisualizationDataProviderTests(unittest.TestCase):
         self.assertIsInstance(self.state, XiezhiDashboardState)
         payload = self.state.public_metadata()
         self.assertEqual(payload["schema_version"], "gongshu.xiezhi-dashboard/v1")
-        self.assertEqual(set(payload), {"schema_version", "runtime", "engine", "evidence", "history"})
+        self.assertEqual(
+            set(payload),
+            {
+                "schema_version",
+                "active_algorithm",
+                "runtime",
+                "engine",
+                "evidence",
+                "history",
+            },
+        )
         self.assertEqual(json.loads(json.dumps(payload))["runtime"]["current_action"], "EXECUTE_GRASP")
 
     def test_runtime_view_uses_algorithm_decision_v1(self) -> None:
@@ -71,6 +81,13 @@ class VisualizationDataProviderTests(unittest.TestCase):
         self.assertEqual(engine.algorithm_version, "v0.1")
         self.assertEqual(engine.algorithm_status, "Experimental")
         self.assertEqual(engine.blueprint_reference, "xiezhi.decision.v0_1")
+
+    def test_active_algorithm_exposes_switcher_identity(self) -> None:
+        active = self.state.active_algorithm.public_metadata()
+        self.assertEqual(active["name"], "Xiezhi Decision")
+        self.assertEqual(active["version"], "v0.1")
+        self.assertEqual(active["type"], "Xiezhi Algorithm")
+        self.assertEqual(active["status"], "Experimental")
 
     def test_arena_history_uses_result_records(self) -> None:
         self.assertEqual(len(self.state.history), 2)

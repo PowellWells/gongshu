@@ -75,6 +75,7 @@ class AlgorithmObservation:
     evidence_confidence: float | None
     reliability: str
     uncertainty_reasons: tuple[str, ...] = ()
+    robot_state: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for name in ("observation_id", "episode_id", "target_id", "reliability"):
@@ -94,6 +95,13 @@ class AlgorithmObservation:
             raise ValueError("evidence_confidence must be None or in [0, 1]")
         object.__setattr__(self, "candidates", candidates)
         object.__setattr__(self, "uncertainty_reasons", tuple(self.uncertainty_reasons))
+        object.__setattr__(self, "robot_state", MappingProxyType(dict(self.robot_state)))
+
+    @property
+    def candidate_pool(self) -> tuple[CandidateEvidence, ...]:
+        """Provider-neutral name for the candidates presented to algorithms."""
+
+        return self.candidates
 
 
 @dataclass(frozen=True, slots=True)

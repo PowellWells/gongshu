@@ -69,6 +69,26 @@ class DecisionEngineView:
 
 
 @dataclass(frozen=True, slots=True)
+class ActiveAlgorithmView:
+    name: str
+    version: str
+    type: str
+    status: str
+    algorithm_id: str
+    provider_id: str
+
+    def public_metadata(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "version": self.version,
+            "type": self.type,
+            "status": self.status,
+            "algorithm_id": self.algorithm_id,
+            "provider": self.provider_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionEvidenceView:
     selected_candidate: str | None
     positive_factors: Mapping[str, Any]
@@ -130,6 +150,7 @@ class DecisionHistoryEntry:
 
 @dataclass(frozen=True, slots=True)
 class XiezhiDashboardState:
+    active_algorithm: ActiveAlgorithmView
     runtime: DecisionRuntimeView
     engine: DecisionEngineView
     evidence: DecisionEvidenceView
@@ -142,6 +163,7 @@ class XiezhiDashboardState:
     def public_metadata(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
+            "active_algorithm": self.active_algorithm.public_metadata(),
             "runtime": self.runtime.public_metadata(),
             "engine": self.engine.public_metadata(),
             "evidence": self.evidence.public_metadata(),
@@ -161,6 +183,8 @@ class VisualizationDataProvider:
         self,
         decision: AlgorithmDecision,
         arena_records: Iterable[ResultRecord] = (),
+        *,
+        active_algorithm: Mapping[str, Any] | None = None,
     ) -> XiezhiDashboardState:
         if not isinstance(decision, AlgorithmDecision):
             raise TypeError("dashboard runtime requires AlgorithmDecision v1")
@@ -170,6 +194,15 @@ class VisualizationDataProvider:
                 f"dashboard algorithm is not registered: {decision.algorithm_id}"
             )
         blueprint = self._registry.query_blueprint(decision.algorithm_id)
+        active = metadata.public_metadata() if active_algorithm is None else active_algorithm
+        active_view = ActiveAlgorithmView(
+            name=str(active["name"]),
+            version=str(active["version"]),
+            type=str(active["type"]),
+            status=str(active["status"]),
+            algorithm_id=str(active["algorithm_id"]),
+            provider_id=str(active["provider"]),
+        )
         runtime = DecisionRuntimeView(
             current_algorithm=metadata.name,
             algorithm_version=metadata.version,
@@ -221,7 +254,7 @@ class VisualizationDataProvider:
             diagnostics=diagnostics,
         )
         history = tuple(self._history_entry(record) for record in arena_records)
-        return XiezhiDashboardState(runtime, engine, evidence, history)
+        return XiezhiDashboardState(active_view, runtime, engine, evidence, history)
 
     @staticmethod
     def _history_entry(record: ResultRecord) -> DecisionHistoryEntry:
@@ -250,6 +283,7 @@ class VisualizationDataProvider:
 
 __all__ = [
     "XIEZHI_DASHBOARD_SCHEMA_VERSION",
+    "ActiveAlgorithmView",
     "DecisionEngineView",
     "DecisionEvidenceView",
     "DecisionHistoryEntry",
