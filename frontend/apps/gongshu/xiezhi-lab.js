@@ -177,6 +177,7 @@
     }
     const runtime = state.runtime || {};
     const engine = state.engine || {};
+    const activeAlgorithm = state.active_algorithm || {};
     const evidence = state.evidence || {};
     const metadata = engine.algorithm_metadata || {};
     const blueprint = engine.blueprint || {};
@@ -185,18 +186,22 @@
     )).filter(Boolean).join(" → ");
 
     runtimeStatus.textContent = "就绪 READY";
-    connectionStatus.textContent = `${runtime.current_algorithm || "—"} · ${runtime.algorithm_version || "—"}`;
+    connectionStatus.textContent = `${activeAlgorithm.name || "—"} · ${activeAlgorithm.version || "—"}`;
     runtimeContext.textContent = eventLabel(runtime.current_action);
     latestEvent.textContent = runtime.selected_candidate || "无候选 NO CANDIDATE";
 
-    setText("#xiezhiDecisionAlgorithm", runtime.current_algorithm);
-    setText("#xiezhiDecisionVersion", runtime.algorithm_version);
+    setText("#xiezhiDecisionAlgorithm", activeAlgorithm.name || runtime.current_algorithm);
+    setText("#xiezhiDecisionVersion", activeAlgorithm.version || runtime.algorithm_version);
     setText("#xiezhiDecisionAction", eventLabel(runtime.current_action));
     setText("#xiezhiDecisionCandidate", runtime.selected_candidate || "无 NONE");
     setText("#xiezhiDecisionConfidence", formatScore(runtime.confidence));
     setText("#xiezhiDecisionUncertainty", formatUncertainty(runtime.uncertainty));
 
     setText("#xiezhiEngineMetadata", [metadata.name, metadata.description, metadata.source].filter(Boolean).join(" · "));
+    setText("#xiezhiActiveAlgorithmName", activeAlgorithm.name);
+    setText("#xiezhiActiveAlgorithmVersion", activeAlgorithm.version);
+    setText("#xiezhiActiveAlgorithmType", algorithmTypeLabel(activeAlgorithm.type));
+    setText("#xiezhiActiveAlgorithmStatus", statusLabel(activeAlgorithm.status));
     setText("#xiezhiEngineType", algorithmTypeLabel(engine.algorithm_type));
     setText("#xiezhiEngineVersion", engine.algorithm_version);
     setText("#xiezhiEngineStatus", statusLabel(engine.algorithm_status));

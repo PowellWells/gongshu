@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from vision2grasp.extensions.xiezhi.algorithms import (
@@ -22,6 +22,7 @@ from .contracts import (
 )
 
 
+@runtime_checkable
 class AlgorithmProvider(Protocol):
     provider_id: str
     algorithm_id: str

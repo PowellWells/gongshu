@@ -10,6 +10,10 @@ from .blueprint import (
     AlgorithmStatus,
     AlgorithmType,
 )
+from .external_baseline import (
+    MOCK_EXTERNAL_BASELINE_METADATA,
+    create_mock_external_baseline_provider,
+)
 from .providers import AlgorithmProvider, BaselineDecisionProvider, XiezhiDecisionProvider
 
 
@@ -122,6 +126,22 @@ class AlgorithmRegistry:
     def query_algorithm(self, algorithm_id: str) -> AlgorithmMetadata | None:
         return self._metadata_by_id.get(str(algorithm_id).strip())
 
+    def provider_id_for(self, algorithm_id: str) -> str | None:
+        """Resolve a unique runtime provider from an algorithm ID."""
+
+        normalized = str(algorithm_id).strip()
+        metadata = self.query_algorithm(normalized)
+        if metadata is not None:
+            return metadata.provider_id
+        providers = {
+            provider_id
+            for provider_id, registered_algorithm_id in self._factories
+            if registered_algorithm_id == normalized
+        }
+        if len(providers) > 1:
+            raise ValueError(f"algorithm ID has multiple providers: {normalized}")
+        return next(iter(providers), None)
+
     def query_blueprint(self, algorithm_id: str) -> AlgorithmBlueprint | None:
         return self._blueprints_by_id.get(str(algorithm_id).strip())
 
@@ -146,9 +166,18 @@ class AlgorithmRegistry:
         )
 
 
-def default_algorithm_registry(*, include_xiezhi: bool) -> AlgorithmRegistry:
+def default_algorithm_registry(
+    *,
+    include_xiezhi: bool,
+    include_mock_external: bool = False,
+) -> AlgorithmRegistry:
     registry = AlgorithmRegistry()
     registry.register("gongshu", "baseline_topk", BaselineDecisionProvider)
+    if include_mock_external:
+        registry.register_algorithm(
+            MOCK_EXTERNAL_BASELINE_METADATA,
+            create_mock_external_baseline_provider,
+        )
     if include_xiezhi:
         registry.register_algorithm(
             XiezhiDecisionProvider.metadata,

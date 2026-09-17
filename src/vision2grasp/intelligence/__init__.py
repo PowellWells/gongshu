@@ -47,12 +47,20 @@ from .arena_runner import (
     MockArenaValidation,
 )
 from .visualization import (
+    ActiveAlgorithmView,
     DecisionEngineView,
     DecisionEvidenceView,
     DecisionHistoryEntry,
     DecisionRuntimeView,
     VisualizationDataProvider,
     XiezhiDashboardState,
+)
+from .switcher import (
+    ACTIVE_ALGORITHM_SCHEMA_VERSION,
+    ActiveAlgorithm,
+    ActiveAlgorithmSelector,
+    AlgorithmLoader,
+    DecisionEngine,
 )
 
 __all__ = [
@@ -62,12 +70,17 @@ __all__ = [
     "AlgorithmStatus",
     "AlgorithmType",
     "AlgorithmRegistry",
+    "AlgorithmLoader",
     "AlgorithmObservation",
     "CandidateEvidence",
     "BlueprintStage",
     "DecisionAction",
+    "DecisionEngine",
     "DecisionStatus",
     "IntelligenceService",
+    "ACTIVE_ALGORITHM_SCHEMA_VERSION",
+    "ActiveAlgorithm",
+    "ActiveAlgorithmSelector",
     "EXTERNAL_BASELINE_PROVIDER_ID",
     "MOCK_EXTERNAL_BASELINE_ID",
     "MOCK_EXTERNAL_BASELINE_METADATA",
@@ -93,6 +106,7 @@ __all__ = [
     "ArenaValidationOutcome",
     "MockArenaValidation",
     "DecisionEngineView",
+    "ActiveAlgorithmView",
     "DecisionEvidenceView",
     "DecisionHistoryEntry",
     "DecisionRuntimeView",

@@ -56,6 +56,7 @@ class ExternalBaselineInput:
     evidence_confidence: float | None
     reliability: str
     uncertainty: tuple[str, ...] = ()
+    robot_state: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.observation_id.strip() or not self.target_id.strip():
@@ -65,6 +66,7 @@ class ExternalBaselineInput:
             raise ValueError("external baseline candidate IDs must be unique")
         object.__setattr__(self, "candidates", candidates)
         object.__setattr__(self, "uncertainty", tuple(self.uncertainty))
+        object.__setattr__(self, "robot_state", MappingProxyType(dict(self.robot_state)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +138,7 @@ class ExternalBaselineAdapter:
             evidence_confidence=observation.evidence_confidence,
             reliability=observation.reliability,
             uncertainty=observation.uncertainty_reasons,
+            robot_state=observation.robot_state,
         )
 
     def decide(self, observation: AlgorithmObservation) -> AlgorithmDecision:

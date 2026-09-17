@@ -204,6 +204,10 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "决策引擎 DECISION ENGINE",
             "决策记录 DECISION HISTORY",
             "当前算法 Current Algorithm",
+            "激活算法 Active Algorithm",
+            "激活版本 Active Version",
+            "激活类型 Active Type",
+            "激活状态 Active Status",
             "版本 Version",
             "动作 Action",
             "所选候选 Selected Candidate",
@@ -243,6 +247,7 @@ class GongshuWorkspaceTests(unittest.TestCase):
         self.assertIn('state.schema_version !== "gongshu.xiezhi-dashboard/v1"', intelligence_ui)
         self.assertIn("const runtime = state.runtime", intelligence_ui)
         self.assertIn("const engine = state.engine", intelligence_ui)
+        self.assertIn("const activeAlgorithm = state.active_algorithm", intelligence_ui)
         self.assertIn("const evidence = state.evidence", intelligence_ui)
         self.assertIn("renderDecisionHistory(state.history)", intelligence_ui)
         self.assertNotIn('/api/intelligence/select-algorithm', intelligence_ui)
