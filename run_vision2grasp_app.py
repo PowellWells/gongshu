@@ -39,7 +39,10 @@ from vision2grasp.extensions.xiezhi.lifecycle import (
     GongshuRuntimeContext,
     GongshuXiezhiLifecycleAdapter,
 )
-from vision2grasp.experiment_lab import ExperimentTrialRecorder
+from vision2grasp.experiment_lab import (
+    ExperimentTrialRecorder,
+    build_behavior_comparison,
+)
 from vision2grasp.grasp_planning import (
     GRConvNetDetector,
     GRConvNetDetectorConfig,
@@ -594,6 +597,11 @@ class Vision2GraspApp:
             str(request.get("algorithm", "")),
         )
 
+    def behavior_comparison(self) -> dict[str, object]:
+        return build_behavior_comparison(
+            self.mujoco_validation.behavior_records()
+        )
+
     def start_validation(self, request: dict[str, Any] | None = None) -> dict[str, object]:
         """Create one normalized attempt from a ready or rejected candidate."""
 
@@ -642,6 +650,7 @@ class Vision2GraspApp:
             validation_options: dict[str, Any] = {
                 "scenario": scenario,
                 "snapshot": snapshot,
+                "decision_context": self.intelligence.execution_context(decision),
             }
             if spatial_observation is not None:
                 validation_options.update(
@@ -912,6 +921,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "gongshu-intelligence-decision/v1",
                         "gongshu.xiezhi-dashboard/v1",
                         "gongshu-experiment-trial/v2",
+                        "gongshu.behavior-record/v1",
+                        "gongshu.behavior-comparison/v1",
                     ],
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                     "xiezhi": self.app.xiezhi.status().as_dict(),
@@ -937,6 +948,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 )
                 return
             self._send_json(dashboard.public_metadata())
+            return
+        if path == "/api/behavior-comparison":
+            self._send_json(self.app.behavior_comparison())
             return
         if path == "/api/vision-source/state":
             self._send_json(self.app.vision_source_snapshot())

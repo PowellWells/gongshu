@@ -139,6 +139,22 @@ class IntelligenceService:
     def active_algorithm(self) -> ActiveAlgorithm:
         return self._decision_engine.active_algorithm()
 
+    def execution_context(self, decision: AlgorithmDecision) -> dict[str, Any]:
+        """Describe the concrete decision consumed by Gongshu execution."""
+
+        metadata = self._registry.query_algorithm(decision.algorithm_id)
+        context = decision.public_metadata()
+        context.update(
+            algorithm_id=decision.algorithm_id,
+            algorithm_name=(
+                decision.algorithm_id if metadata is None else metadata.name
+            ),
+            algorithm_version=(
+                "legacy" if metadata is None else metadata.version
+            ),
+        )
+        return context
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             active = self._selector.get_active()

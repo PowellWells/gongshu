@@ -20,6 +20,7 @@ from .validation_contracts import CameraMode, SimulationState, ValidationResult
 
 RECORDING_SCHEMA_VERSION: Final = "gongshu.simulation-recording/v1"
 SAVED_RUN_SCHEMA_VERSION: Final = "gongshu.saved-validation-run/v1"
+BEHAVIOR_RECORD_SCHEMA_VERSION: Final = "gongshu.behavior-record/v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 
 
@@ -103,6 +104,107 @@ class PlaybackSession:
             "paused": self.paused,
             "camera_mode": self.camera_mode.value,
             "overlay_mode": self.overlay_mode,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TrajectoryPoint:
+    timestamp_s: float
+    position_world: tuple[float, float, float]
+    validation_state: str
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.timestamp_s) or self.timestamp_s < 0.0:
+            raise ValueError("trajectory timestamp must be finite and non-negative")
+        if len(self.position_world) != 3 or not np.all(
+            np.isfinite(self.position_world)
+        ):
+            raise ValueError("trajectory position must be a finite 3-vector")
+        if not self.validation_state.strip():
+            raise ValueError("trajectory validation state must not be empty")
+
+    def public_metadata(self) -> dict[str, Any]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "position_world": list(self.position_world),
+            "validation_state": self.validation_state,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorRecord:
+    behavior_id: str
+    recording_id: str
+    scene_id: str
+    target_id: str
+    provider_id: str
+    algorithm_id: str
+    algorithm_name: str
+    algorithm_version: str
+    decision_id: str
+    selected_candidate_id: str
+    start_pose: tuple[float, float, float]
+    target_pose: tuple[float, float, float]
+    trajectory_points: tuple[TrajectoryPoint, ...]
+    execution_time: float
+    validation_result: dict[str, Any]
+    created_at: str
+    saved: bool
+
+    def __post_init__(self) -> None:
+        for name in (
+            "behavior_id",
+            "recording_id",
+            "scene_id",
+            "target_id",
+            "provider_id",
+            "algorithm_id",
+            "algorithm_name",
+            "algorithm_version",
+            "decision_id",
+            "selected_candidate_id",
+        ):
+            if not str(getattr(self, name)).strip():
+                raise ValueError(f"{name} must not be empty")
+        if not self.trajectory_points:
+            raise ValueError("BehaviorRecord requires trajectory points")
+        for name in ("start_pose", "target_pose"):
+            pose = getattr(self, name)
+            if len(pose) != 3 or not np.all(np.isfinite(pose)):
+                raise ValueError(f"{name} must be a finite 3-vector")
+        if not np.isfinite(self.execution_time) or self.execution_time < 0.0:
+            raise ValueError("execution_time must be finite and non-negative")
+        object.__setattr__(self, "trajectory_points", tuple(self.trajectory_points))
+        object.__setattr__(self, "validation_result", dict(self.validation_result))
+
+    def public_metadata(self) -> dict[str, Any]:
+        return {
+            "schema_version": BEHAVIOR_RECORD_SCHEMA_VERSION,
+            "behavior_id": self.behavior_id,
+            "recording_id": self.recording_id,
+            "scene_id": self.scene_id,
+            "target_id": self.target_id,
+            "provider_id": self.provider_id,
+            "algorithm_id": self.algorithm_id,
+            "algorithm_name": self.algorithm_name,
+            "algorithm_version": self.algorithm_version,
+            "decision_id": self.decision_id,
+            "selected_candidate_id": self.selected_candidate_id,
+            "start_pose": {
+                "coordinate_frame": "MUJOCO_WORLD",
+                "position": list(self.start_pose),
+            },
+            "target_pose": {
+                "coordinate_frame": "MUJOCO_WORLD",
+                "position": list(self.target_pose),
+            },
+            "trajectory_points": [
+                point.public_metadata() for point in self.trajectory_points
+            ],
+            "execution_time": self.execution_time,
+            "validation_result": dict(self.validation_result),
+            "created_at": self.created_at,
+            "storage": "SAVED" if self.saved else "SESSION_ONLY",
         }
 
 
@@ -196,9 +298,63 @@ class SimulationRecording:
         left = right - 1
         return left if value - self.timestamps[left] <= self.timestamps[right] - value else right
 
+    def behavior_record(self) -> BehaviorRecord | None:
+        decision = self.request_metadata.get("decision_context")
+        if not isinstance(decision, dict):
+            return None
+        attempt = self.request_metadata.get("simulation_attempt") or {}
+        scene = self.request_metadata.get("scene_transform") or {}
+        scene_id = str(attempt.get("snapshot_id") or "").strip()
+        target_id = str(attempt.get("target_id") or "").strip()
+        selected_candidate_id = str(
+            decision.get("selected_candidate_id")
+            or attempt.get("candidate_id")
+            or ""
+        ).strip()
+        target_position = scene.get("grasp_position_world")
+        if not isinstance(target_position, list) or len(target_position) != 3:
+            target_position = self.eef_positions[-1].tolist()
+        points = tuple(
+            TrajectoryPoint(
+                timestamp_s=float(timestamp),
+                position_world=tuple(float(value) for value in position),
+                validation_state=str(state),
+            )
+            for timestamp, position, state in zip(
+                self.timestamps,
+                self.eef_positions,
+                self.validation_states,
+                strict=True,
+            )
+        )
+        return BehaviorRecord(
+            behavior_id=f"behavior-{self.recording_id}",
+            recording_id=self.recording_id,
+            scene_id=scene_id,
+            target_id=target_id,
+            provider_id=str(decision.get("provider") or "unknown"),
+            algorithm_id=str(
+                decision.get("algorithm_id") or decision.get("algorithm") or ""
+            ),
+            algorithm_name=str(decision.get("algorithm_name") or ""),
+            algorithm_version=str(decision.get("algorithm_version") or ""),
+            decision_id=str(decision.get("decision_id") or ""),
+            selected_candidate_id=selected_candidate_id,
+            start_pose=tuple(float(value) for value in self.eef_positions[0]),
+            target_pose=tuple(float(value) for value in target_position),
+            trajectory_points=points,
+            execution_time=self.duration_s,
+            validation_result=self.result.public_metadata(),
+            created_at=self.created_at,
+            saved=self.saved,
+        )
+
     def public_summary(self) -> dict[str, Any]:
         attempt = self.request_metadata.get("simulation_attempt") or self.request_metadata.get(
             "grasp_plan", {}
+        )
+        behavior_available = isinstance(
+            self.request_metadata.get("decision_context"), dict
         )
         return {
             "schema_version": RECORDING_SCHEMA_VERSION,
@@ -229,6 +385,9 @@ class SimulationRecording:
             "target_appearance": self.request_metadata.get("target_appearance"),
             "condition_context": self.request_metadata.get("condition_context"),
             "target_lock_metadata": self.request_metadata.get("target_lock_metadata"),
+            "behavior_record_id": (
+                f"behavior-{self.recording_id}" if behavior_available else None
+            ),
         }
 
     def manifest(self) -> dict[str, Any]:
@@ -246,6 +405,11 @@ class SimulationRecording:
             "files": {
                 "states": "states.npz",
                 "model": "model.xml",
+                "behavior_record": (
+                    None
+                    if self.behavior_record() is None
+                    else "behavior_record.json"
+                ),
                 "assets": {
                     name: f"assets/{name}" for name in sorted(self.model_assets)
                 },
@@ -334,6 +498,14 @@ def save_recording(recording: SimulationRecording, root: Path | None = None) -> 
             json.dumps(recording.manifest(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
         (temporary / "model.xml").write_text(recording.model_xml, encoding="utf-8")
+        behavior = recording.behavior_record()
+        if behavior is not None:
+            behavior_payload = behavior.public_metadata()
+            behavior_payload["storage"] = "SAVED"
+            (temporary / "behavior_record.json").write_text(
+                json.dumps(behavior_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
         if recording.model_assets:
             assets_root = temporary / "assets"
             assets_root.mkdir()

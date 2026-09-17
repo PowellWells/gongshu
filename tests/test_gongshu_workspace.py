@@ -113,6 +113,17 @@ class GongshuWorkspaceTests(unittest.TestCase):
             "simulationDecisionAlgorithm",
             "simulationDecisionCandidate",
             "simulationDecisionAction",
+            "xiezhiBehaviorComparisonOpen",
+            "xiezhiBehaviorComparisonDialog",
+            "behaviorLeftAlgorithm",
+            "behaviorLeftCandidate",
+            "behaviorLeftTrajectory",
+            "behaviorLeftStartPose",
+            "behaviorRightAlgorithm",
+            "behaviorRightCandidate",
+            "behaviorRightTrajectory",
+            "behaviorRightStartPose",
+            "xiezhiTrajectoryDifference",
             "simulationHud",
             "simulationHudState",
             "simulationAppearance",
@@ -291,9 +302,9 @@ class GongshuWorkspaceTests(unittest.TestCase):
             'apiPost("/api/intelligence/decide"',
             "await refreshDashboardState()",
             'new CustomEvent("xiezhi:algorithm-changed"',
-            'setText("#simulationDecisionAlgorithm"',
-            'setText("#simulationDecisionCandidate"',
-            'setText("#simulationDecisionAction"',
+            '"#simulationDecisionAlgorithm"',
+            '"#simulationDecisionCandidate"',
+            '"#simulationDecisionAction"',
         ):
             self.assertIn(source, intelligence_ui)
         self.assertNotIn("xiezhi_decision_v0_1", intelligence_ui)
@@ -320,6 +331,30 @@ class GongshuWorkspaceTests(unittest.TestCase):
             self.html.count('aria-controls="xiezhiDetailPanel"'),
             4,
         )
+
+    def test_behavior_comparison_reads_two_runtime_behavior_records(self) -> None:
+        comparison_ui = (GONGSHU_ROOT / "behavior-comparison.js").read_text(
+            encoding="utf-8"
+        )
+        for label in (
+            "行为比较 Behavior Comparison",
+            "算法 A ALGORITHM A",
+            "算法 B ALGORITHM B",
+            "真实轨迹 Trajectory",
+            "轨迹差异 Trajectory Difference",
+            "所选候选 Selected Candidate",
+            "验证结果 Validation Result",
+        ):
+            self.assertIn(label, self.html)
+        for source in (
+            'api("/api/behavior-comparison")',
+            'state.schema_version !== "gongshu.behavior-comparison/v1"',
+            "state.left",
+            "state.right",
+            "record?.trajectory_points",
+            "endpoint_distance_m",
+        ):
+            self.assertIn(source, comparison_ui)
 
     def test_live_target_overlay_locks_an_immutable_backend_snapshot(self) -> None:
         for endpoint in (

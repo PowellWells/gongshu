@@ -494,6 +494,7 @@
             </dl>
             <div class="xiezhi-engine-entries" aria-label="未来算法工具入口">
               <button type="button" data-xiezhi-entry="blueprint" disabled><small>算法结构 ALGORITHM STRUCTURE</small><strong>算法蓝图 Algorithm Blueprint</strong><span id="xiezhiBlueprintReference">等待数据 WAITING</span></button>
+              <button id="xiezhiBehaviorComparisonOpen" type="button" data-xiezhi-entry="behavior-comparison"><small>行为差异 BEHAVIOR DIFFERENCE</small><strong>行为比较 Behavior Comparison</strong><span>真实轨迹 REAL TRAJECTORIES</span></button>
               <button type="button" data-xiezhi-entry="arena"><small>公平比较 FAIR COMPARISON</small><strong>算法竞技场 Algorithm Arena</strong><span>入口预留 ENTRY RESERVED</span></button>
             </div>
           </article>
@@ -556,6 +557,59 @@
       <footer>
         <span>只读结构视图 READ-ONLY STRUCTURE VIEW</span>
         <strong id="xiezhiBlueprintId">—</strong>
+      </footer>
+    </dialog>
+
+    <dialog id="xiezhiBehaviorComparisonDialog" class="xiezhi-behavior-dialog" aria-labelledby="xiezhiBehaviorComparisonTitle">
+      <header class="xiezhi-blueprint-header">
+        <div>
+          <small>公输实验室 · 真实执行记录 GONGSHU EXPERIMENT LAB · RUNTIME RECORDS</small>
+          <h2 id="xiezhiBehaviorComparisonTitle">行为比较 Behavior Comparison</h2>
+          <p id="xiezhiBehaviorComparisonScene">等待同场景双算法记录 Waiting for same-scene records</p>
+        </div>
+        <button id="xiezhiBehaviorComparisonClose" type="button" aria-label="关闭行为比较 Close Behavior Comparison">关闭 Close</button>
+      </header>
+      <div class="xiezhi-behavior-layout">
+        <article class="xiezhi-behavior-card" data-behavior-side="left">
+          <header><small>算法 A ALGORITHM A</small><h3 id="behaviorLeftAlgorithm">Xiezhi Decision v0.1</h3></header>
+          <dl>
+            <div><dt>所选候选 Selected Candidate</dt><dd id="behaviorLeftCandidate">—</dd></div>
+            <div><dt>验证结果 Validation Result</dt><dd id="behaviorLeftValidation">—</dd></div>
+            <div><dt>执行时间 Execution Time</dt><dd id="behaviorLeftTime">—</dd></div>
+          </dl>
+          <div class="xiezhi-trajectory-view">
+            <span>真实轨迹 Trajectory</span>
+            <svg viewBox="0 0 420 240" role="img" aria-label="算法 A 机器人轨迹">
+              <path class="trajectory-grid" d="M30 40H390M30 100H390M30 160H390M30 220H390M30 40V220M150 40V220M270 40V220M390 40V220" />
+              <polyline id="behaviorLeftTrajectory" points="" />
+              <circle id="behaviorLeftStart" class="trajectory-start" cx="30" cy="220" r="5" />
+              <circle id="behaviorLeftEnd" class="trajectory-end" cx="390" cy="40" r="6" />
+            </svg>
+            <footer><span id="behaviorLeftStartPose">起点 START —</span><strong id="behaviorLeftEndpoint">终点 END —</strong></footer>
+          </div>
+        </article>
+        <article class="xiezhi-behavior-card" data-behavior-side="right">
+          <header><small>算法 B ALGORITHM B</small><h3 id="behaviorRightAlgorithm">External Baseline v0.1</h3></header>
+          <dl>
+            <div><dt>所选候选 Selected Candidate</dt><dd id="behaviorRightCandidate">—</dd></div>
+            <div><dt>验证结果 Validation Result</dt><dd id="behaviorRightValidation">—</dd></div>
+            <div><dt>执行时间 Execution Time</dt><dd id="behaviorRightTime">—</dd></div>
+          </dl>
+          <div class="xiezhi-trajectory-view">
+            <span>真实轨迹 Trajectory</span>
+            <svg viewBox="0 0 420 240" role="img" aria-label="算法 B 机器人轨迹">
+              <path class="trajectory-grid" d="M30 40H390M30 100H390M30 160H390M30 220H390M30 40V220M150 40V220M270 40V220M390 40V220" />
+              <polyline id="behaviorRightTrajectory" points="" />
+              <circle id="behaviorRightStart" class="trajectory-start" cx="30" cy="220" r="5" />
+              <circle id="behaviorRightEnd" class="trajectory-end" cx="390" cy="40" r="6" />
+            </svg>
+            <footer><span id="behaviorRightStartPose">起点 START —</span><strong id="behaviorRightEndpoint">终点 END —</strong></footer>
+          </div>
+        </article>
+      </div>
+      <footer class="xiezhi-behavior-difference">
+        <span>轨迹差异 Trajectory Difference</span>
+        <strong id="xiezhiTrajectoryDifference">等待双算法真实执行记录 WAITING</strong>
       </footer>
     </dialog>
 
@@ -661,6 +715,7 @@
     <script src="./target-selection.js"></script>
     <script src="./real-scene.js"></script>
     <script src="./xiezhi-blueprint.js"></script>
+    <script src="./behavior-comparison.js"></script>
     <script src="./xiezhi-lab.js"></script>
   </body>
 </html>

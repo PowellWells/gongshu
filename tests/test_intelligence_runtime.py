@@ -279,8 +279,12 @@ class IntelligenceRuntimeTests(unittest.TestCase):
 
         class Validation:
             @staticmethod
-            def start(plan, *, scenario, snapshot):
+            def start(plan, *, scenario, snapshot, decision_context):
                 captured.append((plan, scenario, snapshot))
+                self.assertEqual(
+                    decision_context["selected_candidate_id"],
+                    plan.best_candidate_id,
+                )
                 return {"status": "INITIALIZING"}
 
         app = object.__new__(Vision2GraspApp)
@@ -318,6 +322,15 @@ class IntelligenceRuntimeTests(unittest.TestCase):
             def ensure_decision(_outcome):
                 return selected_decision
 
+            @staticmethod
+            def execution_context(decision):
+                return {
+                    **decision.public_metadata(),
+                    "algorithm_id": decision.algorithm_id,
+                    "algorithm_name": "Test Authority",
+                    "algorithm_version": "v0.1",
+                }
+
         class Target:
             @staticmethod
             def selected_scene_snapshot():
@@ -325,8 +338,12 @@ class IntelligenceRuntimeTests(unittest.TestCase):
 
         class Validation:
             @staticmethod
-            def start(plan, *, scenario, snapshot):
+            def start(plan, *, scenario, snapshot, decision_context):
                 captured.append(plan)
+                self.assertEqual(
+                    decision_context["selected_candidate_id"],
+                    plan.best_candidate_id,
+                )
                 return {"status": "INITIALIZING", "candidate_id": plan.best_candidate_id}
 
         app = object.__new__(Vision2GraspApp)
@@ -364,8 +381,12 @@ class IntelligenceRuntimeTests(unittest.TestCase):
 
         class Validation:
             @staticmethod
-            def start(plan, *, scenario, snapshot):
+            def start(plan, *, scenario, snapshot, decision_context):
                 captured.append(plan)
+                self.assertEqual(
+                    decision_context["selected_candidate_id"],
+                    plan.best_candidate_id,
+                )
                 return {
                     "status": "INITIALIZING",
                     "candidate_id": plan.best_candidate_id,

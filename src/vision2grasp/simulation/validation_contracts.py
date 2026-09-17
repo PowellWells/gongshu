@@ -364,6 +364,7 @@ class ValidationRequest:
     spatial_uncertainty: SpatialUncertainty | None = None
     grasp_uncertainty: GraspUncertainty | None = None
     target_lock_metadata: TargetLockMetadata | None = None
+    decision_context: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.scene_transform.name != "NORMALIZED_VALIDATION_SCENE":
@@ -390,6 +391,24 @@ class ValidationRequest:
                 raise ValueError("target lock frame does not match GraspPlan")
             if self.target_lock_metadata.target_id != self.grasp_plan.target_id:
                 raise ValueError("target lock id does not match GraspPlan")
+        if self.decision_context is not None:
+            context = dict(self.decision_context)
+            selected_candidate = str(
+                context.get("selected_candidate_id") or ""
+            ).strip()
+            if selected_candidate != self.grasp_plan.best_candidate_id:
+                raise ValueError(
+                    "decision candidate does not match executable GraspPlan"
+                )
+            for name in (
+                "algorithm_id",
+                "algorithm_name",
+                "algorithm_version",
+                "decision_id",
+            ):
+                if not str(context.get(name) or "").strip():
+                    raise ValueError(f"decision context requires {name}")
+            object.__setattr__(self, "decision_context", context)
 
     @classmethod
     def from_grasp_plan(
@@ -406,6 +425,7 @@ class ValidationRequest:
         spatial_uncertainty: SpatialUncertainty | None = None,
         grasp_uncertainty: GraspUncertainty | None = None,
         target_lock_metadata: TargetLockMetadata | None = None,
+        decision_context: dict[str, Any] | None = None,
     ) -> "ValidationRequest":
         selected = (
             scenario
@@ -438,6 +458,7 @@ class ValidationRequest:
             spatial_uncertainty=spatial_uncertainty,
             grasp_uncertainty=grasp_uncertainty,
             target_lock_metadata=target_lock_metadata,
+            decision_context=decision_context,
         )
 
     @property
@@ -468,6 +489,9 @@ class ValidationRequest:
                 None
                 if self.target_lock_metadata is None
                 else self.target_lock_metadata.public_metadata()
+            ),
+            "decision_context": (
+                None if self.decision_context is None else dict(self.decision_context)
             ),
         }
 

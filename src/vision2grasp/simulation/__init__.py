@@ -24,12 +24,17 @@ from .validation_contracts import (
 )
 from .validation_service import MuJoCoValidationService, VALIDATION_SCHEMA_VERSION
 from .recording import (
+    BEHAVIOR_RECORD_SCHEMA_VERSION,
+    BehaviorRecord,
     PlaybackSession,
     SimulationRecording,
+    TrajectoryPoint,
     ValidationRun,
 )
 
 __all__ = [
+    "BEHAVIOR_RECORD_SCHEMA_VERSION",
+    "BehaviorRecord",
     "CameraDirector",
     "CameraMode",
     "MuJoCoValidationService",
@@ -47,6 +52,7 @@ __all__ = [
     "SimulationFailureReason",
     "SimulationRecording",
     "TargetAppearance",
+    "TrajectoryPoint",
     "VALIDATION_SCHEMA_VERSION",
     "ValidationRequest",
     "ValidationResult",

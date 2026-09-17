@@ -23,6 +23,7 @@ from .reconstruction_debug import (
     build_reconstruction_debug_bundle,
 )
 from .recording import (
+    BehaviorRecord,
     PlaybackSession,
     PlanningVisualizationRecording,
     SimulationRecording,
@@ -120,6 +121,7 @@ class MuJoCoValidationService:
         spatial_observation: SpatialObservation | None = None,
         spatial_uncertainty: SpatialUncertainty | None = None,
         grasp_uncertainty: GraspUncertainty | None = None,
+        decision_context: dict[str, Any] | None = None,
         reconstruction_debug: bool | None = None,
     ) -> dict[str, object]:
         with self._lock:
@@ -186,6 +188,7 @@ class MuJoCoValidationService:
                 target_lock_metadata=(
                     None if snapshot is None else snapshot.target_lock_metadata
                 ),
+                decision_context=decision_context,
             )
             self._result = None
             self._reason = None
@@ -438,6 +441,16 @@ class MuJoCoValidationService:
                 ],
                 "saved_runs": list_saved_runs(self._recordings_root),
             }
+
+    def behavior_records(self) -> tuple[BehaviorRecord, ...]:
+        """Project completed physics recordings into comparable robot behavior."""
+
+        with self._lock:
+            records = (
+                recording.behavior_record()
+                for recording in self._session_recordings
+            )
+            return tuple(record for record in records if record is not None)
 
     def record_planning_rejection(
         self, metadata: dict[str, object], preview_jpeg: bytes | None
