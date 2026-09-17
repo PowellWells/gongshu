@@ -85,7 +85,7 @@ py -3.12 -m venv .venv
 XUANSHU AI の唯一の公式起動入口：
 
 ```text
-G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+G:\Vision2Grasp\Start-Vision2Grasp.cmd
 ```
 
 このファイルをダブルクリックして XUANSHU AI Launcher に入り、Gongshu を開きます。Phone Camera、Local Image、MuJoCo、Experiment Lab、および Xiezhi のアルゴリズム・意思決定機能は Gongshu 内部で読み込まれ、ユーザーが Xiezhi を個別に起動することはありません。サブディレクトリ、開発ブランチ、Git worktree から個別に起動しないでください。スマートフォンを初めて接続する場合は、Gongshu の **Camera Setup** を開き、ローカル CA と Pairing QR の案内に従ってください。

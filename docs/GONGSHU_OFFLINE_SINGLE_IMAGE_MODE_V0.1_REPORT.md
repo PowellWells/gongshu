@@ -5,7 +5,7 @@
 本模式已接入主仓库 Gongshu，不创建独立启动器。唯一官方启动方式为双击：
 
 ```text
-G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+G:\Vision2Grasp\Start-Vision2Grasp.cmd
 ```
 
 进入 XUANSHU AI Launcher 后打开 Gongshu，并在 `Vision Source` 中选择 `Local Image`。

@@ -11,8 +11,8 @@ if not exist "%LAUNCHER%" (
   exit /b 1
 )
 
-echo Start-Vision2Grasp.cmd is a compatibility alias.
-echo Official entry: %LAUNCHER%
+echo Start-Vision2Grasp.cmd is the canonical user entry for Vision2Grasp.
+echo Delegating to the internal XUANSHU AI launcher: %LAUNCHER%
 call "%LAUNCHER%" %*
 if errorlevel 1 (
   echo.

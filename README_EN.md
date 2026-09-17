@@ -85,7 +85,7 @@ Model weights are not distributed in the Git source repository. FastSAM, Depth A
 The only official entry point for XUANSHU AI is:
 
 ```text
-G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+G:\Vision2Grasp\Start-Vision2Grasp.cmd
 ```
 
 Double-click it to enter XUANSHU AI Launcher, then open Gongshu. Gongshu internally loads Phone Camera, Local Image, MuJoCo, Experiment Lab, and its Xiezhi algorithm and decision capability; users never start Xiezhi separately. Do not launch modules from a subdirectory, development branch, or Git worktree. For the first phone connection, open **Camera Setup** in Gongshu and follow the local CA and pairing QR instructions.

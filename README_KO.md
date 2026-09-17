@@ -85,7 +85,7 @@ py -3.12 -m venv .venv
 XUANSHU AI의 유일한 공식 실행 진입점:
 
 ```text
-G:\Vision2Grasp\Start-XUANSHU-LAB.cmd
+G:\Vision2Grasp\Start-Vision2Grasp.cmd
 ```
 
 이 파일을 두 번 클릭해 XUANSHU AI Launcher로 들어간 뒤 Gongshu를 여십시오. Phone Camera, Local Image, MuJoCo, Experiment Lab과 Xiezhi 알고리즘·의사결정 기능은 Gongshu 내부에서 로드되며 사용자가 Xiezhi를 별도로 실행하지 않습니다. 하위 디렉터리, 개발 브랜치 또는 Git worktree에서 모듈을 따로 실행하지 마십시오. 휴대전화를 처음 연결할 때는 Gongshu에서 **Camera Setup**을 열고 로컬 CA와 Pairing QR 안내를 따르십시오.
