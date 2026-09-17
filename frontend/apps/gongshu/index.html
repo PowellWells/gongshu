@@ -454,12 +454,33 @@
           </article>
 
           <article data-xiezhi-panel="provider" hidden>
-            <p>展示当前算法身份、注册状态与正式决策管线；入口仅预留能力位置，不在本阶段创建页面。</p>
-            <dl class="xiezhi-detail-grid">
-              <div><dt>激活算法 Active Algorithm</dt><dd id="xiezhiActiveAlgorithmName">—</dd></div>
-              <div><dt>激活版本 Active Version</dt><dd id="xiezhiActiveAlgorithmVersion">—</dd></div>
-              <div><dt>激活类型 Active Type</dt><dd id="xiezhiActiveAlgorithmType">—</dd></div>
-              <div><dt>激活状态 Active Status</dt><dd id="xiezhiActiveAlgorithmStatus">—</dd></div>
+            <p>从算法注册表 Algorithm Registry 读取可用算法，并通过统一切换接口更新决策引擎 Decision Engine。</p>
+            <div class="xiezhi-algorithm-manager">
+              <section class="xiezhi-active-algorithm" aria-labelledby="xiezhiActiveAlgorithmTitle">
+                <header>
+                  <div><small>当前生效 CURRENTLY ACTIVE</small><h3 id="xiezhiActiveAlgorithmTitle">激活算法 Active Algorithm</h3></div>
+                  <span id="xiezhiActiveAlgorithmIndicator">等待状态 WAITING</span>
+                </header>
+                <dl>
+                  <div><dt>名称 Name</dt><dd id="xiezhiActiveAlgorithmName">—</dd></div>
+                  <div><dt>激活版本 Active Version</dt><dd id="xiezhiActiveAlgorithmVersion">—</dd></div>
+                  <div><dt>激活类型 Active Type</dt><dd id="xiezhiActiveAlgorithmType">—</dd></div>
+                  <div><dt>激活状态 Active Status</dt><dd id="xiezhiActiveAlgorithmStatus">—</dd></div>
+                </dl>
+              </section>
+              <section class="xiezhi-available-algorithms" aria-labelledby="xiezhiAvailableAlgorithmsTitle">
+                <header>
+                  <div><small>算法注册表 ALGORITHM REGISTRY</small><h3 id="xiezhiAvailableAlgorithmsTitle">可用算法 Available Algorithms</h3></div>
+                  <span id="xiezhiAlgorithmCount">0 ALGORITHMS</span>
+                </header>
+                <div id="xiezhiAvailableAlgorithms" class="xiezhi-provider-list" role="radiogroup" aria-label="选择决策算法 Select Decision Algorithm"></div>
+                <footer>
+                  <span id="xiezhiAlgorithmSwitchStatus" role="status" aria-live="polite">请选择算法 SELECT AN ALGORITHM</span>
+                  <button id="xiezhiApplyAlgorithm" type="button" disabled>应用切换 Apply Switch</button>
+                </footer>
+              </section>
+            </div>
+            <dl class="xiezhi-detail-grid xiezhi-engine-metadata">
               <div class="is-wide"><dt>算法元数据 Algorithm Metadata</dt><dd id="xiezhiEngineMetadata">—</dd></div>
               <div><dt>算法类型 Algorithm Type</dt><dd id="xiezhiEngineType">—</dd></div>
               <div><dt>版本 Version</dt><dd id="xiezhiEngineVersion">—</dd></div>
