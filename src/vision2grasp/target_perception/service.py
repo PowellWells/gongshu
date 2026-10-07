@@ -262,6 +262,77 @@ class TargetPerceptionService:
             target_id = hit.instance_id
         return self.select(target_id, source_frame_id=source_frame_id)
 
+    def select_by_bbox(
+        self,
+        *,
+        bbox_xyxy: tuple[float, float, float, float],
+        point_xy: tuple[float, float] | None = None,
+        source_frame_id: int,
+    ) -> dict[str, object]:
+        """Bind a VLM box to the best overlapping frozen FastSAM instance.
+
+        This is only a geometry-based adapter.  It does not invent a target
+        when there is no overlap, and it never relies on left/right ordering
+        or candidate list position.
+        """
+
+        if len(bbox_xyxy) != 4 or not all(math.isfinite(value) for value in bbox_xyxy):
+            raise ValueError("VLM bbox coordinates must be finite")
+        x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError("VLM bbox must have positive width and height")
+        point_x = point_y = None
+        if point_xy is not None:
+            if len(point_xy) != 2 or not all(math.isfinite(value) for value in point_xy):
+                raise ValueError("VLM point coordinates must be finite")
+            point_x, point_y = (float(value) for value in point_xy)
+
+        with self._lock:
+            frame = self._frame
+            instances = self._instances
+            if frame is None or self._status not in {"CANDIDATES", "TARGET_LOCKED"}:
+                raise RuntimeError("no target candidates are available")
+            if source_frame_id != frame.frame_id:
+                raise ValueError("target selection frame does not match frozen analysis frame")
+
+            vlm_area = (x2 - x1) * (y2 - y1)
+            best_instance: TargetInstance | None = None
+            best_score = 0.0
+            best_iou = 0.0
+            best_point_in_bbox = False
+            for instance in instances:
+                ix1, iy1, ix2, iy2 = instance.bbox_xyxy
+                intersection = max(0.0, min(x2, ix2) - max(x1, ix1)) * max(
+                    0.0, min(y2, iy2) - max(y1, iy1)
+                )
+                candidate_area = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                union = vlm_area + candidate_area - intersection
+                iou = intersection / union if union > 0.0 else 0.0
+                point_in_bbox = (
+                    point_x is not None
+                    and point_y is not None
+                    and ix1 <= point_x < ix2
+                    and iy1 <= point_y < iy2
+                )
+                score = iou + (0.25 if point_in_bbox else 0.0)
+                if score > best_score:
+                    best_instance = instance
+                    best_score = score
+                    best_iou = iou
+                    best_point_in_bbox = point_in_bbox
+
+            if best_instance is None or best_score <= 0.0:
+                raise ValueError("VLM bbox did not overlap any FastSAM instance")
+            target_id = best_instance.instance_id
+
+        selected = self.select(target_id, source_frame_id=source_frame_id)
+        selected["selection_binding"] = {
+            "mode": "vlm_bbox_iou",
+            "bbox_iou": round(best_iou, 6),
+            "point_in_candidate_bbox": best_point_in_bbox,
+        }
+        return selected
+
     def reset(self) -> dict[str, object]:
         with self._lock:
             if self._analysis_guard.locked():
@@ -353,6 +424,12 @@ class TargetPerceptionService:
     def overlay_jpeg(self) -> bytes | None:
         with self._lock:
             return None if self._overlay_jpeg is None else bytes(self._overlay_jpeg)
+
+    def analysis_frame_jpeg(self) -> bytes | None:
+        """Return the immutable RGB analysis frame before target selection."""
+
+        with self._lock:
+            return None if self._snapshot_jpeg is None else bytes(self._snapshot_jpeg)
 
     def scene_snapshot_jpeg(self) -> bytes | None:
         with self._lock:

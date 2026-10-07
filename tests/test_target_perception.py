@@ -263,6 +263,23 @@ class TargetPerceptionServiceTests(unittest.TestCase):
                 source_frame_id=frame.frame_id,
             )
 
+    def test_vlm_bbox_binding_selects_overlapping_instance_without_order_fallback(self) -> None:
+        frame = make_frame()
+        service = TargetPerceptionService(_UnknownSegmenter())
+        service.analyze(frame)
+        selected = service.select_by_bbox(
+            bbox_xyxy=(15.0, 9.0, 40.0, 29.0),
+            point_xy=(2.0, 2.0),
+            source_frame_id=frame.frame_id,
+        )
+        self.assertEqual(selected["selected_target_id"], f"target-{frame.frame_id}-01")
+        self.assertEqual(selected["selection_binding"]["mode"], "vlm_bbox_iou")
+        with self.assertRaisesRegex(ValueError, "did not overlap"):
+            service.select_by_bbox(
+                bbox_xyxy=(45.0, 1.0, 55.0, 7.0),
+                source_frame_id=frame.frame_id,
+            )
+
 
 class TargetPerceptionHTTPTests(unittest.TestCase):
     def test_analyze_select_snapshot_and_reset_endpoints_preserve_frame_identity(self) -> None:

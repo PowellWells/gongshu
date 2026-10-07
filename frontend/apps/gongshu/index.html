@@ -122,6 +122,7 @@
             </div>
             <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
             <svg id="targetOverlay" class="target-overlay" role="group" aria-label="目标候选 Object Candidates" hidden></svg>
+            <svg id="vlmOverlay" class="vlm-overlay" role="img" aria-label="VLM 目标框 VLM Grounding" hidden></svg>
             <div id="visionScanFx" class="vision-scan-fx" aria-hidden="true"></div>
             <div id="targetLockBanner" class="target-lock-banner" hidden>
               <span>目标已锁定</span><strong>Target Locked</strong>
@@ -420,6 +421,24 @@
                 <div><dt>决策 Decision</dt><dd id="xiezhiRuntimeContext">不可用 NOT AVAILABLE</dd></div>
                 <div><dt>最近决策 Last Decision</dt><dd id="xiezhiLatestEvent">无 NONE</dd></div>
               </dl>
+              <section class="vlm-grounding-panel" aria-labelledby="vlmGroundingTitle">
+                <header>
+                  <div><small>真实本地多模态 REAL LOCAL MULTIMODAL</small><h3 id="vlmGroundingTitle">语言目标 Grounding</h3></div>
+                  <strong id="vlmGroundingStatus">WAITING</strong>
+                </header>
+                <div class="vlm-grounding-input-row">
+                  <label for="vlmInstruction">Natural Language Instruction</label>
+                  <input id="vlmInstruction" type="text" placeholder="例如：抓左边的杯子" autocomplete="off" />
+                  <button id="vlmGroundButton" type="button" disabled>定位目标 Ground</button>
+                </div>
+                <dl class="vlm-grounding-grid" aria-live="polite">
+                  <div><dt>Instruction</dt><dd id="vlmInstructionEcho">—</dd></div>
+                  <div><dt>VLM Target</dt><dd id="vlmTargetValue">—</dd></div>
+                  <div><dt>BBox / Point</dt><dd id="vlmGeometryValue">—</dd></div>
+                  <div><dt>Confidence</dt><dd id="vlmConfidenceValue">—</dd></div>
+                  <div><dt>FastSAM Mask</dt><dd id="vlmMaskValue">等待目标锁定 WAITING</dd></div>
+                </dl>
+              </section>
               <p>Xiezhi 产生标准决策输出 Decision Output；机器人执行与 MuJoCo 始终由公输运行时 Gongshu Runtime 负责。</p>
             </div>
           </section>

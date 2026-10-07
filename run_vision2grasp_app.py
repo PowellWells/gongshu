@@ -82,6 +82,7 @@ from vision2grasp.target_perception import (
 )
 from vision2grasp.simulation import MuJoCoValidationService
 from vision2grasp.visualization import make_run_id
+from vision2grasp.vlm_grounding import LocalVLMGrounder
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -285,6 +286,8 @@ class Vision2GraspApp:
         self._xiezhi_watch_generation = 0
         self.xiezhi = GongshuXiezhiLifecycleAdapter.connect(enabled=_xiezhi_enabled())
         self.intelligence = IntelligenceService(xiezhi_enabled=_xiezhi_enabled())
+        self.vlm_grounder = LocalVLMGrounder()
+        self._last_vlm_grounding: dict[str, object] | None = None
         self.target_perception = TargetPerceptionService(
             FastSAMTargetSegmenter(FastSAMTargetSegmenterConfig(device="auto"))
         )
@@ -389,6 +392,7 @@ class Vision2GraspApp:
         self.mujoco_validation.reset()
         self.intelligence.reset()
         self.target_perception.reset()
+        self._last_vlm_grounding = None
         target_state = self.analyze_phone_targets(request)
         return {
             "schema_version": "gongshu.local-image-load/v0.1",
@@ -425,8 +429,74 @@ class Vision2GraspApp:
             research_mode=str(body.get("mode", "RESEARCH")).upper() == "RESEARCH",
         )
         result = self.target_perception.analyze(conditioned)
+        self._last_vlm_grounding = None
         self._record_offline_pipeline_status(str(result.get("status", "ANALYZED")))
         return result
+
+    def vlm_state(self) -> dict[str, object]:
+        state = self.vlm_grounder.state()
+        return {
+            **state.as_dict(),
+            "last_grounding": self._last_vlm_grounding,
+        }
+
+    def ground_target(self, request: dict[str, Any]) -> dict[str, object]:
+        """Use the local VLM to choose a FastSAM candidate by an image point."""
+
+        instruction = str(request.get("instruction", "")).strip()
+        target_state = self.target_perception.snapshot()
+        frame = target_state.get("frame")
+        if target_state.get("status") not in {"CANDIDATES", "TARGET_LOCKED"} or not isinstance(frame, dict):
+            raise RuntimeError("请先完成一次目标扫描，再使用自然语言指定目标")
+        image_jpeg = self.target_perception.analysis_frame_jpeg()
+        if image_jpeg is None:
+            raise RuntimeError("当前冻结 RGB 帧不可用")
+        grounding = self.vlm_grounder.ground(
+            instruction=instruction,
+            image_jpeg=image_jpeg,
+            image_width=int(frame["width"]),
+            image_height=int(frame["height"]),
+        )
+        selection_mode = "vlm_point"
+        point_hit_mask = True
+        try:
+            selected = self.target_perception.select_at(
+                source_x=float(grounding["point_xy"][0]),
+                source_y=float(grounding["point_xy"][1]),
+                source_frame_id=int(frame["id"]),
+            )
+        except ValueError as error:
+            if str(error) != "target click did not hit an instance mask":
+                raise
+            selected = self.target_perception.select_by_bbox(
+                bbox_xyxy=tuple(float(value) for value in grounding["bbox_xyxy"]),
+                point_xy=tuple(float(value) for value in grounding["point_xy"]),
+                source_frame_id=int(frame["id"]),
+            )
+            selection_mode = "vlm_bbox_iou"
+            point_hit_mask = False
+        self.spatial_perception.reset()
+        self.grasp_planning.reset()
+        self.intelligence.reset()
+        self.mujoco_validation.reset()
+        self._last_vlm_grounding = {
+            **grounding,
+            "selected_target_id": selected.get("selected_target_id"),
+            "selected_target": selected.get("selected_target"),
+            "source_frame_id": int(frame["id"]),
+            "mask_binding": {
+                "selection_mode": selection_mode,
+                "point_hit_mask": point_hit_mask,
+                **dict(selected.get("selection_binding", {})),
+            },
+        }
+        self._record_offline_pipeline_status("VLM_TARGET_GROUNDED")
+        return {
+            "schema_version": "gongshu.vlm-target-selection/v1",
+            "status": "target_locked",
+            "grounding": dict(self._last_vlm_grounding),
+            "target_perception": selected,
+        }
 
     def track_phone_target(
         self, request: dict[str, Any] | None = None
@@ -874,6 +944,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/grasp-planning/state",
             "/api/intelligence/state",
             "/api/intelligence/dashboard",
+            "/api/vlm/state",
             "/api/mujoco-validation/state",
             "/api/xiezhi/status",
         }
@@ -903,6 +974,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "condition-report.provenance/v1",
                         "pipeline-uncertainty-interface/v1",
                         "target-selection.manual/v1",
+                        "target-selection.vlm/v1",
+                        "vlm-grounding.local/v1",
                         "target-tracking.short-horizon/v1",
                         "target-lock-metadata/v1",
                         "spatial-perception.monocular/v1",
@@ -927,8 +1000,12 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     "camera_service": self.app.camera.snapshot()["service"]["status"],
                     "xiezhi": self.app.xiezhi.status().as_dict(),
                     "intelligence": self.app.intelligence.snapshot(),
+                    "vlm": self.app.vlm_state(),
                 }
             )
+            return
+        if path == "/api/vlm/state":
+            self._send_json(self.app.vlm_state())
             return
         if path == "/api/xiezhi/status":
             self._send_json(self.app.xiezhi.status().as_dict())
@@ -1119,6 +1196,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     if body
                     else self.app.analyze_phone_targets()
                 )
+                return
+            if path == "/api/vlm/ground":
+                self._send_json(self.app.ground_target(body))
                 return
             if path == "/api/target-perception/track":
                 self._send_json(self.app.track_phone_target(body))

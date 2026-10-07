@@ -166,6 +166,7 @@
     liveEmpty: byId("liveEmpty"),
     liveMedia: byId("liveMedia"),
     targetOverlay: byId("targetOverlay"),
+    vlmOverlay: byId("vlmOverlay"),
     visionScanFx: byId("visionScanFx"),
     targetLockBanner: byId("targetLockBanner"),
     analysisControls: byId("analysisControls"),
@@ -248,6 +249,14 @@
     debugProxyImage: byId("debugProxyImage"),
     debugMujocoImage: byId("debugMujocoImage"),
     targetStatus: byId("targetStatus"),
+    vlmInstruction: byId("vlmInstruction"),
+    vlmGroundButton: byId("vlmGroundButton"),
+    vlmGroundingStatus: byId("vlmGroundingStatus"),
+    vlmInstructionEcho: byId("vlmInstructionEcho"),
+    vlmTargetValue: byId("vlmTargetValue"),
+    vlmGeometryValue: byId("vlmGeometryValue"),
+    vlmConfidenceValue: byId("vlmConfidenceValue"),
+    vlmMaskValue: byId("vlmMaskValue"),
     targetValue: byId("targetValue"),
     targetClassValue: byId("targetClassValue"),
     targetLockValue: byId("targetLockValue"),
@@ -320,6 +329,7 @@
   let cameraStateTimer = 0;
   let noticeTimer = 0;
   let targetPerceptionState = null;
+  let vlmGroundingState = null;
   let spatialPerceptionState = null;
   let graspPlanningState = null;
   let validationState = null;
@@ -469,7 +479,12 @@
     const sourceReady = visionSourceIsReady();
     const mayAnalyze = sourceReady && pipeline.state === "LIVE" && !targetAnalysisRunning;
     const mayStart = sourceReady && canStartGrasp(pipeline.state, targetPerceptionState);
+    const mayGround = sourceReady
+      && ["LIVE", "TARGET_SELECTED"].includes(pipeline.state)
+      && ["CANDIDATES", "TARGET_LOCKED"].includes(targetPerceptionState?.status)
+      && !targetAnalysisRunning;
     els.analyzeTargetsButton.disabled = !mayAnalyze;
+    els.vlmGroundButton.disabled = !mayGround || !els.vlmInstruction.value.trim();
     els.startGraspButton.disabled = !mayStart;
     const validationReady = pipeline.state === "GRASP_PLANNING"
       && ["GRASP_READY", "PLANNING_REJECTED"].includes(graspPlanningState?.status)
@@ -583,6 +598,78 @@
     setTargetOverlayVisible(true);
   }
 
+  function setVlmOverlayVisible(visible) {
+    if (visible) els.vlmOverlay.removeAttribute("hidden");
+    else els.vlmOverlay.setAttribute("hidden", "");
+  }
+
+  function renderVlmOverlay(grounding, frame) {
+    els.vlmOverlay.replaceChildren();
+    const bbox = grounding?.bbox_xyxy;
+    const point = grounding?.point_xy;
+    if (!frame || !Array.isArray(bbox) || bbox.length !== 4 || !Array.isArray(point) || point.length !== 2) {
+      setVlmOverlayVisible(false);
+      return;
+    }
+    const [x1, y1, x2, y2] = bbox.map(Number);
+    const [px, py] = point.map(Number);
+    if (![x1, y1, x2, y2, px, py].every(Number.isFinite) || x2 <= x1 || y2 <= y1) {
+      setVlmOverlayVisible(false);
+      return;
+    }
+    els.vlmOverlay.setAttribute("viewBox", `0 0 ${frame.width} ${frame.height}`);
+    els.vlmOverlay.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    const box = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    box.classList.add("vlm-box");
+    box.setAttribute("x", String(x1));
+    box.setAttribute("y", String(y1));
+    box.setAttribute("width", String(x2 - x1));
+    box.setAttribute("height", String(y2 - y1));
+    box.setAttribute("rx", "5");
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.classList.add("vlm-point");
+    dot.setAttribute("cx", String(px));
+    dot.setAttribute("cy", String(py));
+    dot.setAttribute("r", String(Math.max(7, frame.width * .012)));
+    const label = `VLM · ${grounding.target_description || grounding.object_category || "TARGET"}`;
+    const fontSize = Math.max(18, frame.width * .018);
+    const labelY = Math.max(fontSize * 1.8, y1);
+    const labelBackground = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    labelBackground.classList.add("vlm-label-bg");
+    labelBackground.setAttribute("x", String(x1));
+    labelBackground.setAttribute("y", String(labelY - fontSize * 1.45));
+    labelBackground.setAttribute("width", String(Math.min(frame.width - x1, label.length * fontSize * .61 + 18)));
+    labelBackground.setAttribute("height", String(fontSize * 1.55));
+    labelBackground.setAttribute("rx", "3");
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.textContent = label;
+    text.setAttribute("x", String(x1 + 9));
+    text.setAttribute("y", String(labelY - fontSize * .3));
+    text.style.fontSize = `${fontSize}px`;
+    els.vlmOverlay.append(box, dot, labelBackground, text);
+    setVlmOverlayVisible(true);
+  }
+
+  function renderVlmGrounding(result, targetState = targetPerceptionState) {
+    vlmGroundingState = result?.grounding || result || null;
+    const grounding = vlmGroundingState;
+    const ready = Boolean(grounding?.status === "grounded");
+    els.vlmGroundingStatus.textContent = ready ? "GROUNDED" : "WAITING";
+    els.vlmInstructionEcho.textContent = grounding?.instruction || "—";
+    els.vlmTargetValue.textContent = grounding
+      ? `${grounding.target_description || grounding.object_category || "unknown"} · ${grounding.relative_position || "unknown"}`
+      : "—";
+    els.vlmGeometryValue.textContent = grounding
+      ? `bbox ${JSON.stringify(grounding.bbox_xyxy)} · point ${JSON.stringify(grounding.point_xy)}`
+      : "—";
+    const confidence = Number(grounding?.confidence);
+    els.vlmConfidenceValue.textContent = Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : "—";
+    els.vlmMaskValue.textContent = ready && targetState?.selected_target
+      ? `FastSAM · ${targetState.selected_target.id} · MASK READY`
+      : "等待目标锁定 WAITING";
+    renderVlmOverlay(grounding, targetState?.frame);
+  }
+
   function renderTargetPerception(state) {
     if (!state || state.schema_version !== TARGET_PERCEPTION_SCHEMA_VERSION) {
       throw new Error("Target Perception API 版本不匹配");
@@ -626,6 +713,7 @@
         ? `本地图片 Local Image · ${localImageState?.observation?.image_name || "Local RGB"}`
         : "手机相机 Phone Camera · 高清实时视觉 HD Live RGB";
     }
+    if (vlmGroundingState) renderVlmGrounding(vlmGroundingState, state);
     updateActionButtons();
   }
 
@@ -738,6 +826,14 @@
 
   function clearWorkspaceOutputs() {
     clearHistoricalUrls();
+    vlmGroundingState = null;
+    setVlmOverlayVisible(false);
+    els.vlmGroundingStatus.textContent = "WAITING";
+    els.vlmInstructionEcho.textContent = "—";
+    els.vlmTargetValue.textContent = "—";
+    els.vlmGeometryValue.textContent = "—";
+    els.vlmConfidenceValue.textContent = "—";
+    els.vlmMaskValue.textContent = "等待目标锁定 WAITING";
     clearMediaElement(els.spatialSnapshot, els.spatialEmpty);
     clearMediaElement(els.graspMedia, els.graspEmpty);
     clearMediaElement(els.simulationMedia, els.simulationEmpty);
@@ -1218,6 +1314,35 @@
       window.setTimeout(() => startGrasp(), 650);
     } catch (error) {
       showNotice(`无法选择目标：${error.message}`, "error");
+    }
+  }
+
+  async function groundTargetFromInstruction() {
+    const instruction = els.vlmInstruction.value.trim();
+    if (!instruction || els.vlmGroundButton.disabled) return;
+    els.vlmGroundButton.disabled = true;
+    els.vlmGroundingStatus.textContent = "GROUNDING…";
+    try {
+      const result = await apiPost("/api/vlm/ground", { instruction });
+      vlmGroundingState = result.grounding;
+      analysisFrozen = false;
+      renderTargetPerception(result.target_perception);
+      renderVlmGrounding(result, result.target_perception);
+      if (pipeline.state === "LIVE") {
+        pipeline.transition("TARGET_SELECTED", {
+          targetId: result.target_perception.selected_target_id,
+          sourceFrameId: result.target_perception.frame.id,
+          sourceTimestampS: result.target_perception.frame.timestamp_s,
+          selection: "vlm-grounding",
+        });
+      }
+      showNotice(`VLM 已定位目标：${result.grounding.target_description || result.grounding.object_category}`);
+      window.setTimeout(() => startGrasp(), 650);
+    } catch (error) {
+      els.vlmGroundingStatus.textContent = "FAILED";
+      showNotice(`VLM 目标定位失败：${error.message}`, "error");
+    } finally {
+      updateActionButtons();
     }
   }
 
@@ -2352,6 +2477,14 @@
     els.localImageStatus.className = "local-image-status";
   });
   els.loadLocalImageButton.addEventListener("click", loadLocalImage);
+  els.vlmInstruction.addEventListener("input", updateActionButtons);
+  els.vlmInstruction.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      groundTargetFromInstruction();
+    }
+  });
+  els.vlmGroundButton.addEventListener("click", groundTargetFromInstruction);
   els.conditionSelect.addEventListener("change", () => {
     const protocol = els.conditionSelect.value;
     showNotice(protocol === "NORMAL"
@@ -2597,6 +2730,10 @@
   });
 
   renderPipeline();
+  apiGet(`/api/vlm/state?t=${Date.now()}`).then((state) => {
+    if (!state.ready) els.vlmGroundingStatus.textContent = "VLM OFFLINE";
+    if (state.last_grounding) renderVlmGrounding(state.last_grounding, targetPerceptionState);
+  }).catch(() => { els.vlmGroundingStatus.textContent = "VLM OFFLINE"; });
   setPrimaryView("live");
   (async function initializeWorkspace() {
     await restoreVisionSource();
