@@ -45,6 +45,9 @@
   const TRANSITION_MS = 430;
   const RUN_FRAME_MS = 135;
   const BRAKE_MS = 260;
+  // The pointing sprites have a fixed hand position inside their transparent canvas.
+  // Anchor the fingertip to the target center instead of anchoring the whole actor.
+  const POINTER_TIP = Object.freeze({ leftX: 0.04, rightX: 0.96, y: 0.32 });
   const OUTCOME_HOLD_MS = 2800;
   const RUNTIME_STATE = Object.freeze({
     IDLE: "IDLE",
@@ -365,9 +368,10 @@
     const centerX = (box.x1 + box.x2) / 2;
     const centerY = (box.y1 + box.y2) / 2;
     const topFor = (value) => clamp(value, 8, Math.max(8, viewport.height - height - 8));
+    const pointingY = topFor(centerY - height * POINTER_TIP.y);
     const candidates = [
-      { x: box.x1 - width - margin, y: topFor(centerY - height * .62), side: "left" },
-      { x: box.x2 + margin, y: topFor(centerY - height * .62), side: "right" },
+      { x: box.x1 - width * POINTER_TIP.rightX - margin, y: pointingY, side: "left" },
+      { x: box.x2 + margin - width * POINTER_TIP.leftX, y: pointingY, side: "right" },
       { x: clamp(centerX - width / 2, 8, viewport.width - width - 8), y: box.y1 - height - margin, side: "above" },
       { x: clamp(centerX - width / 2, 8, viewport.width - width - 8), y: box.y2 + margin, side: "below" },
     ];
