@@ -815,6 +815,13 @@
 
   function renderPipeline(event = null) {
     const state = event?.state || pipeline.state;
+    window.dispatchEvent(new CustomEvent("gongshu:pipeline-state", {
+      detail: {
+        state,
+        previousState: event?.previousState || null,
+        revision: event?.revision ?? pipeline.revision,
+      },
+    }));
     els.pipelineBadge.textContent = state;
     els.pipelineMessage.textContent = PIPELINE_MESSAGES[state];
     if (state === "SPATIAL_READY" && spatialPerceptionState?.status === "READY") {

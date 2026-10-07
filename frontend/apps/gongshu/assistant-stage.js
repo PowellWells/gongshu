@@ -27,6 +27,37 @@
   });
   const DEFAULT_FRAME = Object.freeze({ width: 1000, height: 650 });
   const TRANSITION_MS = 430;
+  const OUTCOME_HOLD_MS = 2800;
+  const RUNTIME_STATE = Object.freeze({
+    IDLE: "IDLE",
+    DRAGGING: "DRAGGING",
+    MOVING: "MOVING",
+    POINTING: "POINTING",
+    THINKING: "THINKING",
+    EXECUTING: "EXECUTING",
+    SUCCESS: "SUCCESS",
+    WARNING: "WARNING",
+    FAILURE: "FAILURE",
+    RETURN_HOME: "RETURN_HOME",
+  });
+  const FAILURE_STATE = Object.freeze({
+    approach_collision: RUNTIME_STATE.WARNING,
+    miss_or_empty_closure: RUNTIME_STATE.FAILURE,
+    slip_or_drop: RUNTIME_STATE.FAILURE,
+    insufficient_contact: RUNTIME_STATE.WARNING,
+    unstable_grasp: RUNTIME_STATE.WARNING,
+    execution_timeout: RUNTIME_STATE.FAILURE,
+    unknown_failure: RUNTIME_STATE.FAILURE,
+  });
+  const FAILURE_BUBBLES = Object.freeze({
+    approach_collision: "接近路径发生碰撞，先换个方案。",
+    miss_or_empty_closure: "这次抓空了，我看看接触位置。",
+    slip_or_drop: "没有抓稳，目标发生了滑移。",
+    insufficient_contact: "当前接触不足，建议换一个候选。",
+    unstable_grasp: "这个抓取不够稳定。",
+    execution_timeout: "执行等待超时，动作已经安全停止。",
+    unknown_failure: "这次没有成功，执行证据已经记录。",
+  });
   function readAdvisorMode() {
     try {
       const saved = window.localStorage.getItem(ADVISOR_STORAGE_KEY);
@@ -47,6 +78,10 @@
     drag: null,
     transitionTimer: 0,
     dismissTimer: 0,
+    outcomeTimer: 0,
+    returnTimer: 0,
+    runtimeState: RUNTIME_STATE.IDLE,
+    handledEventIds: new Set(),
   };
 
   function finite(value) {
@@ -145,22 +180,51 @@
     return clampPosition({ x: 24, y: viewport.height - height - 24 });
   }
 
-  function setState(nextState) {
+  function setState(nextState, runtimeState = null) {
     const classes = [
       "assistant-idle",
       "assistant-dragging",
       "assistant-moving",
       "assistant-pointing",
       "assistant-returning",
+      "assistant-thinking",
+      "assistant-executing",
+      "assistant-success",
+      "assistant-warning",
+      "assistant-failure",
     ];
     actor.dataset.state = nextState;
+    if (runtimeState) state.runtimeState = runtimeState;
+    actor.dataset.runtimeState = state.runtimeState;
     actor.classList.remove(...classes);
     if (nextState === "idle") actor.classList.add("assistant-idle");
     if (nextState === "dragging") actor.classList.add("assistant-dragging");
     if (["summon", "move"].includes(nextState)) actor.classList.add("assistant-moving");
     if (["point-left", "point-right"].includes(nextState)) actor.classList.add("assistant-pointing");
     if (nextState === "dismiss") actor.classList.add("assistant-returning");
+    if (nextState === "thinking") actor.classList.add("assistant-thinking");
+    if (nextState === "executing") actor.classList.add("assistant-executing");
+    if (nextState === "success") actor.classList.add("assistant-success");
+    if (nextState === "warning") actor.classList.add("assistant-warning");
+    if (nextState === "failure") actor.classList.add("assistant-failure");
     sprite.src = SPRITES[nextState] || SPRITES.idle;
+  }
+
+  function setRuntimeState(runtimeState, visualState = null) {
+    if (state.advisorMode) return;
+    const visualByRuntime = {
+      [RUNTIME_STATE.IDLE]: "idle",
+      [RUNTIME_STATE.DRAGGING]: "dragging",
+      [RUNTIME_STATE.MOVING]: "move",
+      [RUNTIME_STATE.POINTING]: state.placement?.facing || "point-right",
+      [RUNTIME_STATE.THINKING]: "thinking",
+      [RUNTIME_STATE.EXECUTING]: "executing",
+      [RUNTIME_STATE.SUCCESS]: "success",
+      [RUNTIME_STATE.WARNING]: "warning",
+      [RUNTIME_STATE.FAILURE]: "failure",
+      [RUNTIME_STATE.RETURN_HOME]: "dismiss",
+    };
+    setState(visualState || visualByRuntime[runtimeState] || "idle", runtimeState);
   }
 
   function setBubble(text) {
@@ -275,6 +339,75 @@
     return "已锁定当前目标。";
   }
 
+  function clearRuntimeTimers() {
+    window.clearTimeout(state.transitionTimer);
+    window.clearTimeout(state.dismissTimer);
+    window.clearTimeout(state.outcomeTimer);
+    window.clearTimeout(state.returnTimer);
+  }
+
+  function returnHome() {
+    if (state.advisorMode || !state.visible) return;
+    clearRuntimeTimers();
+    state.target = null;
+    state.placement = null;
+    marker?.setAttribute("hidden", "");
+    setBubble("");
+    setRuntimeState(RUNTIME_STATE.RETURN_HOME);
+    setPosition(state.homePosition || defaultHomePosition());
+    state.returnTimer = window.setTimeout(() => {
+      if (!state.drag && !state.advisorMode) setRuntimeState(RUNTIME_STATE.IDLE);
+    }, TRANSITION_MS);
+  }
+
+  function presentOutcome(runtimeState, message, eventId) {
+    if (state.advisorMode || !showPet()) return;
+    if (eventId && state.handledEventIds.has(eventId)) return;
+    if (eventId) {
+      state.handledEventIds.add(eventId);
+      if (state.handledEventIds.size > 128) {
+        state.handledEventIds.delete(state.handledEventIds.values().next().value);
+      }
+    }
+    clearRuntimeTimers();
+    setBubble(message);
+    setRuntimeState(runtimeState);
+    state.outcomeTimer = window.setTimeout(returnHome, OUTCOME_HOLD_MS);
+  }
+
+  function handleExecutionEvent(event) {
+    if (state.advisorMode || !event) return;
+    const eventId = String(event.event_id || event.message_id || "").trim();
+    if (!eventId || state.handledEventIds.has(eventId)) return;
+    const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
+    if (event.message_type === "system_error") {
+      presentOutcome(RUNTIME_STATE.WARNING, "执行遇到异常，动作已经安全停止。", eventId);
+      return;
+    }
+    if (event.message_type !== "grasp_feedback") return;
+    if (metadata.success === true) {
+      presentOutcome(RUNTIME_STATE.SUCCESS, "抓到了，目标已经稳定抬升。", eventId);
+      return;
+    }
+    if (metadata.success !== false) return;
+    const failureType = String(metadata.failure_type || "unknown_failure");
+    presentOutcome(
+      FAILURE_STATE[failureType] || RUNTIME_STATE.FAILURE,
+      FAILURE_BUBBLES[failureType] || FAILURE_BUBBLES.unknown_failure,
+      eventId,
+    );
+  }
+
+  function handlePipelineState(detail = {}) {
+    if (state.advisorMode || !state.visible || !state.target) return;
+    const pipelineState = String(detail.state || "").toUpperCase();
+    if (["SCENE_CAPTURED", "SPATIAL_ANALYSIS", "SPATIAL_READY", "GRASP_PLANNING"].includes(pipelineState)) {
+      setRuntimeState(RUNTIME_STATE.THINKING);
+    } else if (["SCENE_SYNC", "SIMULATION"].includes(pipelineState)) {
+      setRuntimeState(RUNTIME_STATE.EXECUTING);
+    }
+  }
+
   function showPet() {
     if (state.advisorMode) return false;
     layer.removeAttribute("hidden");
@@ -286,8 +419,7 @@
   }
 
   function hidePet() {
-    window.clearTimeout(state.transitionTimer);
-    window.clearTimeout(state.dismissTimer);
+    clearRuntimeTimers();
     state.drag = null;
     state.target = null;
     state.placement = null;
@@ -296,7 +428,8 @@
     setBubble("");
     actor.classList.remove("is-visible", "is-dragging");
     layer.setAttribute("hidden", "");
-    setState("idle");
+    state.runtimeState = RUNTIME_STATE.IDLE;
+    setState("idle", RUNTIME_STATE.IDLE);
   }
 
   function updatePetAccessibility() {
@@ -313,11 +446,13 @@
 
   function moveToPlacement(placement) {
     state.placement = placement;
-    setState("move");
+    setRuntimeState(RUNTIME_STATE.MOVING, "move");
     setPosition(placement);
     window.clearTimeout(state.transitionTimer);
     state.transitionTimer = window.setTimeout(() => {
-      if (state.target && state.placement === placement && !state.drag) setState(placement.facing);
+      if (state.target && state.placement === placement && !state.drag) {
+        setRuntimeState(RUNTIME_STATE.POINTING, placement.facing);
+      }
     }, TRANSITION_MS);
   }
 
@@ -334,6 +469,7 @@
     if (state.advisorMode) return;
     const target = normalizedTarget(detail);
     if (!target || !showPet()) return;
+    clearRuntimeTimers();
     state.target = target;
     const placement = placementFor(target);
     if (!placement) return;
@@ -343,18 +479,9 @@
   }
 
   function clearTarget() {
-    state.target = null;
-    state.placement = null;
-    window.clearTimeout(state.transitionTimer);
-    marker?.setAttribute("hidden", "");
-    setBubble("");
+    clearRuntimeTimers();
     if (state.advisorMode || !state.visible) return;
-    setState("dismiss");
-    setPosition(state.homePosition || defaultHomePosition());
-    window.clearTimeout(state.dismissTimer);
-    state.dismissTimer = window.setTimeout(() => {
-      if (!state.target && state.visible && !state.drag) setState("idle");
-    }, TRANSITION_MS);
+    returnHome();
   }
 
   function setAdvisorMode(enabled) {
@@ -373,7 +500,7 @@
       hidePet();
     } else {
       showPet();
-      setState("idle");
+      setRuntimeState(RUNTIME_STATE.IDLE);
     }
     window.dispatchEvent(new CustomEvent("gongshu:advisor-mode-change", {
       detail: { advisorMode: state.advisorMode },
@@ -402,7 +529,7 @@
     };
     actor.setPointerCapture?.(event.pointerId);
     actor.classList.add("is-dragging");
-    setState("dragging");
+    setRuntimeState(RUNTIME_STATE.DRAGGING, "dragging");
     event.preventDefault();
     event.stopPropagation();
   }
@@ -425,7 +552,7 @@
     actor.classList.remove("is-dragging");
     state.homePosition = { ...state.position };
     saveHomePosition();
-    setState("idle");
+    setRuntimeState(RUNTIME_STATE.IDLE);
     event.preventDefault();
     event.stopPropagation();
   }
@@ -445,6 +572,8 @@
   });
   window.addEventListener("gongshu:target-bbox", (event) => presentTarget(event.detail));
   window.addEventListener("gongshu:target-reset", clearTarget);
+  window.addEventListener("gongshu:chat-event", (event) => handleExecutionEvent(event.detail));
+  window.addEventListener("gongshu:pipeline-state", (event) => handlePipelineState(event.detail));
   window.addEventListener("resize", () => {
     if (state.target) refreshTargetPlacement();
     else restoreHomePosition();
@@ -466,6 +595,7 @@
   toggle.checked = state.advisorMode;
   document.body.classList.toggle("advisor-mode", state.advisorMode);
   updatePetAccessibility();
+  actor.dataset.runtimeState = RUNTIME_STATE.IDLE;
   window.GongshuAdvisorMode = Object.freeze({
     isAdvisorMode: () => state.advisorMode,
     setAdvisorMode,
@@ -478,7 +608,7 @@
   window.requestAnimationFrame(() => {
     if (!state.advisorMode) {
       showPet();
-      setState("idle");
+      setRuntimeState(RUNTIME_STATE.IDLE);
     }
   });
 })();

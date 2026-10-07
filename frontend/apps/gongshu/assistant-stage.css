@@ -167,6 +167,35 @@ body.advisor-mode .assistant-portrait-frame .advisor-fallback-badge {
   animation: none;
 }
 
+.yungang-assistant-actor.assistant-thinking img {
+  animation: yungang-assistant-thinking 1.8s ease-in-out infinite;
+}
+
+.yungang-assistant-actor.assistant-executing img {
+  animation: yungang-assistant-executing 900ms ease-in-out infinite alternate;
+}
+
+.yungang-assistant-actor.assistant-success img {
+  animation: yungang-assistant-success 620ms ease-out 2;
+}
+
+.yungang-assistant-actor.assistant-warning img,
+.yungang-assistant-actor.assistant-failure img {
+  animation: yungang-assistant-warning 480ms ease-in-out 2;
+}
+
+.yungang-assistant-actor.assistant-success .yungang-assistant-bubble {
+  border-color: rgba(103, 177, 150, .9);
+}
+
+.yungang-assistant-actor.assistant-warning .yungang-assistant-bubble {
+  border-color: rgba(217, 174, 94, .92);
+}
+
+.yungang-assistant-actor.assistant-failure .yungang-assistant-bubble {
+  border-color: rgba(208, 133, 119, .9);
+}
+
 .yungang-assistant-actor img {
   display: block;
   width: 100%;
@@ -251,6 +280,27 @@ body.advisor-mode .assistant-portrait-frame .advisor-fallback-badge {
 @keyframes yungang-assistant-idle {
   0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
   50% { transform: translateY(-5px) rotate(-1deg) scale(1.012); }
+}
+
+@keyframes yungang-assistant-thinking {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(1deg); }
+}
+
+@keyframes yungang-assistant-executing {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-2px) scale(1.008); }
+}
+
+@keyframes yungang-assistant-success {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-7px) scale(1.035); }
+}
+
+@keyframes yungang-assistant-warning {
+  0%, 100% { transform: translateX(0); }
+  35% { transform: translateX(-2px); }
+  70% { transform: translateX(2px); }
 }
 
 @media (max-width: 860px) {

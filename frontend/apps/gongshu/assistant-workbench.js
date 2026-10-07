@@ -53,6 +53,13 @@
         ? message.dataset.formalCopy || formalizeAssistantCopy(message.dataset.petCopy || copyNode.textContent)
         : message.dataset.petCopy || copyNode.textContent;
     });
+    document.querySelectorAll(".assistant-message.is-grasp-feedback").forEach((message) => {
+      const author = message.querySelector(".message-author");
+      if (!author) return;
+      author.textContent = message.dataset.messageType === "system_error"
+        ? "SYSTEM FEEDBACK · EXECUTION STATUS"
+        : formal ? "Gongshu Assistant · EXECUTION FEEDBACK" : "云冈娘 · 抓取反馈";
+    });
   }
 
   function addMessage(kind, author, text) {
@@ -92,6 +99,7 @@
     if (!eventId || renderedFeedbackEvents.has(eventId) || alreadyRendered) return;
     const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
     const systemError = event.message_type === "system_error";
+    window.dispatchEvent(new CustomEvent("gongshu:chat-event", { detail: event }));
     const message = document.createElement("article");
     message.className = `assistant-message is-grasp-feedback ${metadata.success ? "is-success" : "is-failure"}${systemError ? " is-system-error" : ""}`;
     message.dataset.messageType = event.message_type;
