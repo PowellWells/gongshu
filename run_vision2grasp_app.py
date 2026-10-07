@@ -18,6 +18,7 @@ import sys
 import threading
 import tomllib
 from typing import Any
+import uuid
 from urllib.parse import parse_qs, urlparse
 import webbrowser
 
@@ -38,6 +39,10 @@ from vision2grasp.contracts import RGBFrame
 from vision2grasp.extensions.xiezhi.lifecycle import (
     GongshuRuntimeContext,
     GongshuXiezhiLifecycleAdapter,
+)
+from vision2grasp.execution_feedback import (
+    ChatEventStore,
+    build_grasp_execution_feedback,
 )
 from vision2grasp.experiment_lab import (
     ExperimentTrialRecorder,
@@ -284,6 +289,8 @@ class Vision2GraspApp:
         self._simulation_lock = threading.Lock()
         self._xiezhi_watch_lock = threading.Lock()
         self._xiezhi_watch_generation = 0
+        self.chat_events = ChatEventStore()
+        self._chat_task_id = f"gongshu-session-{uuid.uuid4().hex}"
         self.xiezhi = GongshuXiezhiLifecycleAdapter.connect(enabled=_xiezhi_enabled())
         self.intelligence = IntelligenceService(xiezhi_enabled=_xiezhi_enabled())
         self.vlm_grounder = LocalVLMGrounder()
@@ -755,8 +762,9 @@ class Vision2GraspApp:
             run_id = self.local_image.active_run_id()
             if run_id is not None:
                 self.experiment_recorder.record_validation_request(run_id, response)
+        execution_token = f"execution-{uuid.uuid4().hex}"
         self._start_offline_run_watch()
-        self._start_xiezhi_lifecycle(scene=scenario)
+        self._start_xiezhi_lifecycle(scene=scenario, execution_token=execution_token)
         return response
 
     def _start_offline_run_watch(self) -> None:
@@ -793,28 +801,34 @@ class Vision2GraspApp:
                 return
             threading.Event().wait(0.05)
 
-    def _start_xiezhi_lifecycle(self, *, scene: str) -> None:
-        if not self.xiezhi.status().connected:
-            return
-        self.xiezhi.publish(
-            "simulation_start",
-            self._xiezhi_context(scene=scene, status="ready"),
-        )
-        self.xiezhi.publish(
-            "episode_start",
-            self._xiezhi_context(scene=scene, status="running"),
-        )
+    def _start_xiezhi_lifecycle(self, *, scene: str, execution_token: str | None = None) -> None:
+        xiezhi_connected = self.xiezhi.status().connected
+        if xiezhi_connected:
+            self.xiezhi.publish(
+                "simulation_start",
+                self._xiezhi_context(scene=scene, status="ready"),
+            )
+            self.xiezhi.publish(
+                "episode_start",
+                self._xiezhi_context(scene=scene, status="running"),
+            )
         with self._xiezhi_watch_lock:
             self._xiezhi_watch_generation += 1
             generation = self._xiezhi_watch_generation
         threading.Thread(
             target=self._watch_xiezhi_lifecycle,
-            args=(generation, scene),
+            args=(generation, scene, xiezhi_connected, execution_token),
             name="gongshu-xiezhi-lifecycle",
             daemon=True,
         ).start()
 
-    def _watch_xiezhi_lifecycle(self, generation: int, scene: str) -> None:
+    def _watch_xiezhi_lifecycle(
+        self,
+        generation: int,
+        scene: str,
+        xiezhi_connected: bool = True,
+        execution_token: str | None = None,
+    ) -> None:
         seen_states = 0
         while True:
             with self._xiezhi_watch_lock:
@@ -822,30 +836,67 @@ class Vision2GraspApp:
                     return
             snapshot = self.mujoco_validation.snapshot()
             history = snapshot.get("state_history", [])
-            for entry in history[seen_states:]:
-                state = str(entry.get("state", "")).lower()
-                self.xiezhi.publish(
-                    "step_update",
-                    self._xiezhi_context(scene=scene, status=state),
-                )
+            if xiezhi_connected:
+                for entry in history[seen_states:]:
+                    state = str(entry.get("state", "")).lower()
+                    self.xiezhi.publish(
+                        "step_update",
+                        self._xiezhi_context(scene=scene, status=state),
+                    )
             seen_states = len(history)
-            state = str(snapshot.get("state", "")).upper()
+            state = str(snapshot.get("status", snapshot.get("state", ""))).upper()
             if state in {"SUCCESS", "FAILED"}:
+                self._publish_execution_feedback(
+                    snapshot,
+                    execution_token=execution_token,
+                )
                 result = "success" if state == "SUCCESS" else "failure"
-                self.xiezhi.publish(
-                    "execution_finish",
-                    self._xiezhi_context(scene=scene, status=state.lower()),
-                    result=result,
-                )
-                self.xiezhi.publish(
-                    "episode_end",
-                    self._xiezhi_context(scene=scene, status="finished"),
-                    result=result,
-                )
+                if xiezhi_connected:
+                    self.xiezhi.publish(
+                        "execution_finish",
+                        self._xiezhi_context(scene=scene, status=state.lower()),
+                        result=result,
+                    )
+                    self.xiezhi.publish(
+                        "episode_end",
+                        self._xiezhi_context(scene=scene, status="finished"),
+                        result=result,
+                    )
                 return
             if state == "WAITING" and seen_states:
                 return
             threading.Event().wait(0.05)
+
+    def _publish_execution_feedback(
+        self,
+        snapshot: dict[str, Any],
+        *,
+        execution_token: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Convert one terminal execution snapshot into exactly one chat event."""
+
+        request = snapshot.get("request")
+        request_data = request if isinstance(request, dict) else {}
+        attempt = request_data.get("simulation_attempt")
+        attempt_data = attempt if isinstance(attempt, dict) else {}
+        attempt_id = str(attempt_data.get("attempt_id") or "").strip()
+        if not attempt_id:
+            return None
+        task_id = self.local_image.active_run_id() or getattr(
+            self, "_chat_task_id", f"gongshu-session-{id(self)}"
+        )
+        feedback = build_grasp_execution_feedback(
+            snapshot,
+            task_id=task_id,
+            event_id=(
+                f"grasp-feedback-{execution_token}"
+                if execution_token
+                else f"grasp-feedback-{attempt_id}"
+            ),
+        )
+        event = feedback.chat_event()
+        self.chat_events.append_once(event)
+        return event
 
     @staticmethod
     def _xiezhi_context(*, scene: str, status: str) -> GongshuRuntimeContext:
@@ -946,6 +997,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             "/api/intelligence/dashboard",
             "/api/vlm/state",
             "/api/mujoco-validation/state",
+            "/api/chat/events",
             "/api/xiezhi/status",
         }
         if (
@@ -990,6 +1042,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.real-appearance-proxy/v1",
                         "mujoco-validation.point-cloud-object-reconstruction/v1",
                         "mujoco-validation.reconstruction-debug/v1",
+                        "grasp-execution-feedback.chat/v1",
                         "xiezhi-lifecycle.status/v0.1",
                         "gongshu-intelligence-decision/v1",
                         "gongshu.xiezhi-dashboard/v1",
@@ -1006,6 +1059,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/vlm/state":
             self._send_json(self.app.vlm_state())
+            return
+        if path == "/api/chat/events":
+            self._send_json(self.app.chat_events.snapshot())
             return
         if path == "/api/xiezhi/status":
             self._send_json(self.app.xiezhi.status().as_dict())

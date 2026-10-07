@@ -8,6 +8,7 @@
   const diagnosticsToggle = byId("expertDiagnosticsToggle");
   let advisorMode = window.GongshuAdvisorMode?.isAdvisorMode() || false;
   let lastGroundingMessage = "";
+  const renderedFeedbackEvents = new Set();
 
   function assistantName() {
     return advisorMode ? "Gongshu Assistant" : "云冈娘";
@@ -71,6 +72,87 @@
     message.append(label, copy);
     messages.append(message);
     messages.scrollTop = messages.scrollHeight;
+  }
+
+  function appendFeedbackLine(parent, label, value) {
+    const row = document.createElement("div");
+    const key = document.createElement("dt");
+    key.textContent = label;
+    const copy = document.createElement("dd");
+    copy.textContent = value || "—";
+    row.append(key, copy);
+    parent.append(row);
+  }
+
+  function addExecutionFeedback(event) {
+    if (!messages || !event || !["grasp_feedback", "system_error"].includes(event.message_type)) return;
+    const eventId = String(event.event_id || event.message_id || "").trim();
+    const alreadyRendered = [...messages.querySelectorAll("[data-event-id]")]
+      .some((node) => node.dataset.eventId === eventId);
+    if (!eventId || renderedFeedbackEvents.has(eventId) || alreadyRendered) return;
+    const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
+    const systemError = event.message_type === "system_error";
+    const message = document.createElement("article");
+    message.className = `assistant-message is-grasp-feedback ${metadata.success ? "is-success" : "is-failure"}${systemError ? " is-system-error" : ""}`;
+    message.dataset.messageType = event.message_type;
+    message.dataset.eventId = eventId;
+    const label = document.createElement("span");
+    label.className = "message-author";
+    label.textContent = systemError
+      ? "系统反馈 · EXECUTION STATUS"
+      : `${assistantName()} · 抓取反馈`;
+    const title = document.createElement("strong");
+    title.className = "feedback-title";
+    title.textContent = systemError ? "系统未能完成本次抓取执行" : (metadata.success ? "抓取结果：成功" : "抓取结果：失败");
+    const summary = document.createElement("p");
+    summary.className = "feedback-summary";
+    summary.textContent = metadata.summary || event.text || "抓取执行已结束。";
+    message.append(label, title, summary);
+
+    const details = document.createElement("dl");
+    details.className = "feedback-details";
+    appendFeedbackLine(details, "目标", metadata.target);
+    if (metadata.candidate_id) appendFeedbackLine(details, "候选", metadata.candidate_id);
+    appendFeedbackLine(details, "阶段", metadata.stage);
+    if (metadata.failure_type) appendFeedbackLine(details, "失败类型", metadata.failure_type);
+    appendFeedbackLine(details, "Attempt", metadata.attempt_id);
+    message.append(details);
+
+    const evidenceLines = metadata.failure_evidence?.human_evidence_lines;
+    if (Array.isArray(evidenceLines) && evidenceLines.length) {
+      const evidence = document.createElement("div");
+      evidence.className = "feedback-evidence";
+      const heading = document.createElement("span");
+      heading.textContent = "执行证据";
+      const list = document.createElement("ul");
+      evidenceLines.forEach((line) => {
+        const item = document.createElement("li");
+        item.textContent = String(line);
+        list.append(item);
+      });
+      evidence.append(heading, list);
+      message.append(evidence);
+    }
+
+    const recommendation = document.createElement("div");
+    recommendation.className = "feedback-recommendation";
+    recommendation.textContent = `${systemError ? "处理建议" : "下一步建议"}：${metadata.recommended_action || "inspect_system_status_before_retry"}`;
+    message.append(recommendation);
+    messages.append(message);
+    messages.scrollTop = messages.scrollHeight;
+    renderedFeedbackEvents.add(eventId);
+  }
+
+  async function pollExecutionFeedback() {
+    try {
+      const response = await fetch(`/api/chat/events?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (!Array.isArray(payload.events)) return;
+      payload.events.forEach(addExecutionFeedback);
+    } catch {
+      // Chat feedback is best-effort in the UI; execution evidence remains in the API/recording.
+    }
   }
 
   function activeView() {
@@ -207,8 +289,10 @@
   applyAdvisorCopy();
   syncTabs();
   updateSummary();
+  pollExecutionFeedback();
   window.setInterval(() => {
     syncTabs();
     updateSummary();
+    pollExecutionFeedback();
   }, 650);
 })();
