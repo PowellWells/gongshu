@@ -49,6 +49,7 @@
       const command = button.dataset.assistantCommand || "";
       if (command === "重新观察") {
         addMessage("user", "你", command);
+        window.GongshuYungangAssistant?.clearTarget();
         const scanButton = byId("analyzeTargetsButton");
         if (scanButton && !scanButton.disabled) scanButton.click();
         else addMessage("assistant", "云冈娘", "当前还不能重新观察，请先连接视觉输入。");
@@ -59,6 +60,14 @@
         const graspButton = byId("startGraspButton");
         if (graspButton && !graspButton.disabled) graspButton.click();
         else addMessage("assistant", "云冈娘", "当前还没有可执行的抓取计划。");
+        return;
+      }
+      if ((command === "抓左边那个" || command === "抓右边那个")
+        && groundButton?.disabled
+        && window.GongshuYungangAssistant?.setMockTarget) {
+        addMessage("user", "你", command);
+        window.GongshuYungangAssistant.setMockTarget(command === "抓左边那个" ? "left" : "right");
+        addMessage("assistant", "云冈娘", command === "抓左边那个" ? "左侧目标已确认。" : "右侧目标已确认。");
         return;
       }
       if (!input) return;

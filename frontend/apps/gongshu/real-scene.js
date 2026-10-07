@@ -125,6 +125,14 @@
   }
 
   const byId = (id) => document.getElementById(id);
+  function emitYungangTarget(detail) {
+    window.dispatchEvent(new CustomEvent("gongshu:target-bbox", { detail }));
+  }
+
+  function emitYungangReset() {
+    window.dispatchEvent(new CustomEvent("gongshu:target-reset"));
+  }
+
   const els = {
     pipelineBadge: byId("pipelineBadge"),
     pipelineMessage: byId("pipelineMessage"),
@@ -668,6 +676,14 @@
       ? `FastSAM · ${targetState.selected_target.id} · MASK READY`
       : "等待目标锁定 WAITING";
     renderVlmOverlay(grounding, targetState?.frame);
+    if (ready && Array.isArray(grounding?.bbox_xyxy) && targetState?.frame) {
+      emitYungangTarget({
+        bbox: grounding.bbox_xyxy,
+        frame: targetState.frame,
+        label: grounding.target_description || grounding.object_category || "当前目标",
+        source: "vlm",
+      });
+    }
   }
 
   function renderTargetPerception(state) {
@@ -679,6 +695,18 @@
     const candidates = Array.isArray(state.candidates) ? state.candidates : [];
     const selected = state.selected_target;
     const frame = state.frame;
+    const assistantFrame = state.overlay_frame || frame;
+    const assistantBbox = state.tracking?.bbox_xyxy || selected?.bbox_xyxy;
+    if (assistantBbox && assistantFrame) {
+      emitYungangTarget({
+        bbox: assistantBbox,
+        frame: assistantFrame,
+        label: selected?.class_name || "当前目标",
+        source: state.tracking ? "tracking" : "target-perception",
+      });
+    } else if (!selected) {
+      emitYungangReset();
+    }
     renderTargetHitboxes(state);
     els.analysisControls.hidden = workspaceMode === "local_image" || (!cameraShouldStream && !selected);
     els.analysisStatus.textContent = state.message || "扫描中 Scanning";
@@ -825,6 +853,7 @@
   }
 
   function clearWorkspaceOutputs() {
+    emitYungangReset();
     clearHistoricalUrls();
     vlmGroundingState = null;
     setVlmOverlayVisible(false);

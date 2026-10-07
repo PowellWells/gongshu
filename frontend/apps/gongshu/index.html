@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="./workspace.css" />
     <link rel="stylesheet" href="./xiezhi-lab.css" />
     <link rel="stylesheet" href="./assistant-workbench.css" />
+    <link rel="stylesheet" href="./assistant-stage.css" />
   </head>
   <body class="workspace-app">
     <header class="workspace-header">
@@ -108,7 +109,7 @@
       <aside class="assistant-rail" aria-labelledby="assistantRailTitle">
         <header class="assistant-identity">
           <div class="assistant-portrait-frame">
-            <img src="assets/yungang-chan.png" alt="云冈娘 Yungang-chan" />
+            <img src="../../assets/yungang/yungang_master.png" alt="云冈娘 Yungang-chan" />
             <span class="assistant-live-dot" aria-label="内部模式在线"></span>
           </div>
           <div>
@@ -133,6 +134,13 @@
           <div class="assistant-section-heading">
             <span class="eyebrow">NATURAL LANGUAGE CONTROL</span>
             <h2 id="assistantCommandTitle">告诉我怎么做</h2>
+          </div>
+          <div class="assistant-mode-row">
+            <label class="assistant-mode-toggle" for="yungangDesktopAssistantToggle">
+              <input id="yungangDesktopAssistantToggle" type="checkbox" checked />
+              <span>桌面助手模式 <b>Desktop Assistant</b></span>
+            </label>
+            <span id="yungangDesktopAssistantState" class="assistant-mode-state">ON · WORKSPACE</span>
           </div>
           <div class="assistant-composer">
             <label for="vlmInstruction">Instruction</label>
@@ -204,6 +212,15 @@
             <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
             <svg id="targetOverlay" class="target-overlay" role="group" aria-label="目标候选 Object Candidates" hidden></svg>
             <svg id="vlmOverlay" class="vlm-overlay" role="img" aria-label="VLM 目标框 VLM Grounding" hidden></svg>
+            <div id="assistantStageLayer" class="assistant-stage-layer" aria-label="云冈娘桌面助手 Yungang Desktop Assistant" hidden>
+              <div id="assistantTargetMarker" class="assistant-target-marker" aria-hidden="true" hidden>
+                <span>MOCK TARGET</span>
+              </div>
+              <div id="yungangAssistantActor" class="yungang-assistant-actor" data-state="idle">
+                <img id="yungangAssistantSprite" src="../../assets/yungang/yungang_idle.png" alt="" draggable="false" />
+                <div id="yungangAssistantBubble" class="yungang-assistant-bubble" role="status" aria-live="polite"></div>
+              </div>
+            </div>
             <div id="visionScanFx" class="vision-scan-fx" aria-hidden="true"></div>
             <div id="targetLockBanner" class="target-lock-banner" hidden>
               <span>目标已锁定</span><strong>Target Locked</strong>
@@ -817,6 +834,7 @@
     <script src="./pipeline-state.js"></script>
     <script src="./target-selection.js"></script>
     <script src="./real-scene.js"></script>
+    <script src="./assistant-stage.js"></script>
     <script src="./xiezhi-blueprint.js"></script>
     <script src="./behavior-comparison.js"></script>
     <script src="./xiezhi-lab.js"></script>

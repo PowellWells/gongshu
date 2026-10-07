@@ -1,0 +1,181 @@
+/* Yungang Desktop Assistant: a small, non-interactive overlay inside the live RGB stage. */
+
+.assistant-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 9px;
+  padding: 7px 8px;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.assistant-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #506b8c;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.assistant-mode-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #6e71ce;
+}
+
+.assistant-mode-toggle b {
+  margin-left: 3px;
+  color: #8b9eb6;
+  font: 700 7px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .03em;
+}
+
+.assistant-mode-state {
+  flex: 0 0 auto;
+  color: #48a58f;
+  font: 800 7px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .05em;
+}
+
+.assistant-mode-state.is-off {
+  color: #9aaaba;
+}
+
+.assistant-stage-layer {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.assistant-stage-layer[hidden],
+.assistant-target-marker[hidden] {
+  display: none;
+}
+
+.yungang-assistant-actor {
+  position: absolute;
+  z-index: 2;
+  width: clamp(78px, 16%, 142px);
+  aspect-ratio: 3 / 4;
+  opacity: 0;
+  transform: translateY(8px) scale(.94);
+  transform-origin: 50% 100%;
+  transition:
+    left 420ms cubic-bezier(.22, .72, .2, 1),
+    top 420ms cubic-bezier(.22, .72, .2, 1),
+    opacity 240ms ease,
+    transform 280ms ease;
+}
+
+.yungang-assistant-actor.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.yungang-assistant-actor[data-state="move"] img,
+.yungang-assistant-actor[data-state="summon"] img,
+.yungang-assistant-actor[data-state="dismiss"] img {
+  animation: yungang-assistant-step 360ms ease-in-out infinite alternate;
+}
+
+.yungang-assistant-actor img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 8px 10px rgba(3, 15, 30, .34));
+  user-select: none;
+}
+
+.yungang-assistant-bubble {
+  position: absolute;
+  z-index: 3;
+  top: -6px;
+  left: 50%;
+  width: max-content;
+  max-width: min(176px, 36vw);
+  padding: 7px 9px;
+  border: 1px solid rgba(184, 204, 234, .96);
+  border-radius: 10px 10px 10px 3px;
+  background: rgba(250, 253, 255, .96);
+  box-shadow: 0 7px 17px rgba(3, 19, 39, .22);
+  color: #254a76;
+  font-size: clamp(8px, .72vw, 11px);
+  font-weight: 800;
+  line-height: 1.25;
+  opacity: 0;
+  transform: translate(-50%, -100%) scale(.95);
+  transition: opacity 220ms ease, transform 260ms ease;
+  white-space: nowrap;
+}
+
+.yungang-assistant-actor.is-visible .yungang-assistant-bubble:not(:empty) {
+  opacity: 1;
+  transform: translate(-50%, -100%) scale(1);
+}
+
+.yungang-assistant-bubble::after {
+  position: absolute;
+  left: 18px;
+  bottom: -5px;
+  width: 9px;
+  height: 9px;
+  border-right: 1px solid rgba(184, 204, 234, .96);
+  border-bottom: 1px solid rgba(184, 204, 234, .96);
+  background: rgba(250, 253, 255, .96);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.assistant-target-marker {
+  position: absolute;
+  z-index: 1;
+  left: var(--target-x);
+  top: var(--target-y);
+  width: var(--target-width);
+  height: var(--target-height);
+  border: 1px dashed rgba(255, 197, 93, .9);
+  border-radius: 7px;
+  background: rgba(255, 190, 80, .08);
+  box-shadow: 0 0 0 1px rgba(255, 190, 80, .12), 0 0 18px rgba(255, 190, 80, .16);
+  transition: left 420ms ease, top 420ms ease, width 420ms ease, height 420ms ease;
+}
+
+.assistant-target-marker span {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: rgba(77, 49, 11, .88);
+  color: #ffe9ad;
+  font: 800 7px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .06em;
+}
+
+@keyframes yungang-assistant-step {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+
+@media (max-width: 860px) {
+  .yungang-assistant-actor { width: clamp(68px, 18%, 106px); }
+  .yungang-assistant-bubble { max-width: 132px; font-size: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yungang-assistant-actor,
+  .yungang-assistant-bubble,
+  .assistant-target-marker { transition-duration: 1ms; }
+  .yungang-assistant-actor img { animation: none; }
+}
