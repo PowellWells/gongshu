@@ -1620,7 +1620,7 @@
 
 @media (max-width: 1220px) {
   .workspace-header { grid-template-columns: minmax(280px, 1fr) auto minmax(260px, 1fr); }
-  .workspace-header-actions .quiet-button:first-child { display: none; }
+  .workspace-header-actions .quiet-button:first-child:not(.advisor-settings-button) { display: none; }
   .workspace-shell { grid-template-columns: minmax(0, 1fr) 250px; }
   .workspace-view-grid { grid-template-columns: minmax(0, 2fr) minmax(225px, 1fr); }
   .workspace-toolbar { grid-template-columns: repeat(5, minmax(105px, 1fr)) repeat(2, minmax(112px, .72fr)); }

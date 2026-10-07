@@ -1,4 +1,4 @@
-/* Yungang Desktop Assistant: a small, non-interactive overlay inside the live RGB stage. */
+/* Yungang Pet: a small, non-blocking page-level overlay for Gongshu. */
 
 .assistant-mode-row {
   display: flex;
@@ -10,6 +10,49 @@
   border: 1px solid #dbe5f0;
   border-radius: 8px;
   background: rgba(255, 255, 255, .78);
+}
+
+.advisor-settings-content {
+  padding: 16px;
+  background: #f7fafd;
+}
+
+.advisor-settings-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(30, 62, 96, .08);
+}
+
+.advisor-settings-card h3 {
+  margin: 5px 0 5px;
+  color: #193b62;
+  font-size: 16px;
+}
+
+.advisor-settings-card h3 b {
+  color: #7187a1;
+  font: 800 10px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .04em;
+}
+
+.advisor-settings-card p {
+  max-width: 610px;
+  margin: 0;
+  color: #6d819a;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.advisor-settings-card .assistant-mode-row {
+  min-width: 190px;
+  margin: 0;
+  background: #f8fbff;
 }
 
 .assistant-mode-toggle {
@@ -48,10 +91,30 @@
   color: #9aaaba;
 }
 
-.assistant-stage-layer {
+.advisor-fallback-badge {
+  display: none;
   position: absolute;
-  z-index: 8;
   inset: 0;
+  place-items: center;
+  color: #315273;
+  font: 900 18px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: -.08em;
+}
+
+body.advisor-mode .assistant-portrait-frame #assistantPortrait {
+  display: none;
+}
+
+body.advisor-mode .assistant-portrait-frame .advisor-fallback-badge {
+  display: grid;
+}
+
+.assistant-stage-layer {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
   pointer-events: none;
 }
@@ -66,6 +129,9 @@
   z-index: 2;
   width: clamp(78px, 16%, 142px);
   aspect-ratio: 3 / 4;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
   opacity: 0;
   transform: translateY(8px) scale(.94);
   transform-origin: 50% 100%;
@@ -81,10 +147,24 @@
   transform: translateY(0) scale(1);
 }
 
-.yungang-assistant-actor[data-state="move"] img,
-.yungang-assistant-actor[data-state="summon"] img,
-.yungang-assistant-actor[data-state="dismiss"] img {
+.yungang-assistant-actor.is-dragging {
+  cursor: grabbing;
+  transform: translateY(0) scale(1.02);
+  transition: none;
+}
+
+.yungang-assistant-actor.assistant-idle img {
+  animation: yungang-assistant-idle 5.2s ease-in-out infinite;
+}
+
+.yungang-assistant-actor.assistant-moving img,
+.yungang-assistant-actor.assistant-returning img {
   animation: yungang-assistant-step 360ms ease-in-out infinite alternate;
+}
+
+.yungang-assistant-actor.assistant-dragging img,
+.yungang-assistant-actor.assistant-pointing img {
+  animation: none;
 }
 
 .yungang-assistant-actor img {
@@ -168,9 +248,16 @@
   to { transform: translateY(-3px); }
 }
 
+@keyframes yungang-assistant-idle {
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  50% { transform: translateY(-5px) rotate(-1deg) scale(1.012); }
+}
+
 @media (max-width: 860px) {
   .yungang-assistant-actor { width: clamp(68px, 18%, 106px); }
   .yungang-assistant-bubble { max-width: 132px; font-size: 8px; }
+  .advisor-settings-card { grid-template-columns: 1fr; }
+  .advisor-settings-card .assistant-mode-row { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

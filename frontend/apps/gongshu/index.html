@@ -33,6 +33,7 @@
       </div>
 
       <div class="workspace-header-actions">
+        <button id="advisorSettingsButton" class="quiet-button advisor-settings-button" type="button" aria-haspopup="dialog" aria-controls="advisorSettingsDialog">设置 Settings</button>
         <button id="conditionSettingsButton" class="quiet-button" type="button">压力测试 Stress Test</button>
         <button id="legacyButton" class="quiet-button" type="button">历史运行 History</button>
         <button id="cameraSetupButton" class="quiet-button" type="button">连接设置 Camera Setup</button>
@@ -109,24 +110,25 @@
       <aside class="assistant-rail" aria-labelledby="assistantRailTitle">
         <header class="assistant-identity">
           <div class="assistant-portrait-frame">
-            <img src="../../assets/yungang/yungang_master.png" alt="云冈娘 Yungang-chan" />
+            <img id="assistantPortrait" src="../../assets/yungang/yungang_master.png" alt="云冈娘 Yungang-chan" />
+            <span id="advisorFallbackBadge" class="advisor-fallback-badge" aria-hidden="true">GA</span>
             <span class="assistant-live-dot" aria-label="内部模式在线"></span>
           </div>
           <div>
-            <span class="eyebrow">GONGSHU INTERNAL MODE</span>
-            <h1 id="assistantRailTitle">云冈娘 <b>Yungang-chan</b></h1>
-            <p>Gongshu Interactive Assistant</p>
+            <span id="assistantIdentityEyebrow" class="eyebrow">GONGSHU INTERNAL MODE</span>
+            <h1 id="assistantRailTitle"><span id="assistantDisplayName">云冈娘</span> <b id="assistantDisplayEnglish">Yungang-chan</b></h1>
+            <p id="assistantIdentitySubtitle">Gongshu Interactive Assistant</p>
           </div>
         </header>
 
         <div id="assistantMessages" class="assistant-messages" aria-live="polite">
           <article class="assistant-message is-assistant">
-            <span class="message-author">云冈娘 · READY</span>
-            <p>你好，我是云冈娘。告诉我想抓哪个目标，我会把你的话交给公输视觉工作区。</p>
+            <span id="assistantReadyAuthor" class="message-author">云冈娘 · READY</span>
+            <p id="assistantReadyCopy">你好，我是云冈娘。告诉我想抓哪个目标，我会把你的话交给公输视觉工作区。</p>
           </article>
           <article class="assistant-message is-system">
-            <span class="message-author">WORKSPACE</span>
-            <p>我负责陪你交互；獬豸负责后台决策解释。</p>
+            <span id="assistantSystemAuthor" class="message-author">WORKSPACE</span>
+            <p id="assistantSystemCopy">我负责陪你交互；獬豸负责后台决策解释。</p>
           </article>
         </div>
 
@@ -134,13 +136,6 @@
           <div class="assistant-section-heading">
             <span class="eyebrow">NATURAL LANGUAGE CONTROL</span>
             <h2 id="assistantCommandTitle">告诉我怎么做</h2>
-          </div>
-          <div class="assistant-mode-row">
-            <label class="assistant-mode-toggle" for="yungangDesktopAssistantToggle">
-              <input id="yungangDesktopAssistantToggle" type="checkbox" checked />
-              <span>桌面助手模式 <b>Desktop Assistant</b></span>
-            </label>
-            <span id="yungangDesktopAssistantState" class="assistant-mode-state">ON · WORKSPACE</span>
           </div>
           <div class="assistant-composer">
             <label for="vlmInstruction">Instruction</label>
@@ -172,8 +167,8 @@
         </section>
 
         <div class="assistant-role-note">
-          <span>内部模式 · 日常工作台</span>
-          <strong>温和交互，明确行动。</strong>
+          <span id="assistantRoleNoteLabel">内部模式 · 日常工作台</span>
+          <strong id="assistantRoleNoteCopy">温和交互，明确行动。</strong>
         </div>
       </aside>
 
@@ -212,15 +207,6 @@
             <img id="liveMedia" class="workspace-media" alt="手机局域网实时 RGB 画面" hidden />
             <svg id="targetOverlay" class="target-overlay" role="group" aria-label="目标候选 Object Candidates" hidden></svg>
             <svg id="vlmOverlay" class="vlm-overlay" role="img" aria-label="VLM 目标框 VLM Grounding" hidden></svg>
-            <div id="assistantStageLayer" class="assistant-stage-layer" aria-label="云冈娘桌面助手 Yungang Desktop Assistant" hidden>
-              <div id="assistantTargetMarker" class="assistant-target-marker" aria-hidden="true" hidden>
-                <span>MOCK TARGET</span>
-              </div>
-              <div id="yungangAssistantActor" class="yungang-assistant-actor" data-state="idle">
-                <img id="yungangAssistantSprite" src="../../assets/yungang/yungang_idle.png" alt="" draggable="false" />
-                <div id="yungangAssistantBubble" class="yungang-assistant-bubble" role="status" aria-live="polite"></div>
-              </div>
-            </div>
             <div id="visionScanFx" class="vision-scan-fx" aria-hidden="true"></div>
             <div id="targetLockBanner" class="target-lock-banner" hidden>
               <span>目标已锁定</span><strong>Target Locked</strong>
@@ -501,6 +487,16 @@
       </aside>
     </main>
 
+    <div id="assistantStageLayer" class="assistant-stage-layer assistant-pet-layer" aria-label="云冈娘常驻桌面宠物 Yungang Pet" hidden>
+      <div id="assistantTargetMarker" class="assistant-target-marker" aria-hidden="true" hidden>
+        <span>MOCK TARGET</span>
+      </div>
+      <div id="yungangAssistantActor" class="yungang-assistant-actor" data-state="idle" aria-label="云冈娘 Yungang Pet，可拖拽">
+        <img id="yungangAssistantSprite" src="../../assets/yungang/yungang_idle.png" alt="云冈娘 Yungang Pet" draggable="false" />
+        <div id="yungangAssistantBubble" class="yungang-assistant-bubble" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+
     <section id="xiezhiLab" class="xiezhi-module is-collapsed" aria-labelledby="xiezhiLabTitle">
       <div class="xiezhi-module-shell">
         <header class="xiezhi-module-header">
@@ -734,6 +730,29 @@
     </dialog>
 
     <div id="notice" class="workspace-notice" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="advisorSettingsDialog" class="workspace-dialog advisor-settings-dialog" aria-labelledby="advisorSettingsTitle">
+      <header class="dialog-header">
+        <div><span>GONGSHU PREFERENCES</span><h2 id="advisorSettingsTitle">设置 Settings</h2></div>
+        <button type="button" class="dialog-close-button" data-close-advisor-settings aria-label="关闭设置 Close Settings">×</button>
+      </header>
+      <div class="advisor-settings-content">
+        <section class="advisor-settings-card">
+          <div>
+            <span class="eyebrow">ROLE PRESENTATION</span>
+            <h3>导师模式 <b>Advisor Mode</b></h3>
+            <p>开启后隐藏全部云冈娘角色化视觉与行为，并统一使用正式的 Gongshu Assistant / Xiezhi Decision 表达；机器人工作流保持不变。</p>
+          </div>
+          <div class="assistant-mode-row">
+            <label class="assistant-mode-toggle" for="advisorModeToggle">
+              <input id="advisorModeToggle" type="checkbox" />
+              <span>导师模式 <b>Advisor Mode</b></span>
+            </label>
+            <span id="advisorModeState" class="assistant-mode-state">OFF · YUNGANG PET</span>
+          </div>
+        </section>
+      </div>
+    </dialog>
 
     <dialog id="conditionDialog" class="workspace-dialog condition-dialog" aria-labelledby="conditionDialogTitle">
       <header class="dialog-header">

@@ -6,12 +6,63 @@
   const groundButton = byId("vlmGroundButton");
   const diagnostics = byId("xiezhiLab");
   const diagnosticsToggle = byId("expertDiagnosticsToggle");
+  let advisorMode = window.GongshuAdvisorMode?.isAdvisorMode() || false;
   let lastGroundingMessage = "";
+
+  function assistantName() {
+    return advisorMode ? "Gongshu Assistant" : "云冈娘";
+  }
+
+  function formalizeAssistantCopy(text) {
+    return String(text)
+      .replace("收到，我正在让本地视觉模型定位目标。", "已收到指令，正在请求视觉 grounding。")
+      .replace("我找到目标：", "目标已定位：")
+      .replace("左侧目标已确认。", "Target selection confirmed: left.")
+      .replace("右侧目标已确认。", "Target selection confirmed: right.");
+  }
+
+  function applyAdvisorCopy() {
+    const formal = advisorMode;
+    const copy = {
+      assistantIdentityEyebrow: formal ? "GONGSHU ASSISTANT MODE" : "GONGSHU INTERNAL MODE",
+      assistantDisplayName: formal ? "Gongshu Assistant" : "云冈娘",
+      assistantDisplayEnglish: formal ? "Gongshu Assistant" : "Yungang-chan",
+      assistantIdentitySubtitle: formal ? "Formal Interactive Control" : "Gongshu Interactive Assistant",
+      assistantReadyAuthor: formal ? "GONGSHU ASSISTANT · READY" : "云冈娘 · READY",
+      assistantReadyCopy: formal
+        ? "自然语言控制已就绪。请输入目标指令，交由 Gongshu 视觉工作区处理。"
+        : "你好，我是云冈娘。告诉我想抓哪个目标，我会把你的话交给公输视觉工作区。",
+      assistantSystemCopy: formal
+        ? "Gongshu Assistant 负责交互；Xiezhi Decision 负责后台决策。"
+        : "我负责陪你交互；獬豸负责后台决策解释。",
+      assistantSystemAuthor: formal ? "XIEZHI DECISION" : "WORKSPACE",
+      assistantCommandTitle: formal ? "自然语言指令" : "告诉我怎么做",
+      assistantRoleNoteLabel: formal ? "导师模式 · 正式工作台" : "内部模式 · 日常工作台",
+      assistantRoleNoteCopy: formal ? "Gongshu Assistant / Xiezhi Decision" : "温和交互，明确行动。",
+    };
+    Object.entries(copy).forEach(([id, value]) => {
+      const node = byId(id);
+      if (node) node.textContent = value;
+    });
+    document.querySelectorAll('[data-assistant-message="true"]').forEach((message) => {
+      const author = message.querySelector(".message-author");
+      const copyNode = message.querySelector("p");
+      if (author) author.textContent = assistantName();
+      if (copyNode) copyNode.textContent = formal
+        ? message.dataset.formalCopy || formalizeAssistantCopy(message.dataset.petCopy || copyNode.textContent)
+        : message.dataset.petCopy || copyNode.textContent;
+    });
+  }
 
   function addMessage(kind, author, text) {
     if (!messages || !text) return;
     const message = document.createElement("article");
     message.className = `assistant-message is-${kind}`;
+    if (kind === "assistant") {
+      message.dataset.assistantMessage = "true";
+      message.dataset.petCopy = text;
+      message.dataset.formalCopy = formalizeAssistantCopy(text);
+    }
     const label = document.createElement("span");
     label.className = "message-author";
     label.textContent = author;
@@ -52,22 +103,30 @@
         window.GongshuYungangAssistant?.clearTarget();
         const scanButton = byId("analyzeTargetsButton");
         if (scanButton && !scanButton.disabled) scanButton.click();
-        else addMessage("assistant", "云冈娘", "当前还不能重新观察，请先连接视觉输入。");
+        else addMessage("assistant", assistantName(), "当前还不能重新观察，请先连接视觉输入。");
         return;
       }
       if (command === "执行当前抓取") {
         addMessage("user", "你", command);
         const graspButton = byId("startGraspButton");
         if (graspButton && !graspButton.disabled) graspButton.click();
-        else addMessage("assistant", "云冈娘", "当前还没有可执行的抓取计划。");
+        else addMessage("assistant", assistantName(), "当前还没有可执行的抓取计划。");
         return;
       }
       if ((command === "抓左边那个" || command === "抓右边那个")
+        && !advisorMode
         && groundButton?.disabled
         && window.GongshuYungangAssistant?.setMockTarget) {
         addMessage("user", "你", command);
         window.GongshuYungangAssistant.setMockTarget(command === "抓左边那个" ? "left" : "right");
-        addMessage("assistant", "云冈娘", command === "抓左边那个" ? "左侧目标已确认。" : "右侧目标已确认。");
+        addMessage("assistant", assistantName(), command === "抓左边那个" ? "左侧目标已确认。" : "右侧目标已确认。");
+        return;
+      }
+      if ((command === "抓左边那个" || command === "抓右边那个")
+        && advisorMode
+        && groundButton?.disabled) {
+        addMessage("user", "你", command);
+        addMessage("assistant", assistantName(), "视觉 grounding 尚未就绪，请先连接视觉输入。");
         return;
       }
       if (!input) return;
@@ -81,7 +140,9 @@
     groundButton.addEventListener("click", () => {
       const command = input?.value.trim();
       if (command) addMessage("user", "你", command);
-      if (command) addMessage("assistant", "云冈娘", "收到，我正在让本地视觉模型定位目标。");
+      if (command) addMessage("assistant", assistantName(), advisorMode
+        ? "已收到指令，正在请求视觉 grounding。"
+        : "收到，我正在让本地视觉模型定位目标。");
     });
   }
 
@@ -132,11 +193,18 @@
     document.querySelector('[data-summary-step="grounding"]')?.classList.toggle("is-active", grounded);
     document.querySelector('[data-summary-step="mask"]')?.classList.toggle("is-active", values.summaryMaskState === "READY");
     if (grounded && target !== lastGroundingMessage) {
-      addMessage("assistant", "云冈娘", `我找到目标：${target}。FastSAM 正在使用锁定区域继续工作。`);
+      addMessage("assistant", assistantName(), advisorMode
+        ? `目标已定位：${target}。FastSAM 正在使用锁定区域继续工作。`
+        : `我找到目标：${target}。FastSAM 正在使用锁定区域继续工作。`);
       lastGroundingMessage = target;
     }
   }
 
+  window.addEventListener("gongshu:advisor-mode-change", (event) => {
+    advisorMode = Boolean(event.detail?.advisorMode);
+    applyAdvisorCopy();
+  });
+  applyAdvisorCopy();
   syncTabs();
   updateSummary();
   window.setInterval(() => {
