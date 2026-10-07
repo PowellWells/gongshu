@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./gongshu.css" />
     <link rel="stylesheet" href="./workspace.css" />
     <link rel="stylesheet" href="./xiezhi-lab.css" />
+    <link rel="stylesheet" href="./assistant-workbench.css" />
   </head>
   <body class="workspace-app">
     <header class="workspace-header">
@@ -104,6 +105,86 @@
     </section>
 
     <main class="workspace-shell">
+      <aside class="assistant-rail" aria-labelledby="assistantRailTitle">
+        <header class="assistant-identity">
+          <div class="assistant-portrait-frame">
+            <img src="assets/yungang-chan.png" alt="云冈娘 Yungang-chan" />
+            <span class="assistant-live-dot" aria-label="内部模式在线"></span>
+          </div>
+          <div>
+            <span class="eyebrow">GONGSHU INTERNAL MODE</span>
+            <h1 id="assistantRailTitle">云冈娘 <b>Yungang-chan</b></h1>
+            <p>Gongshu Interactive Assistant</p>
+          </div>
+        </header>
+
+        <div id="assistantMessages" class="assistant-messages" aria-live="polite">
+          <article class="assistant-message is-assistant">
+            <span class="message-author">云冈娘 · READY</span>
+            <p>你好，我是云冈娘。告诉我想抓哪个目标，我会把你的话交给公输视觉工作区。</p>
+          </article>
+          <article class="assistant-message is-system">
+            <span class="message-author">WORKSPACE</span>
+            <p>我负责陪你交互；獬豸负责后台决策解释。</p>
+          </article>
+        </div>
+
+        <section class="assistant-command-card" aria-labelledby="assistantCommandTitle">
+          <div class="assistant-section-heading">
+            <span class="eyebrow">NATURAL LANGUAGE CONTROL</span>
+            <h2 id="assistantCommandTitle">告诉我怎么做</h2>
+          </div>
+          <div class="assistant-composer">
+            <label for="vlmInstruction">Instruction</label>
+            <div class="assistant-input-row">
+              <input id="vlmInstruction" type="text" placeholder="例如：抓左边那个" autocomplete="off" />
+              <button id="vlmGroundButton" type="button" disabled>发送</button>
+            </div>
+            <span id="vlmGroundingStatus" class="assistant-grounding-status">等待目标场景 WAITING</span>
+          </div>
+          <dl class="assistant-grounding-readout" aria-live="polite">
+            <div><dt>VLM Target</dt><dd id="vlmTargetValue">等待定位 WAITING</dd></div>
+            <div><dt>BBox / Point</dt><dd id="vlmGeometryValue">—</dd></div>
+            <div><dt>Confidence</dt><dd id="vlmConfidenceValue">—</dd></div>
+            <div><dt>FastSAM Mask</dt><dd id="vlmMaskValue">等待目标锁定 WAITING</dd></div>
+          </dl>
+          <div class="assistant-grounding-record" aria-hidden="true">
+            <span id="vlmInstructionEcho">—</span>
+          </div>
+          <div class="assistant-quick-actions" aria-label="快捷指令 Quick Commands">
+            <span>快捷指令 QUICK COMMANDS</span>
+            <div>
+              <button type="button" data-assistant-command="抓左边那个">抓左边那个</button>
+              <button type="button" data-assistant-command="抓右边那个">抓右边那个</button>
+              <button type="button" data-assistant-command="重新观察">重新观察</button>
+              <button type="button" data-assistant-command="执行当前抓取">执行当前抓取</button>
+            </div>
+          </div>
+          <button class="assistant-voice-button" type="button" disabled aria-label="语音输入预留">◌ 语音输入 Voice · Coming Soon</button>
+        </section>
+
+        <div class="assistant-role-note">
+          <span>内部模式 · 日常工作台</span>
+          <strong>温和交互，明确行动。</strong>
+        </div>
+      </aside>
+
+      <section class="robot-workspace" aria-labelledby="robotWorkspaceTitle">
+        <header class="robot-workspace-heading">
+          <div>
+            <span class="eyebrow">ROBOT WORKSPACE · LIVE PERCEPTION</span>
+            <h1 id="robotWorkspaceTitle">机器人工作区 <b>Robot Workspace</b></h1>
+          </div>
+          <span class="workspace-focus-copy">我看见什么 · 我锁定什么 · 我准备怎么抓</span>
+        </header>
+        <nav class="workspace-view-tabs" aria-label="机器人工作区视图">
+          <button type="button" class="is-active" data-workspace-tab="live">RGB <small>主视图</small></button>
+          <button type="button" data-workspace-tab="spatial">Mask <small>分割</small></button>
+          <button type="button" data-workspace-tab="spatial-depth">Depth <small>空间</small></button>
+          <button type="button" data-workspace-tab="grasp">Grasp <small>候选</small></button>
+          <button type="button" data-workspace-tab="simulation">Simulation <small>MuJoCo</small></button>
+        </nav>
+
       <section id="viewGrid" class="workspace-view-grid" aria-label="Vision-to-Grasp 四视图 Workspace">
         <article id="livePanel" class="workspace-view is-primary" data-view="live" data-slot="primary">
           <header class="workspace-view-header">
@@ -328,7 +409,25 @@
         </article>
       </section>
 
-      <aside class="workspace-inspector" aria-label="抓取任务状态">
+      </section>
+
+      <aside class="workspace-inspector decision-summary-rail" aria-label="系统决策摘要">
+        <section class="decision-chain-card" aria-labelledby="decisionSummaryTitle">
+          <header>
+            <div><span class="eyebrow">DECISION SUMMARY</span><h2 id="decisionSummaryTitle">决策摘要 <b>Decision Chain</b></h2></div>
+            <strong id="summaryChainStatus">LIVE</strong>
+          </header>
+          <ol class="decision-chain-list">
+            <li data-summary-step="task"><span>01</span><div><small>当前任务 TASK</small><strong id="summaryTask">等待自然语言指令</strong><em id="summaryTaskState">WAITING</em></div></li>
+            <li data-summary-step="grounding"><span>02</span><div><small>目标定位 VLM GROUNDING</small><strong id="summaryGrounding">等待目标</strong><em id="summaryGroundingState">WAITING</em></div></li>
+            <li data-summary-step="mask"><span>03</span><div><small>分割 SEGMENTATION</small><strong id="summaryMask">FastSAM</strong><em id="summaryMaskState">WAITING</em></div></li>
+            <li data-summary-step="spatial"><span>04</span><div><small>空间 SPATIAL</small><strong id="summarySpatial">Depth / Point Cloud</strong><em id="summarySpatialState">WAITING</em></div></li>
+            <li data-summary-step="grasp"><span>05</span><div><small>抓取 GRASP PLANNING</small><strong id="summaryGrasp">候选等待中</strong><em id="summaryGraspState">WAITING</em></div></li>
+            <li data-summary-step="xiezhi"><span>06</span><div><small>决策 XIEZHI</small><strong id="summaryXiezhi">后台决策模块</strong><em id="summaryXiezhiState">WAITING</em></div></li>
+            <li data-summary-step="mujoco"><span>07</span><div><small>验证 MUJOCO</small><strong id="summaryMujoco">仿真等待中</strong><em id="summaryMujocoState">WAITING</em></div></li>
+          </ol>
+        </section>
+
         <section class="inspector-block condition-block">
           <header><div><span>00</span><h2>观测条件 <b>Condition</b></h2></div><strong id="conditionStatus">等待评估 Waiting</strong></header>
           <dl class="target-summary">
@@ -385,7 +484,7 @@
       </aside>
     </main>
 
-    <section id="xiezhiLab" class="xiezhi-module" aria-labelledby="xiezhiLabTitle">
+    <section id="xiezhiLab" class="xiezhi-module is-collapsed" aria-labelledby="xiezhiLabTitle">
       <div class="xiezhi-module-shell">
         <header class="xiezhi-module-header">
           <div class="xiezhi-module-index" aria-hidden="true"><span>05</span><small>内部模块 INTERNAL MODULE</small></div>
@@ -397,7 +496,10 @@
             <h1 id="xiezhiLabTitle">獬豸 <b>Xiezhi</b></h1>
             <p>公输机器人平台内部的智能决策子模块</p>
           </div>
-          <strong class="xiezhi-module-state"><i aria-hidden="true"></i> 已启用 ENABLED</strong>
+          <div class="xiezhi-header-actions">
+            <strong class="xiezhi-module-state"><i aria-hidden="true"></i> 后台模块 ENABLED</strong>
+            <button id="expertDiagnosticsToggle" class="expert-diagnostics-toggle" type="button" aria-expanded="false" aria-controls="xiezhiModuleBody">专家诊断 EXPERT DIAGNOSTICS</button>
+          </div>
         </header>
 
         <div class="xiezhi-workflow-bridge" aria-label="Gongshu 工作流到 Xiezhi 智能决策子模块">
@@ -407,7 +509,7 @@
           <small>观测 Observation → 獬豸决策 Xiezhi Decision → 公输运行时 Gongshu Runtime</small>
         </div>
 
-        <div class="xiezhi-module-body">
+        <div id="xiezhiModuleBody" class="xiezhi-module-body">
           <section class="xiezhi-concept-preview" aria-labelledby="xiezhiPreviewTitle">
             <span>运行状态 RUNTIME STATUS</span>
             <h2 id="xiezhiPreviewTitle">智能运行时 Intelligence Runtime</h2>
@@ -421,24 +523,6 @@
                 <div><dt>决策 Decision</dt><dd id="xiezhiRuntimeContext">不可用 NOT AVAILABLE</dd></div>
                 <div><dt>最近决策 Last Decision</dt><dd id="xiezhiLatestEvent">无 NONE</dd></div>
               </dl>
-              <section class="vlm-grounding-panel" aria-labelledby="vlmGroundingTitle">
-                <header>
-                  <div><small>真实本地多模态 REAL LOCAL MULTIMODAL</small><h3 id="vlmGroundingTitle">语言目标 Grounding</h3></div>
-                  <strong id="vlmGroundingStatus">WAITING</strong>
-                </header>
-                <div class="vlm-grounding-input-row">
-                  <label for="vlmInstruction">Natural Language Instruction</label>
-                  <input id="vlmInstruction" type="text" placeholder="例如：抓左边的杯子" autocomplete="off" />
-                  <button id="vlmGroundButton" type="button" disabled>定位目标 Ground</button>
-                </div>
-                <dl class="vlm-grounding-grid" aria-live="polite">
-                  <div><dt>Instruction</dt><dd id="vlmInstructionEcho">—</dd></div>
-                  <div><dt>VLM Target</dt><dd id="vlmTargetValue">—</dd></div>
-                  <div><dt>BBox / Point</dt><dd id="vlmGeometryValue">—</dd></div>
-                  <div><dt>Confidence</dt><dd id="vlmConfidenceValue">—</dd></div>
-                  <div><dt>FastSAM Mask</dt><dd id="vlmMaskValue">等待目标锁定 WAITING</dd></div>
-                </dl>
-              </section>
               <p>Xiezhi 产生标准决策输出 Decision Output；机器人执行与 MuJoCo 始终由公输运行时 Gongshu Runtime 负责。</p>
             </div>
           </section>
@@ -736,5 +820,6 @@
     <script src="./xiezhi-blueprint.js"></script>
     <script src="./behavior-comparison.js"></script>
     <script src="./xiezhi-lab.js"></script>
+    <script src="./assistant-workbench.js"></script>
   </body>
 </html>
