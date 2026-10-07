@@ -184,6 +184,30 @@ body.advisor-mode .assistant-portrait-frame .advisor-fallback-badge {
   animation: yungang-assistant-warning 480ms ease-in-out 2;
 }
 
+.yungang-assistant-actor.assistant-running img {
+  animation: yungang-assistant-run-bob 180ms ease-in-out infinite alternate;
+}
+
+.yungang-assistant-actor.assistant-braking img {
+  animation: yungang-assistant-brake 260ms ease-out both;
+}
+
+.yungang-assistant-actor.assistant-running::after {
+  position: absolute;
+  z-index: -1;
+  right: -8%;
+  bottom: 13%;
+  width: 35%;
+  height: 18%;
+  border-radius: 50%;
+  background: linear-gradient(90deg, rgba(117, 132, 214, .22), transparent);
+  content: "";
+  filter: blur(5px);
+  opacity: .72;
+  animation: yungang-assistant-motion-trail 360ms ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
 .yungang-assistant-actor.assistant-success .yungang-assistant-bubble {
   border-color: rgba(103, 177, 150, .9);
 }
@@ -275,6 +299,22 @@ body.advisor-mode .assistant-portrait-frame .advisor-fallback-badge {
 @keyframes yungang-assistant-step {
   from { transform: translateY(0); }
   to { transform: translateY(-3px); }
+}
+
+@keyframes yungang-assistant-run-bob {
+  from { transform: translateY(1px) rotate(-.5deg); }
+  to { transform: translateY(-4px) rotate(.5deg); }
+}
+
+@keyframes yungang-assistant-motion-trail {
+  from { transform: translateX(4px) scaleX(.78); opacity: .32; }
+  to { transform: translateX(-3px) scaleX(1); opacity: .72; }
+}
+
+@keyframes yungang-assistant-brake {
+  0% { transform: translateX(4px) scaleX(1.015); }
+  55% { transform: translateX(-2px) scaleX(.985); }
+  100% { transform: translateX(0) scaleX(1); }
 }
 
 @keyframes yungang-assistant-idle {

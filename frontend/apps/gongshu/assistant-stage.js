@@ -22,11 +22,29 @@
     summon: `${ASSET_BASE}yungang_move.png`,
     move: `${ASSET_BASE}yungang_move.png`,
     dismiss: `${ASSET_BASE}yungang_move.png`,
+    run_a: `${ASSET_BASE}yungang_run_a.png`,
+    run_b: `${ASSET_BASE}yungang_run_b.png`,
+    brake: `${ASSET_BASE}yungang_brake.png`,
+    thinking: `${ASSET_BASE}yungang_thinking.png`,
+    success: `${ASSET_BASE}yungang_success.png`,
+    warning: `${ASSET_BASE}yungang_warning.png`,
+    failure: `${ASSET_BASE}yungang_failure.png`,
     "point-left": `${ASSET_BASE}yungang_point_left.png`,
     "point-right": `${ASSET_BASE}yungang_point_right.png`,
   });
+  const SPRITE_FALLBACKS = Object.freeze({
+    run_a: "move",
+    run_b: "move",
+    brake: "idle",
+    thinking: "idle",
+    success: "idle",
+    warning: "idle",
+    failure: "idle",
+  });
   const DEFAULT_FRAME = Object.freeze({ width: 1000, height: 650 });
   const TRANSITION_MS = 430;
+  const RUN_FRAME_MS = 135;
+  const BRAKE_MS = 260;
   const OUTCOME_HOLD_MS = 2800;
   const RUNTIME_STATE = Object.freeze({
     IDLE: "IDLE",
@@ -39,6 +57,7 @@
     WARNING: "WARNING",
     FAILURE: "FAILURE",
     RETURN_HOME: "RETURN_HOME",
+    BRAKING: "BRAKING",
   });
   const FAILURE_STATE = Object.freeze({
     approach_collision: RUNTIME_STATE.WARNING,
@@ -80,8 +99,12 @@
     dismissTimer: 0,
     outcomeTimer: 0,
     returnTimer: 0,
+    brakeTimer: 0,
+    runFrameTimer: 0,
+    runFrame: 0,
     runtimeState: RUNTIME_STATE.IDLE,
     handledEventIds: new Set(),
+    unavailableSprites: new Set(),
   };
 
   function finite(value) {
@@ -180,6 +203,47 @@
     return clampPosition({ x: 24, y: viewport.height - height - 24 });
   }
 
+  function spriteFallback(stateName) {
+    return SPRITE_FALLBACKS[stateName] || "idle";
+  }
+
+  function applySprite(stateName) {
+    const requested = SPRITES[stateName] ? stateName : "idle";
+    const fallback = spriteFallback(requested);
+    sprite.dataset.spriteState = requested;
+    sprite.src = state.unavailableSprites.has(requested)
+      ? SPRITES[fallback]
+      : SPRITES[requested];
+  }
+
+  sprite.addEventListener("error", () => {
+    const requested = sprite.dataset.spriteState;
+    if (!requested || state.unavailableSprites.has(requested)) return;
+    state.unavailableSprites.add(requested);
+    applySprite(spriteFallback(requested));
+  });
+
+  function stopRunLoop() {
+    window.clearInterval(state.runFrameTimer);
+    state.runFrameTimer = 0;
+    actor.classList.remove("assistant-running");
+  }
+
+  function startRunLoop() {
+    stopRunLoop();
+    state.runFrame = 0;
+    actor.classList.add("assistant-running");
+    applySprite("run_a");
+    state.runFrameTimer = window.setInterval(() => {
+      if (state.advisorMode || !state.visible || !state.drag && ![RUNTIME_STATE.MOVING, RUNTIME_STATE.RETURN_HOME].includes(state.runtimeState)) {
+        stopRunLoop();
+        return;
+      }
+      state.runFrame = state.runFrame ? 0 : 1;
+      applySprite(state.runFrame ? "run_b" : "run_a");
+    }, RUN_FRAME_MS);
+  }
+
   function setState(nextState, runtimeState = null) {
     const classes = [
       "assistant-idle",
@@ -192,6 +256,7 @@
       "assistant-success",
       "assistant-warning",
       "assistant-failure",
+      "assistant-braking",
     ];
     actor.dataset.state = nextState;
     if (runtimeState) state.runtimeState = runtimeState;
@@ -207,11 +272,15 @@
     if (nextState === "success") actor.classList.add("assistant-success");
     if (nextState === "warning") actor.classList.add("assistant-warning");
     if (nextState === "failure") actor.classList.add("assistant-failure");
-    sprite.src = SPRITES[nextState] || SPRITES.idle;
+    if (nextState === "brake") actor.classList.add("assistant-braking");
+    applySprite(nextState);
   }
 
   function setRuntimeState(runtimeState, visualState = null) {
     if (state.advisorMode) return;
+    if (![RUNTIME_STATE.DRAGGING, RUNTIME_STATE.MOVING, RUNTIME_STATE.RETURN_HOME].includes(runtimeState)) {
+      stopRunLoop();
+    }
     const visualByRuntime = {
       [RUNTIME_STATE.IDLE]: "idle",
       [RUNTIME_STATE.DRAGGING]: "dragging",
@@ -223,6 +292,7 @@
       [RUNTIME_STATE.WARNING]: "warning",
       [RUNTIME_STATE.FAILURE]: "failure",
       [RUNTIME_STATE.RETURN_HOME]: "dismiss",
+      [RUNTIME_STATE.BRAKING]: "brake",
     };
     setState(visualState || visualByRuntime[runtimeState] || "idle", runtimeState);
   }
@@ -344,6 +414,20 @@
     window.clearTimeout(state.dismissTimer);
     window.clearTimeout(state.outcomeTimer);
     window.clearTimeout(state.returnTimer);
+    window.clearTimeout(state.brakeTimer);
+    stopRunLoop();
+  }
+
+  function brakeThen(nextRuntimeState, nextVisualState = null) {
+    if (state.advisorMode || !state.visible) return;
+    window.clearTimeout(state.brakeTimer);
+    stopRunLoop();
+    setRuntimeState(RUNTIME_STATE.BRAKING, "brake");
+    state.brakeTimer = window.setTimeout(() => {
+      if (!state.advisorMode && state.visible && !state.drag) {
+        setRuntimeState(nextRuntimeState, nextVisualState);
+      }
+    }, BRAKE_MS);
   }
 
   function returnHome() {
@@ -356,8 +440,9 @@
     setRuntimeState(RUNTIME_STATE.RETURN_HOME);
     setPosition(state.homePosition || defaultHomePosition());
     state.returnTimer = window.setTimeout(() => {
-      if (!state.drag && !state.advisorMode) setRuntimeState(RUNTIME_STATE.IDLE);
+      if (!state.drag && !state.advisorMode) brakeThen(RUNTIME_STATE.IDLE, "idle");
     }, TRANSITION_MS);
+    startRunLoop();
   }
 
   function presentOutcome(runtimeState, message, eventId) {
@@ -448,10 +533,11 @@
     state.placement = placement;
     setRuntimeState(RUNTIME_STATE.MOVING, "move");
     setPosition(placement);
+    startRunLoop();
     window.clearTimeout(state.transitionTimer);
     state.transitionTimer = window.setTimeout(() => {
       if (state.target && state.placement === placement && !state.drag) {
-        setRuntimeState(RUNTIME_STATE.POINTING, placement.facing);
+        brakeThen(RUNTIME_STATE.POINTING, placement.facing);
       }
     }, TRANSITION_MS);
   }
@@ -530,6 +616,7 @@
     actor.setPointerCapture?.(event.pointerId);
     actor.classList.add("is-dragging");
     setRuntimeState(RUNTIME_STATE.DRAGGING, "dragging");
+    startRunLoop();
     event.preventDefault();
     event.stopPropagation();
   }
@@ -552,7 +639,7 @@
     actor.classList.remove("is-dragging");
     state.homePosition = { ...state.position };
     saveHomePosition();
-    setRuntimeState(RUNTIME_STATE.IDLE);
+    brakeThen(RUNTIME_STATE.IDLE, "idle");
     event.preventDefault();
     event.stopPropagation();
   }
