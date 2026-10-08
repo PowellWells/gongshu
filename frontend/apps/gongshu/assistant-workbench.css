@@ -168,6 +168,34 @@
   background: #f8f5fc;
 }
 
+.assistant-message.is-workflow-update {
+  border-color: #d5e2ec;
+  border-radius: 8px;
+  background: rgba(247, 250, 253, .9);
+}
+
+.workflow-title {
+  display: block;
+  margin-bottom: 3px;
+  color: #52738b;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.workflow-summary {
+  color: #49627f;
+}
+
+.workflow-detail {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #8294a6;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feedback-title {
   display: block;
   margin-bottom: 5px;

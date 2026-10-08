@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Mapping
+from uuid import uuid4
 
 
 FEEDBACK_SCHEMA_VERSION = "gongshu.grasp-execution-feedback/v1"
@@ -32,6 +33,43 @@ def _as_float(value: object | None) -> float | None:
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def build_workflow_chat_event(
+    *,
+    task_id: str,
+    phase: str,
+    status: str,
+    text: str,
+    metadata: Mapping[str, Any] | None = None,
+    event_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a factual progress event from an observed Gongshu stage.
+
+    This event is deliberately separate from terminal grasp feedback.  It can
+    describe a stage being queued or completed, but it never claims that a
+    robot executed successfully.  Only the validation result may do that.
+    """
+
+    resolved_id = str(event_id or f"workflow-{uuid4().hex}").strip()
+    if not resolved_id:
+        raise ValueError("workflow chat event requires event_id")
+    event_metadata = {
+        "task_id": str(task_id).strip() or "gongshu-session",
+        "phase": str(phase).strip() or "workflow",
+        "status": str(status).strip() or "updated",
+        **dict(metadata or {}),
+    }
+    return {
+        "event": "gongshu_workflow_update",
+        "schema_version": CHAT_EVENT_SCHEMA_VERSION,
+        "event_id": resolved_id,
+        "message_id": resolved_id,
+        "message_type": "workflow_update",
+        "text": str(text).strip(),
+        "created_at": _iso_now(),
+        "metadata": event_metadata,
+    }
 
 
 def _attempt_metadata(snapshot: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -321,12 +359,19 @@ def build_grasp_execution_feedback(
 
 
 class ChatEventStore:
-    """Small process-local event history used by the existing Gongshu page."""
+    """Process-local ordered event history used by the existing Gongshu page.
+
+    The sequence cursor makes polling incremental and deterministic.  The
+    store intentionally remains process-local in this change; durable trial
+    event persistence is a separate local-acceptance item.
+    """
 
     def __init__(self, *, max_events: int = 128) -> None:
         self._max_events = max(1, int(max_events))
         self._lock = RLock()
         self._events: list[dict[str, Any]] = []
+        self._next_sequence = 0
+        self._stream_id = f"chat-stream-{uuid4().hex}"
 
     def append_once(self, event: Mapping[str, Any]) -> bool:
         event_id = _text(event.get("event_id"), _text(event.get("message_id")))
@@ -335,16 +380,37 @@ class ChatEventStore:
         with self._lock:
             if any(item.get("event_id") == event_id for item in self._events):
                 return False
-            self._events.append(dict(event))
+            self._next_sequence += 1
+            stored = dict(event)
+            stored.setdefault("created_at", _iso_now())
+            stored["sequence"] = self._next_sequence
+            self._events.append(stored)
             del self._events[:-self._max_events]
             return True
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self, *, after_sequence: int | None = None) -> dict[str, Any]:
         with self._lock:
-            events = [dict(event) for event in self._events]
+            latest_sequence = self._next_sequence
+            oldest_sequence = self._events[0].get("sequence") if self._events else None
+            cursor_reset = False
+            cursor = after_sequence
+            if cursor is not None and cursor < 0:
+                raise ValueError("after_sequence must be non-negative")
+            if cursor is not None and oldest_sequence is not None and cursor < oldest_sequence - 1:
+                cursor = oldest_sequence - 1
+                cursor_reset = True
+            events = [
+                dict(event)
+                for event in self._events
+                if cursor is None or int(event.get("sequence", 0)) > cursor
+            ]
         return {
             "schema_version": CHAT_EVENT_SCHEMA_VERSION,
+            "stream_id": self._stream_id,
             "events": events,
             "count": len(events),
             "latest_event_id": events[-1].get("event_id") if events else None,
+            "latest_sequence": latest_sequence,
+            "oldest_sequence": oldest_sequence,
+            "cursor_reset": cursor_reset,
         }
