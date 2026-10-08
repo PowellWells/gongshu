@@ -6,11 +6,12 @@ for the Windows desktop or robot experiment environment.
 
 ## Repository and branch
 
-Use the private `PowellWells/Vision2Grasp` repository after its GitHub access
+Use the existing public `PowellWells/gongshu` repository after GitHub access
 has been authorized for the ChatGPT account that will run Codex Cloud. Keep
-the existing public `PowellWells/gongshu` repository unchanged. Start cloud
-tasks from the approved development branch and review the diff before any
-commit or pull request.
+`main` and `release/v0.1.0` unchanged. Start cloud tasks from the reviewed
+`codex/bottle-end-to-end-loop` branch and review the diff before any commit or
+pull request. Do not change the default release branch until cloud validation
+is complete.
 
 ## Install script
 
