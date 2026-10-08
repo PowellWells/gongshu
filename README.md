@@ -168,6 +168,24 @@ node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
 
+### Codex Cloud development
+
+Codex Cloud 可用于源码、契约、前端、序列化和无模型单元测试开发。云端
+smoke 环境使用 Python 3.12、[requirements-cloud.txt](requirements-cloud.txt)
+以及不自动安装完整实验栈的 editable install：
+
+```bash
+python -m pip install --upgrade pip setuptools
+python -m pip install -r requirements-cloud.txt
+python -m pip install -e . --no-deps
+PYTHONPATH=src python -m pytest -q tests/test_vlm_grounding.py tests/test_contracts.py
+```
+
+Windows 桌面启动器、手机局域网相机、本地 VLM、模型权重、CUDA、MuJoCo/
+robosuite 正式验证、真实机器人和外部 Mayflower Xiezhi Runtime 仍需在本地
+环境验证。完整边界与证据标记见 [Codex Cloud 开发说明](docs/CODEX_CLOUD.md)
+和 [AGENTS.md](AGENTS.md)。
+
 ## License
 
 Gongshu 自有源码采用 [Apache License 2.0](LICENSE)。第三方代码、模型、素材与运行时保留各自许可证；Apache-2.0 声明不覆盖这些第三方内容。使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md)。

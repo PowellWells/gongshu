@@ -1,0 +1,5 @@
+# Minimal dependency set for Codex Cloud contract smoke tests.
+# The full Windows and experiment stack remains in pyproject.toml.
+numpy>=1.26,<2
+opencv-python-headless>=4.11,<5
+pytest>=8,<9
