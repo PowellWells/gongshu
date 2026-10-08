@@ -170,6 +170,7 @@ def reconstruct_object(
     )
     geometry = _classify_geometry(
         proxy_extents,
+        raw_world_extents=raw_world_extents,
         observed_hidden_extent=observed_hidden,
         appearance=appearance,
     )
@@ -270,6 +271,7 @@ def _normalize_extents(
 def _classify_geometry(
     extents: NDArray[np.float64],
     *,
+    raw_world_extents: NDArray[np.float64],
     observed_hidden_extent: float,
     appearance: TargetAppearance | None,
 ) -> ProxyGeometry:
@@ -278,19 +280,35 @@ def _classify_geometry(
     long_ratio = ordered[0] / max(ordered[1], 1e-9)
     mask_elongation = 1.0 if appearance is None else appearance.mask_elongation
     fill_ratio = 0.0 if appearance is None else appearance.mask_bbox_fill_ratio
+    oriented_fill_ratio = (
+        fill_ratio
+        if appearance is None
+        else float(
+            getattr(appearance, "mask_oriented_bbox_fill_ratio", 0.0) or fill_ratio
+        )
+    )
     circularity = 0.0 if appearance is None else appearance.mask_circularity
+    raw_horizontal = np.maximum(np.asarray(raw_world_extents[:2], dtype=np.float64), 1e-9)
+    horizontal_ratio = float(np.max(raw_horizontal) / np.min(raw_horizontal))
+    vertical_ratio = float(raw_world_extents[2] / np.max(raw_horizontal))
     semantic_cylinder = (
         appearance is not None and appearance.proxy_geometry is ProxyGeometry.CYLINDER
     )
     rotational_support = observed_hidden_extent / max(width, 1e-9) >= 0.55
     silhouette_cylinder = semantic_cylinder or (
-        mask_elongation >= 1.25 and fill_ratio < 0.84
+        mask_elongation >= 1.25 and oriented_fill_ratio < 0.82
     )
-    if height / max(width, 1e-9) >= 1.15 and rotational_support and silhouette_cylinder:
+    round_horizontal_section = horizontal_ratio <= 1.25
+    if (
+        vertical_ratio >= 1.15
+        and round_horizontal_section
+        and rotational_support
+        and silhouette_cylinder
+    ):
         return ProxyGeometry.CYLINDER
     if long_ratio >= 2.25 and mask_elongation >= 1.55:
         return ProxyGeometry.CAPSULE
-    if fill_ratio >= 0.80:
+    if oriented_fill_ratio >= 0.80 or fill_ratio >= 0.80:
         return ProxyGeometry.BOX
     if circularity >= 0.66 or ordered[0] / max(ordered[-1], 1e-9) <= 1.55:
         return ProxyGeometry.ELLIPSOID

@@ -19,7 +19,7 @@ from vision2grasp.condition_processing import (
 from vision2grasp.grasp_planning import GraspCandidate, GraspPlan
 from vision2grasp.target_perception import TargetLockMetadata
 
-from .appearance import TargetAppearance
+from .appearance import TARGET_APPEARANCE_SCHEMA_VERSION, TargetAppearance
 from .object_reconstruction import ObjectReconstruction, fallback_reconstruction
 
 
@@ -560,7 +560,7 @@ class ValidationRequest:
         if self.target_appearance is not None:
             return self.target_appearance.public_metadata()
         return {
-            "schema_version": "gongshu.target-appearance/v1",
+            "schema_version": TARGET_APPEARANCE_SCHEMA_VERSION,
             "appearance_status": "APPEARANCE_FALLBACK",
             "texture_status": "FAILED",
             "texture_asset_id": None,

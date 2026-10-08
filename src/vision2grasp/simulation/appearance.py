@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from vision2grasp.target_perception import TargetSceneSnapshot
 
 
-TARGET_APPEARANCE_SCHEMA_VERSION: Final = "gongshu.target-appearance/v1"
+TARGET_APPEARANCE_SCHEMA_VERSION: Final = "gongshu.target-appearance/v2"
 TARGET_TEXTURE_ASSET_NAME: Final = "target_appearance.png"
 
 
@@ -52,6 +52,10 @@ class TargetAppearance:
     mask_elongation: float
     texture_png: bytes = field(repr=False)
     extraction_source: str = "LOCKED_SCENE_SNAPSHOT_RGB_PLUS_TARGET_MASK"
+    # Optional so older in-memory callers can still construct the v1 object.
+    # New extraction always records the rotation-invariant value.
+    mask_oriented_bbox_fill_ratio: float = 0.0
+    mask_solidity: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.snapshot_id.strip() or not self.target_instance_id.strip():
@@ -72,6 +76,8 @@ class TargetAppearance:
             self.mask_bbox_fill_ratio,
             self.mask_circularity,
             self.mask_elongation,
+            self.mask_oriented_bbox_fill_ratio,
+            self.mask_solidity,
         ):
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError("appearance shape metrics must be finite and non-negative")
@@ -106,6 +112,9 @@ class TargetAppearance:
             "foreground_pixel_count": self.foreground_pixel_count,
             "mean_rgb": list(self.mean_rgb),
             "mask_bbox_fill_ratio": self.mask_bbox_fill_ratio,
+            "mask_oriented_bbox_fill_ratio": self.mask_oriented_bbox_fill_ratio,
+            "mask_solidity": self.mask_solidity,
+            "shape_metric_definition": "axis_aligned_and_min_area_rectangle",
             "mask_circularity": self.mask_circularity,
             "mask_elongation": self.mask_elongation,
             "background_removed": True,
@@ -167,10 +176,18 @@ def extract_target_appearance(
     if not ok:
         raise RuntimeError("failed to encode in-memory target appearance texture")
 
-    fill_ratio, circularity, elongation, neck_ratio = _shape_metrics(crop_mask)
+    (
+        fill_ratio,
+        oriented_fill_ratio,
+        circularity,
+        elongation,
+        neck_ratio,
+        solidity,
+    ) = _shape_metrics(crop_mask)
     proxy = _classify_proxy(
         snapshot.target.class_name or "",
         fill_ratio=fill_ratio,
+        oriented_fill_ratio=oriented_fill_ratio,
         circularity=circularity,
         elongation=elongation,
         neck_ratio=neck_ratio,
@@ -190,18 +207,28 @@ def extract_target_appearance(
         mask_circularity=circularity,
         mask_elongation=elongation,
         texture_png=encoded.tobytes(),
+        mask_oriented_bbox_fill_ratio=oriented_fill_ratio,
+        mask_solidity=solidity,
     )
 
 
-def _shape_metrics(mask: NDArray[np.bool_]) -> tuple[float, float, float, float]:
+def _shape_metrics(
+    mask: NDArray[np.bool_],
+) -> tuple[float, float, float, float, float, float]:
     binary = np.ascontiguousarray(mask.astype(np.uint8))
     area = float(np.count_nonzero(binary))
     height, width = binary.shape
     fill_ratio = area / max(float(width * height), 1.0)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contour = max(contours, key=cv2.contourArea)
+    contour_area = float(cv2.contourArea(contour))
     perimeter = float(cv2.arcLength(contour, True))
     circularity = 0.0 if perimeter <= 0.0 else float(4.0 * np.pi * area / (perimeter * perimeter))
+    rect_width, rect_height = cv2.minAreaRect(contour)[1]
+    oriented_rect_area = max(float(rect_width * rect_height), 1.0)
+    oriented_fill_ratio = area / oriented_rect_area
+    hull_area = max(float(cv2.contourArea(cv2.convexHull(contour))), 1.0)
+    solidity = contour_area / hull_area
     points = np.column_stack(np.nonzero(binary)[::-1]).astype(np.float64)
     if points.shape[0] < 3 or np.ptp(points[:, 0]) == 0.0 or np.ptp(points[:, 1]) == 0.0:
         elongation = 1.0
@@ -216,13 +243,14 @@ def _shape_metrics(mask: NDArray[np.bool_]) -> tuple[float, float, float, float]
     top_width = float(np.mean(row_widths[:top_end]))
     middle_width = float(np.mean(row_widths[middle_start:middle_end]))
     neck_ratio = top_width / max(middle_width, 1.0)
-    return fill_ratio, circularity, elongation, neck_ratio
+    return fill_ratio, oriented_fill_ratio, circularity, elongation, neck_ratio, solidity
 
 
 def _classify_proxy(
     semantic_label: str,
     *,
     fill_ratio: float,
+    oriented_fill_ratio: float,
     circularity: float,
     elongation: float,
     neck_ratio: float,
@@ -240,7 +268,7 @@ def _classify_proxy(
         return ProxyGeometry.CAPSULE
     if neck_ratio <= 0.72 and elongation >= 1.35:
         return ProxyGeometry.CYLINDER
-    if fill_ratio >= 0.84:
+    if oriented_fill_ratio >= 0.84 or fill_ratio >= 0.84:
         return ProxyGeometry.BOX
     if circularity >= 0.72 and elongation <= 1.45:
         return ProxyGeometry.ELLIPSOID

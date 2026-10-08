@@ -81,6 +81,33 @@ def cylinder_points(radius: float = 0.035, height: float = 0.16) -> np.ndarray:
 
 
 class ObjectReconstructionTests(unittest.TestCase):
+    def test_rotated_box_mask_does_not_become_cylinder(self) -> None:
+        mask = np.zeros((180, 180), dtype=np.bool_)
+        corners = cv2.boxPoints(((90.0, 85.0), (96.0, 58.0), 28.0)).round().astype(np.int32)
+        cv2.fillConvexPoly(mask.view(np.uint8), corners, 1)
+        snapshot = make_snapshot(mask, "Unknown Object")
+        reconstruction = reconstruct_object(
+            observation(snapshot, box_points((0.11, 0.06, 0.15))),
+            snapshot,
+            extract_target_appearance(snapshot),
+        )
+        self.assertGreater(
+            extract_target_appearance(snapshot).mask_oriented_bbox_fill_ratio,
+            0.84,
+        )
+        self.assertEqual(reconstruction.proxy_geometry, ProxyGeometry.BOX)
+
+    def test_semantic_cylinder_does_not_override_box_point_cloud(self) -> None:
+        mask = np.zeros((120, 120), dtype=np.bool_)
+        mask[20:100, 25:95] = True
+        snapshot = make_snapshot(mask, "bottle")
+        reconstruction = reconstruct_object(
+            observation(snapshot, box_points((0.11, 0.06, 0.15))),
+            snapshot,
+            extract_target_appearance(snapshot),
+        )
+        self.assertEqual(reconstruction.proxy_geometry, ProxyGeometry.BOX)
+
     def test_point_cloud_shapes_do_not_collapse_to_cylinder(self) -> None:
         cases = []
         rectangular = np.zeros((120, 120), dtype=np.bool_)
