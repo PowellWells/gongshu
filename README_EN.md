@@ -170,4 +170,4 @@ node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 
 ## License
 
-Gongshu-owned source code is licensed under the [Apache License 2.0](LICENSE). Third-party code, models, assets, and runtimes retain their respective licenses and are not covered by the repository's Apache-2.0 declaration. Read [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md) before use or redistribution.
+Gongshu-owned source code is licensed under the [Apache License 2.0](LICENSE). Third-party code, models, and runtimes retain their respective licenses. AI-generated project visual assets have separate provenance records and are not automatically covered by the Apache-2.0 source-code grant. Read [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md), and [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md) before use or redistribution.

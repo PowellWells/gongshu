@@ -188,4 +188,4 @@ robosuite 正式验证、真实机器人和外部 Mayflower Xiezhi Runtime 仍�
 
 ## License
 
-Gongshu 自有源码采用 [Apache License 2.0](LICENSE)。第三方代码、模型、素材与运行时保留各自许可证；Apache-2.0 声明不覆盖这些第三方内容。使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md)。
+Gongshu 自有源码采用 [Apache License 2.0](LICENSE)。第三方代码、模型与运行时保留各自许可证；AI 生成的项目视觉素材单独记录来源，不自动并入 Apache-2.0 源码许可。使用或再分发前请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[ASSET_PROVENANCE.md](ASSET_PROVENANCE.md) 和 [GONGSHU_SCOPE.md](GONGSHU_SCOPE.md)。

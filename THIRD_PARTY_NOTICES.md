@@ -53,3 +53,21 @@ restore absolute scale.
 FastSAM is currently executed through Ultralytics. The pinned Ultralytics
 runtime in this repository uses the AGPL-3.0 license family; formal product
 distribution must review all runtime, model, and transitive dependency terms.
+
+## AI-generated project visual assets
+
+The following visual assets were generated with the ChatGPT / OpenAI
+image-generation feature. The project owner confirms that no third-party base
+image, photograph, or externally sourced image was used for their creation or
+re-creation and confirms public publication in this repository:
+
+- `frontend/apps/gongshu/assets/xiezhi-logo-sheet.png`
+- `frontend/apps/gongshu/assets/yungang-chan.png`
+- `frontend/assets/yungang/*.png`
+- `assets/demo-cover.png`
+
+These are recorded as **AI-generated assets**. They are not described as
+hand-drawn originals or as third-party open-source material, and they are not
+automatically included in the repository's Apache-2.0 source-code grant. See
+[`ASSET_PROVENANCE.md`](ASSET_PROVENANCE.md) for file-level hashes, dimensions,
+the project-owner source statement, and the license boundary.
