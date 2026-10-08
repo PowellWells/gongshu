@@ -22,6 +22,12 @@
 
 边界约束在代码中有效：VLM 返回目标点、框和证据，`ground_target()` 重新绑定 FastSAM mask；执行入口要求 `AlgorithmDecision.authorizes_execution`，拒绝候选只进入 simulation-only diagnostic；终态聊天消息由 MuJoCo 结果、状态历史和 telemetry 生成。
 
+## 视觉与交互现状
+
+正式工作台采用固定的 Live / Spatial / Grasp / Simulation 四视图，右侧 assistant rail 负责指令、状态摘要和专家诊断；`assistant-stage.js` 另提供可关闭的云冈娘宠物层，并用 Advisor Mode 切换到正式交互。这种分工保留了平台工作台的密度，也让陪伴式交互不必占据正式控制面板。
+
+当前信息呈现仍有两个断点：聊天只显示终态反馈，过程状态散落在各视图和折叠的专家诊断中；宠物层、工作台通知和后端状态没有共同的事件顺序。第一项优化将同一条后端时间线送入聊天，但保留宠物动画作为表现层，不把动画当作实验证据。
+
 ## 五项最影响实际使用的问题
 
 排序综合了用户价值、失败风险和云端实施成本。成本是相对估计，低/中/高分别代表一到三周以内的工程量级，而不是承诺工期。
