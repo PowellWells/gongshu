@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from vision2grasp.execution_feedback import ChatEventStore, build_grasp_execution_feedback
+from vision2grasp.execution_feedback import (
+    ChatEventStore,
+    build_grasp_execution_feedback,
+    build_workflow_chat_event,
+)
 from run_vision2grasp_app import Vision2GraspApp
 
 
@@ -125,6 +129,31 @@ class ExecutionFeedbackTests(unittest.TestCase):
         self.assertEqual(store.snapshot()["count"], 2)
         self.assertEqual(store.snapshot()["latest_event_id"], "two")
 
+    def test_chat_event_store_supports_incremental_ordered_reads(self) -> None:
+        store = ChatEventStore(max_events=3)
+        store.append_once(build_workflow_chat_event(
+            task_id="task-001", phase="grounding", status="completed", text="grounded",
+            event_id="workflow-one",
+        ))
+        store.append_once(build_workflow_chat_event(
+            task_id="task-001", phase="intelligence", status="completed", text="decided",
+            event_id="workflow-two",
+        ))
+        full = store.snapshot()
+        self.assertEqual([event["sequence"] for event in full["events"]], [1, 2])
+        incremental = store.snapshot(after_sequence=1)
+        self.assertEqual([event["event_id"] for event in incremental["events"]], ["workflow-two"])
+        self.assertEqual(incremental["latest_sequence"], 2)
+        self.assertFalse(incremental["cursor_reset"])
+
+    def test_chat_event_store_resets_a_stale_cursor_to_retained_history(self) -> None:
+        store = ChatEventStore(max_events=2)
+        for event_id in ("one", "two", "three"):
+            store.append_once({"event_id": event_id, "message_type": "workflow_update"})
+        payload = store.snapshot(after_sequence=0)
+        self.assertTrue(payload["cursor_reset"])
+        self.assertEqual([event["event_id"] for event in payload["events"]], ["two", "three"])
+
     def test_gongshu_app_bridges_terminal_snapshot_to_chat_event(self) -> None:
         class _LocalImage:
             @staticmethod
@@ -153,6 +182,8 @@ class ExecutionFeedbackTests(unittest.TestCase):
         self.assertIn("/api/chat/events", source)
         self.assertIn('"grasp_feedback", "system_error"', source)
         self.assertIn('message.dataset.messageType = event.message_type', source)
+        self.assertIn("after_sequence=${lastChatSequence}", source)
+        self.assertIn('event.message_type === "workflow_update"', source)
 
 
 if __name__ == "__main__":

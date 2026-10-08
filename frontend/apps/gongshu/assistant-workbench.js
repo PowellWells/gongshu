@@ -8,6 +8,8 @@
   const diagnosticsToggle = byId("expertDiagnosticsToggle");
   let advisorMode = window.GongshuAdvisorMode?.isAdvisorMode() || false;
   let lastGroundingMessage = "";
+  let chatStreamId = "";
+  let lastChatSequence = 0;
   const renderedFeedbackEvents = new Set();
 
   function assistantName() {
@@ -151,15 +153,58 @@
     renderedFeedbackEvents.add(eventId);
   }
 
+  function addWorkflowUpdate(event) {
+    if (!messages || !event || event.message_type !== "workflow_update") return;
+    const eventId = String(event.event_id || event.message_id || "").trim();
+    if (!eventId || renderedFeedbackEvents.has(eventId)) return;
+    const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
+    const message = document.createElement("article");
+    message.className = "assistant-message is-workflow-update";
+    message.dataset.eventId = eventId;
+    const label = document.createElement("span");
+    label.className = "message-author";
+    label.textContent = `${assistantName()} · 实验时间线`;
+    const title = document.createElement("strong");
+    title.className = "workflow-title";
+    title.textContent = `${metadata.phase || "workflow"} · ${metadata.status || "updated"}`;
+    const copy = document.createElement("p");
+    copy.className = "workflow-summary";
+    copy.textContent = event.text || "工作流状态已更新。";
+    const detail = document.createElement("small");
+    detail.className = "workflow-detail";
+    const reason = metadata.reason || metadata.target_id || metadata.selected_candidate_id || metadata.state;
+    detail.textContent = reason ? String(reason) : "真实后端阶段事件";
+    message.append(label, title, copy, detail);
+    messages.append(message);
+    messages.scrollTop = messages.scrollHeight;
+    renderedFeedbackEvents.add(eventId);
+  }
+
   async function pollExecutionFeedback() {
     try {
-      const response = await fetch(`/api/chat/events?t=${Date.now()}`, { cache: "no-store" });
+      const response = await fetch(
+        `/api/chat/events?after_sequence=${lastChatSequence}&t=${Date.now()}`,
+        { cache: "no-store" },
+      );
       if (!response.ok) return;
       const payload = await response.json();
       if (!Array.isArray(payload.events)) return;
-      payload.events.forEach(addExecutionFeedback);
+      if (payload.stream_id && chatStreamId && payload.stream_id !== chatStreamId) {
+        chatStreamId = payload.stream_id;
+        lastChatSequence = 0;
+        return;
+      }
+      chatStreamId = payload.stream_id || chatStreamId;
+      if (payload.cursor_reset) lastChatSequence = 0;
+      payload.events.forEach((event) => {
+        if (event.message_type === "workflow_update") addWorkflowUpdate(event);
+        else addExecutionFeedback(event);
+        if (Number.isFinite(Number(event.sequence))) {
+          lastChatSequence = Math.max(lastChatSequence, Number(event.sequence));
+        }
+      });
     } catch {
-      // Chat feedback is best-effort in the UI; execution evidence remains in the API/recording.
+      // The server-side event stream and experiment record remain authoritative.
     }
   }
 

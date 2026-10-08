@@ -43,6 +43,7 @@ from vision2grasp.extensions.xiezhi.lifecycle import (
 from vision2grasp.execution_feedback import (
     ChatEventStore,
     build_grasp_execution_feedback,
+    build_workflow_chat_event,
 )
 from vision2grasp.experiment_lab import (
     ExperimentTrialRecorder,
@@ -401,6 +402,12 @@ class Vision2GraspApp:
         self.target_perception.reset()
         self._last_vlm_grounding = None
         target_state = self.analyze_phone_targets(request)
+        self._publish_workflow_event(
+            phase="observation",
+            status="ready",
+            text="本地观测已载入，目标扫描结果已关联到本次实验记录。",
+            metadata={"source": "local_image", "run_id": observation.run_id},
+        )
         return {
             "schema_version": "gongshu.local-image-load/v0.1",
             "status": "ready",
@@ -438,6 +445,15 @@ class Vision2GraspApp:
         result = self.target_perception.analyze(conditioned)
         self._last_vlm_grounding = None
         self._record_offline_pipeline_status(str(result.get("status", "ANALYZED")))
+        self._publish_workflow_event(
+            phase="target_perception",
+            status="completed",
+            text="目标扫描完成，已生成可供后续校验的实例候选。",
+            metadata={
+                "source": self._vision_source,
+                "target_status": str(result.get("status", "ANALYZED")),
+            },
+        )
         return result
 
     def vlm_state(self) -> dict[str, object]:
@@ -498,6 +514,18 @@ class Vision2GraspApp:
             },
         }
         self._record_offline_pipeline_status("VLM_TARGET_GROUNDED")
+        self._publish_workflow_event(
+            phase="grounding",
+            status="completed",
+            text="自然语言目标已绑定到 FastSAM 实例掩码，后续规划将使用这份冻结目标。",
+            metadata={
+                "source": "local_vlm",
+                "target_id": selected.get("selected_target_id"),
+                "selection_mode": selection_mode,
+                "point_hit_mask": point_hit_mask,
+                "confidence": grounding.get("confidence"),
+            },
+        )
         return {
             "schema_version": "gongshu.vlm-target-selection/v1",
             "status": "target_locked",
@@ -619,6 +647,16 @@ class Vision2GraspApp:
             expected_source_timestamp_s=float(request["source_timestamp_s"]),
         )
         self._record_offline_pipeline_status("SPATIAL_ANALYSIS")
+        self._publish_workflow_event(
+            phase="spatial_perception",
+            status="completed",
+            text="空间感知完成，深度与目标点云已提交给抓取规划。",
+            metadata={
+                "snapshot_id": result.get("snapshot_id", request.get("snapshot_id")),
+                "target_id": request.get("target_instance_id"),
+                "observation_status": result.get("status"),
+            },
+        )
         return result
 
     def retry_spatial(self) -> dict[str, object]:
@@ -627,6 +665,12 @@ class Vision2GraspApp:
         self.intelligence.reset()
         result = self.spatial_perception.retry()
         self._record_offline_pipeline_status("SPATIAL_ANALYSIS_RETRY")
+        self._publish_workflow_event(
+            phase="spatial_perception",
+            status="retry_completed",
+            text="空间感知已按当前冻结目标重试，结果仍需经过抓取规划校验。",
+            metadata={"observation_status": result.get("status")},
+        )
         return result
 
     def plan_grasp(self, request: dict[str, Any] | None = None) -> dict[str, object]:
@@ -654,6 +698,16 @@ class Vision2GraspApp:
             mode=str(body.get("mode", "RESEARCH")),
         )
         self._record_offline_pipeline_status("GRASP_PLANNING")
+        self._publish_workflow_event(
+            phase="grasp_planning",
+            status="queued" if result.get("job_id") else str(result.get("status", "completed")).lower(),
+            text="抓取规划已提交，等待真实 Top-K 结果和校验状态。",
+            metadata={
+                "job_id": result.get("job_id"),
+                "planning_status": result.get("status"),
+                "snapshot_id": snapshot.snapshot_id,
+            },
+        )
         return result
 
     def decide_grasp(self) -> dict[str, object]:
@@ -666,6 +720,27 @@ class Vision2GraspApp:
             if run_id is not None:
                 self.experiment_recorder.record_decision(run_id, decision)
                 self.local_image.record_pipeline_status("INTELLIGENCE_DECISION")
+        metadata = decision.public_metadata()
+        self._publish_workflow_event(
+            phase="intelligence",
+            status="completed",
+            text=(
+                f"獬豸已完成决策：{decision.action.value}。"
+                "执行授权仍需通过公输的候选与状态校验。"
+            ),
+            metadata={
+                "provider": metadata["provider"],
+                "algorithm": metadata["algorithm"],
+                "action": metadata["action"],
+                "selected_candidate_id": metadata["selected_candidate_id"],
+                "confidence": metadata["confidence"],
+                "risk_estimation": metadata["risk_estimation"],
+                "reason": metadata["reason"],
+                "uncertainty": metadata["uncertainty"],
+                "used_fallback": metadata["used_fallback"],
+                "authorizes_execution": decision.authorizes_execution,
+            },
+        )
         return self.intelligence.snapshot()
 
     def select_algorithm(self, request: dict[str, Any]) -> dict[str, object]:
@@ -763,6 +838,22 @@ class Vision2GraspApp:
             if run_id is not None:
                 self.experiment_recorder.record_validation_request(run_id, response)
         execution_token = f"execution-{uuid.uuid4().hex}"
+        self._publish_workflow_event(
+            phase="validation",
+            status="started",
+            text=(
+                "已启动 MuJoCo 验证；执行过程将只接受验证器返回的真实状态。"
+                if outcome.plan is not None
+                else "已启动拒绝候选的仿真诊断，不会授权机器人执行。"
+            ),
+            metadata={
+                "execution_token": execution_token,
+                "scenario": scenario,
+                "diagnostic_only": outcome.plan is None,
+                "candidate_id": getattr(candidate, "candidate_id", None),
+                "decision_id": decision.decision_id,
+            },
+        )
         self._start_offline_run_watch()
         self._start_xiezhi_lifecycle(scene=scenario, execution_token=execution_token)
         return response
@@ -836,13 +927,25 @@ class Vision2GraspApp:
                     return
             snapshot = self.mujoco_validation.snapshot()
             history = snapshot.get("state_history", [])
-            if xiezhi_connected:
-                for entry in history[seen_states:]:
-                    state = str(entry.get("state", "")).lower()
+            new_history = history[seen_states:]
+            for offset, entry in enumerate(new_history):
+                state = str(entry.get("state", "")).lower()
+                if xiezhi_connected:
                     self.xiezhi.publish(
                         "step_update",
                         self._xiezhi_context(scene=scene, status=state),
                     )
+                self._publish_workflow_event(
+                    phase="execution",
+                    status=state.upper(),
+                    text=f"验证器报告执行阶段：{state.upper()}。",
+                    metadata={
+                        "execution_token": execution_token,
+                        "state": state.upper(),
+                        "elapsed_s": entry.get("elapsed_s"),
+                    },
+                    event_id=f"workflow-{execution_token}-step-{seen_states + offset}",
+                )
             seen_states = len(history)
             state = str(snapshot.get("status", snapshot.get("state", ""))).upper()
             if state in {"SUCCESS", "FAILED"}:
@@ -896,6 +999,35 @@ class Vision2GraspApp:
         )
         event = feedback.chat_event()
         self.chat_events.append_once(event)
+        return event
+
+    def _publish_workflow_event(
+        self,
+        *,
+        phase: str,
+        status: str,
+        text: str,
+        metadata: dict[str, Any] | None = None,
+        event_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Publish a factual stage update when the chat bridge is available."""
+
+        store = getattr(self, "chat_events", None)
+        if store is None:
+            return None
+        task_id = getattr(self, "_chat_task_id", None)
+        local_image = getattr(self, "local_image", None)
+        if local_image is not None:
+            task_id = local_image.active_run_id() or task_id
+        event = build_workflow_chat_event(
+            task_id=str(task_id or "gongshu-session"),
+            phase=phase,
+            status=status,
+            text=text,
+            metadata=metadata,
+            event_id=event_id,
+        )
+        store.append_once(event)
         return event
 
     @staticmethod
@@ -1043,6 +1175,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                         "mujoco-validation.point-cloud-object-reconstruction/v1",
                         "mujoco-validation.reconstruction-debug/v1",
                         "grasp-execution-feedback.chat/v1",
+                        "gongshu-workflow-timeline.chat/v1",
                         "xiezhi-lifecycle.status/v0.1",
                         "gongshu-intelligence-decision/v1",
                         "gongshu.xiezhi-dashboard/v1",
@@ -1061,7 +1194,15 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(self.app.vlm_state())
             return
         if path == "/api/chat/events":
-            self._send_json(self.app.chat_events.snapshot())
+            raw_cursor = parse_qs(urlparse(self.path).query).get("after_sequence", [None])[0]
+            try:
+                after_sequence = None if raw_cursor in {None, ""} else int(raw_cursor)
+                self._send_json(self.app.chat_events.snapshot(after_sequence=after_sequence))
+            except (TypeError, ValueError) as error:
+                self._send_json(
+                    {"error": str(error), "schema_version": "gongshu.chat-event/v1"},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
             return
         if path == "/api/xiezhi/status":
             self._send_json(self.app.xiezhi.status().as_dict())
