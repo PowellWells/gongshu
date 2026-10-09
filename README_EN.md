@@ -138,6 +138,15 @@ Uses a four-view workspace for visual, spatial, grasping, and simulation results
 
 Modular interfaces support future compatible data sources, research modules, and grasp algorithms while keeping the core platform boundary clear.
 
+### Current platform capabilities
+
+- **Natural-language task workbench**: enter target and action intent in one interface, then follow target locking, grasp-execution feedback, candidate state, and result presentation.
+- **Xiezhi decision layer**: provides the internal algorithm registry, decision/risk/authorization contracts, algorithm switching, and behavior comparison. Xiezhi evaluates Gongshu-generated candidates; it does not replace perception or motion execution.
+- **Yungang-chan assistant**: renders draggable, task-event-driven visual feedback and can switch to formal Gongshu Assistant / Xiezhi Decision wording without changing the platform workflow.
+- **Local Image and VLM grounding**: brings local images into the same scene-snapshot and target-reference boundary; models and weights remain optional local assets and are not published with the source repository.
+- **Geometry-aware object reconstruction**: preserves oriented bounding-box and solidity metrics to reduce the risk of classifying rotated box-like objects as cylinders.
+- **Experiment recording and comparison**: supports Trial, Recording, Replay, Normal, Blur, Low-Light, and behavior comparison while retaining provenance and availability states.
+
 ## System Preview / Screenshots
 
 ![Gongshu desktop research workspace](assets/overview.png)
@@ -167,6 +176,18 @@ node --check .\frontend\apps\gongshu\gongshu.js
 node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
+
+### Codex Cloud development
+
+Codex Cloud is suitable for source, contract, frontend, serialization, and
+model-free unit-test work. Use Python 3.12 with
+[requirements-cloud.txt](requirements-cloud.txt), install the package without
+the full experiment stack, and run the smoke checks described in
+[docs/CODEX_CLOUD.md](docs/CODEX_CLOUD.md).
+
+Windows desktop launchers, phone-camera LAN pairing, local VLMs, model
+weights, CUDA, MuJoCo/robosuite validation, real robots, and the external
+Mayflower Xiezhi runtime remain local checks.
 
 ## License
 

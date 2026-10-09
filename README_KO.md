@@ -138,6 +138,15 @@ MuJoCo / robosuite와 Franka Panda를 사용해 연속 동역학 시뮬레이션
 
 모듈형 인터페이스를 통해 핵심 플랫폼의 경계를 유지하면서 향후 호환 데이터 소스, 연구 모듈, 파지 알고리즘을 확장할 수 있습니다.
 
+### 현재 추가된 주요 기능
+
+- **자연어 작업 워크벤치**: 하나의 화면에서 대상과 동작 의도를 입력하고 대상 잠금, 파지 실행 피드백, 후보 상태와 결과 표시를 연결합니다.
+- **Xiezhi 의사결정 계층**: 내부 알고리즘 레지스트리, 의사결정·위험·실행 권한 계약, 알고리즘 전환과 행동 비교를 제공합니다. Xiezhi는 Gongshu가 생성한 후보를 평가하며 시각 인식이나 동작 실행을 대체하지 않습니다.
+- **Yungang-chan 보조 기능**: 작업 이벤트에 따른 드래그 가능한 시각 피드백을 제공하며 공식 Gongshu Assistant / Xiezhi Decision 표현으로 전환할 수 있습니다. 캐릭터 표현은 플랫폼 흐름을 변경하지 않습니다.
+- **Local Image 및 VLM grounding**: 로컬 이미지를 동일한 Scene Snapshot과 대상 참조 경계로 가져옵니다. 모델과 가중치는 선택적인 로컬 자산이며 소스 저장소에 공개하지 않습니다.
+- **기하 인식 객체 재구성**: 방향성 바운딩 박스와 solidity 등의 형상 지표를 보존하여 회전된 상자형 객체를 원기둥으로 잘못 분류할 위험을 줄입니다.
+- **실험 기록 및 비교**: Trial, Recording, Replay, Normal, Blur, Low-Light와 행동 비교를 지원하고 provenance 및 사용 가능 상태를 유지합니다.
+
 ## System Preview / Screenshots
 
 ![Gongshu 데스크톱 연구 워크스페이스](assets/overview.png)
@@ -167,6 +176,17 @@ node --check .\frontend\apps\gongshu\gongshu.js
 node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
+
+### Codex Cloud 개발
+
+Codex Cloud는 소스 코드, 계약, 프론트엔드, 직렬화, 모델을 사용하지 않는
+단위 테스트 작업에 적합합니다. [requirements-cloud.txt](requirements-cloud.txt)를
+사용하는 Python 3.12 경량 환경과 [docs/CODEX_CLOUD.md](docs/CODEX_CLOUD.md)의
+smoke check를 사용하십시오.
+
+Windows 데스크톱 실행기, 휴대전화 카메라 LAN 페어링, 로컬 VLM, 모델 가중치,
+CUDA, MuJoCo/robosuite 검증, 실제 로봇, 외부 Mayflower Xiezhi runtime은
+계속 로컬에서 검증합니다.
 
 ## License
 

@@ -138,6 +138,15 @@ MuJoCo / robosuite と Franka Panda による連続動力学シミュレーシ�
 
 モジュール型インターフェースにより、コアプラットフォームの境界を保ちながら、互換データソース、研究モジュール、把持アルゴリズムを将来拡張できます。
 
+### 現在の主な追加機能
+
+- **自然言語タスクワークベンチ**：一つの画面で対象と動作意図を入力し、対象ロック、把持実行フィードバック、候補状態、結果表示を連携します。
+- **Xiezhi 意思決定レイヤー**：内部アルゴリズムレジストリ、意思決定・リスク・実行権限の契約、アルゴリズム切替、行動比較を提供します。Xiezhi は Gongshu が生成した候補を評価し、視覚認識や動作実行を置き換えません。
+- **Yungang-chan アシスタント**：タスクイベントに応じたドラッグ可能な視覚フィードバックを表示し、正式な Gongshu Assistant / Xiezhi Decision 表現にも切り替えられます。キャラクター表示はプラットフォームの処理を変更しません。
+- **Local Image と VLM grounding**：ローカル画像を同じ Scene Snapshot と対象参照の境界に取り込みます。モデルと重みは任意のローカル資産であり、ソースリポジトリには公開しません。
+- **形状を考慮した対象再構成**：有向バウンディングボックスと solidity などの形状指標を保持し、回転した箱状対象を円柱と誤分類するリスクを抑えます。
+- **実験の記録と比較**：Trial、Recording、Replay、Normal、Blur、Low-Light、行動比較に対応し、provenance と利用可能状態を保持します。
+
 ## System Preview / Screenshots
 
 ![Gongshu デスクトップ研究ワークスペース](assets/overview.png)
@@ -167,6 +176,17 @@ node --check .\frontend\apps\gongshu\gongshu.js
 node --check .\frontend\apps\gongshu\real-scene.js
 node --check .\frontend\apps\gongshu\phone-camera\phone-camera.js
 ```
+
+### Codex Cloud 開発
+
+Codex Cloud はソースコード、契約、フロントエンド、シリアライズ、
+モデルを使わない単体テストに適しています。[requirements-cloud.txt](requirements-cloud.txt)
+を用いた Python 3.12 の軽量環境と、[docs/CODEX_CLOUD.md](docs/CODEX_CLOUD.md)
+に記載した smoke check を使用してください。
+
+Windows デスクトップ起動、スマートフォンカメラの LAN ペアリング、
+ローカル VLM、モデル重み、CUDA、MuJoCo/robosuite 検証、実機ロボット、
+外部 Mayflower Xiezhi runtime は引き続きローカルで検証します。
 
 ## License
 
